@@ -1,0 +1,44 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: llm-council
+  threads:
+    virtual:
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+council:
+  runs-dir: ./runs
+  default-profile-id: local-mock
+  providers:
+    mock:
+      kind: mock
+      base-url: http://localhost
+      max-concurrent-requests: 1
+      timeout: 30s
+  models:
+    mock-a:
+      provider-id: mock
+      provider-model-id: mock-a
+      local: true
+      supports-json-mode: true
+      default-output-tokens: 800
+    mock-b:
+      provider-id: mock
+      provider-model-id: mock-b
+      local: true
+      supports-json-mode: true
+      default-output-tokens: 800
+  profiles:
+    local-mock:
+      member-model-ids: [mock-a, mock-b]
+      chair-model-id: mock-a
+      fresh-eyes-model-id: mock-b
+      protocol-id: phase1-mock
