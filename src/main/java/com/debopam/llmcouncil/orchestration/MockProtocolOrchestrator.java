@@ -2,9 +2,10 @@ package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.EventPublisher;
 import com.debopam.llmcouncil.domain.CouncilSession;
+import org.springframework.stereotype.Component;
+
 import java.time.Duration;
 import java.util.Map;
-import org.springframework.stereotype.Component;
 
 @Component
 public class MockProtocolOrchestrator {
