@@ -1,6 +1,9 @@
 package com.debopam.llmcouncil.application;
 
 import com.debopam.llmcouncil.domain.CouncilEvent;
+import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -8,8 +11,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import org.springframework.stereotype.Component;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Component
 public class InMemoryEventPublisher implements EventPublisher {

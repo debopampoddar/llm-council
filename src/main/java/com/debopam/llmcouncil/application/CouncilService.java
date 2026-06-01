@@ -3,9 +3,12 @@ package com.debopam.llmcouncil.application;
 import com.debopam.llmcouncil.config.CouncilProperties;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.DepthMode;
+import com.debopam.llmcouncil.model.CouncilProfile;
 import com.debopam.llmcouncil.model.CreateSessionRequest;
+import com.debopam.llmcouncil.model.ModelRegistry;
 import com.debopam.llmcouncil.model.SessionResponse;
-import com.debopam.llmcouncil.orchestration.MockProtocolOrchestrator;
+import com.debopam.llmcouncil.orchestration.CouncilContext;
+import com.debopam.llmcouncil.orchestration.ProtocolOrchestrator;
 import com.debopam.llmcouncil.persistence.ArtifactStore;
 import com.debopam.llmcouncil.persistence.SessionStore;
 import org.springframework.stereotype.Service;
@@ -19,20 +22,23 @@ public class CouncilService {
     private final SessionStore sessionStore;
     private final ArtifactStore artifactStore;
     private final EventPublisher events;
-    private final MockProtocolOrchestrator orchestrator;
+    private final ProtocolOrchestrator orchestrator;
+    private final ModelRegistry modelRegistry;
     private final CouncilProperties properties;
     private final ExecutorService applicationTaskExecutor;
 
     public CouncilService(SessionStore sessionStore,
                           ArtifactStore artifactStore,
                           EventPublisher events,
-                          MockProtocolOrchestrator orchestrator,
+                          ProtocolOrchestrator orchestrator,
+                          ModelRegistry modelRegistry,
                           CouncilProperties properties,
                           ExecutorService applicationTaskExecutor) {
         this.sessionStore = sessionStore;
         this.artifactStore = artifactStore;
         this.events = events;
         this.orchestrator = orchestrator;
+        this.modelRegistry = modelRegistry;
         this.properties = properties;
         this.applicationTaskExecutor = applicationTaskExecutor;
     }
@@ -65,9 +71,9 @@ public class CouncilService {
         CouncilSession running = sessionStore.save(createdSession.running());
         events.publish(running.id(), "SESSION", "SESSION_RUNNING", null, Map.of());
         try {
-            String answer = orchestrator.run(running);
-            CouncilSession completed = sessionStore.save(running.completed(answer));
-            artifactStore.writeText(completed.id(), "final/answer.md", answer);
+            CouncilProfile profile = modelRegistry.profile(running.profileId());
+            CouncilContext context = orchestrator.run(running, profile);
+            CouncilSession completed = sessionStore.save(running.completed(context.finalAnswer()));
             artifactStore.writeJson(completed.id(), "events.json", events.history(completed.id()));
             events.publish(completed.id(), "SESSION", "SESSION_COMPLETED", null, Map.of());
         } catch (RuntimeException e) {

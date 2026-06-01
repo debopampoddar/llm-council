@@ -3,6 +3,8 @@ package com.debopam.llmcouncil.persistence;
 import com.debopam.llmcouncil.config.CouncilProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import org.springframework.stereotype.Component;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -10,7 +12,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
-import org.springframework.stereotype.Component;
 
 @Component
 public class FileArtifactStore implements ArtifactStore {

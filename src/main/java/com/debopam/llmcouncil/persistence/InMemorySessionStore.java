@@ -1,11 +1,11 @@
 package com.debopam.llmcouncil.persistence;
 
 import com.debopam.llmcouncil.domain.CouncilSession;
+import org.springframework.stereotype.Component;
 
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import org.springframework.stereotype.Component;
 
 @Component
 public class InMemorySessionStore implements SessionStore {
