@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.util.Map;
 
+import static com.debopam.llmcouncil.orchestration.StageType.VALIDATE;
+
 @Component
 public class ValidationStageExecutor implements StageExecutor {
     private final ModelRegistry registry;
@@ -30,12 +32,12 @@ public class ValidationStageExecutor implements StageExecutor {
     }
 
     @Override
-    public String stage() {
-        return "VALIDATE";
+    public StageType stage() {
+        return VALIDATE;
     }
 
     @Override
-    public CouncilContext execute(CouncilContext context) {
+    public CouncilContext execute(CouncilContext context, ProtocolStageOptions options) {
         ModelProfile validator = registry.model(context.profile().freshEyesModelId());
         ModelCallResult result = registry.clientForModel(validator.id()).call(new ModelCallRequest(
                 context.session().id(),
@@ -51,7 +53,7 @@ public class ValidationStageExecutor implements StageExecutor {
         ValidationOutput output = parser.parseValidation(result.text());
         context.setValidationOutput(output);
         artifactStore.writeJson(context.session().id(), "final/validation.json", output);
-        events.publish(context.session().id(), stage(), "VALIDATION_COMPLETED", validator.id(), Map.of("approved", output.approved()));
+        events.publish(context.session().id(), stage().name(), "VALIDATION_COMPLETED", validator.id(), Map.of("approved", output.approved()));
         return context;
     }
 }

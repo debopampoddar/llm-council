@@ -28,15 +28,44 @@ public class StructuredReviewParser {
             }
             return new PeerReviewOutput(reviewerModelId, parsed.evaluations(), parsed.reviewerConfidence(), parsed.globalConcerns());
         } catch (Exception e) {
-            throw new IllegalArgumentException("Unable to parse review JSON from " + reviewerModelId, e);
+            throw new IllegalArgumentException("Invalid review JSON from " + reviewerModelId, e);
+        }
+    }
+
+    public DebateModelOutput parseDebate(String modelId, String rawJson, Set<String> validDraftIds) {
+        try {
+            DebateModelOutput parsed = objectMapper.readValue(rawJson, DebateModelOutput.class);
+            validateDraftIds("supportedDraftIds", parsed.supportedDraftIds(), validDraftIds);
+            validateDraftIds("challengedDraftIds", parsed.challengedDraftIds(), validDraftIds);
+            if (parsed.confidence() < 0.0 || parsed.confidence() > 1.0) {
+                throw new IllegalArgumentException("Debate confidence must be between 0.0 and 1.0");
+            }
+            return parsed;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid debate JSON from " + modelId, e);
         }
     }
 
     public ValidationOutput parseValidation(String rawJson) {
         try {
-            return objectMapper.readValue(rawJson, ValidationOutput.class);
+            ValidationOutput output = objectMapper.readValue(rawJson, ValidationOutput.class);
+            if (output.confidence() < 0.0 || output.confidence() > 1.0) {
+                throw new IllegalArgumentException("Validation confidence must be between 0.0 and 1.0");
+            }
+            return output;
         } catch (Exception e) {
-            throw new IllegalArgumentException("Unable to parse validation JSON", e);
+            throw new IllegalArgumentException("Invalid validation JSON", e);
+        }
+    }
+
+    private void validateDraftIds(String field, java.util.List<String> draftIds, Set<String> validDraftIds) {
+        if (draftIds == null) {
+            return;
+        }
+        for (String draftId : draftIds) {
+            if (!validDraftIds.contains(draftId)) {
+                throw new IllegalArgumentException(field + " references unknown draft " + draftId);
+            }
         }
     }
 }

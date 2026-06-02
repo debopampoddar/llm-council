@@ -13,6 +13,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.debopam.llmcouncil.orchestration.StageType.REVIEW;
+
 @Component
 public class ReviewStageExecutor implements StageExecutor {
     private final ModelRegistry registry;
@@ -31,12 +33,12 @@ public class ReviewStageExecutor implements StageExecutor {
     }
 
     @Override
-    public String stage() {
-        return "REVIEW";
+    public StageType stage() {
+        return REVIEW;
     }
 
     @Override
-    public CouncilContext execute(CouncilContext context) {
+    public CouncilContext execute(CouncilContext context, ProtocolStageOptions options) {
         Set<String> validDraftIds = context.anonymizedDraftSet().drafts().stream()
                 .map(AnonymizedDraft::draftId)
                 .collect(Collectors.toSet());
@@ -57,7 +59,7 @@ public class ReviewStageExecutor implements StageExecutor {
             artifactStore.writeText(context.session().id(), "raw/review-" + reviewer.id() + ".json", result.text());
             PeerReviewOutput review = parser.parseReview(reviewer.id(), result.text(), validDraftIds);
             context.addReview(review);
-            events.publish(context.session().id(), stage(), "REVIEW_COMPLETED", reviewer.id(), Map.of("evaluations", review.evaluations().size()));
+            events.publish(context.session().id(), stage().name(), "REVIEW_COMPLETED", reviewer.id(), Map.of("evaluations", review.evaluations().size()));
         }
         artifactStore.writeJson(context.session().id(), "normalized/reviews.json", context.reviews());
         return context;

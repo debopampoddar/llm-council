@@ -1,6 +1,5 @@
 package com.debopam.llmcouncil.config;
 
-import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -16,18 +15,23 @@ public record CouncilProperties(
         String defaultProfileId,
         Map<String, ProviderConfig> providers,
         Map<String, ModelConfig> models,
-        Map<String, ProfileConfig> profiles
-) {
+        Map<String, ProfileConfig> profiles,
+        Map<String, ProtocolConfig> protocols) {
+
     public String runsDir() {
-        return runsDir == null || runsDir.isBlank() ? "./runs" : runsDir;
+        return runsDir == null || runsDir.isBlank() ? "runs" : runsDir;
     }
 
     public String defaultProfileId() {
         return defaultProfileId == null || defaultProfileId.isBlank() ? "local-mock" : defaultProfileId;
     }
 
+    public Map<String, ProtocolConfig> protocols() {
+        return protocols == null ? Map.of() : protocols;
+    }
+
     public record ProviderConfig(
-            @NotBlank String kind,
+            String kind,
             URI baseUrl,
             String apiKeyEnv,
             Integer maxConcurrentRequests,
@@ -35,8 +39,8 @@ public record CouncilProperties(
     ) {}
 
     public record ModelConfig(
-            @NotBlank String providerId,
-            @NotBlank String providerModelId,
+            String providerId,
+            String providerModelId,
             Boolean local,
             Boolean supportsJsonMode,
             Integer defaultOutputTokens
@@ -48,5 +52,21 @@ public record CouncilProperties(
             String freshEyesModelId,
             String protocolId
     ) {}
-}
 
+    public record ProtocolConfig(
+            String description,
+            List<String> orderedStages,
+            Map<String, StageOptionsConfig> stageOptions
+    ) {}
+
+    public record StageOptionsConfig(
+            String reviewMode,
+            Integer maxRounds,
+            Double debateTriggerScoreVariance,
+            Integer debateTriggerDissentCount,
+            Boolean forceRun,
+            Boolean preserveDissent,
+            Boolean exportRawArtifacts,
+            String artifactLabel
+    ) {}
+}

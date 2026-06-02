@@ -15,30 +15,28 @@ management:
         include: health,info,metrics
 
 council:
-  runs-dir: ./runs
-  default-profile-id: local-mock
-  providers:
-    mock:
-      kind: mock
-      base-url: http://localhost
-      max-concurrent-requests: 1
-      timeout: 30s
-  models:
-    mock-a:
-      provider-id: mock
-      provider-model-id: mock-a
-      local: true
-      supports-json-mode: true
-      default-output-tokens: 800
-    mock-b:
-      provider-id: mock
-      provider-model-id: mock-b
-      local: true
-      supports-json-mode: true
-      default-output-tokens: 800
-  profiles:
-    local-mock:
-      member-model-ids: [mock-a, mock-b]
-      chair-model-id: mock-a
-      fresh-eyes-model-id: mock-b
-      protocol-id: phase1-mock
+  protocols:
+    quick:
+      description: Fast low-cost council.
+      ordered-stages: [GENERATE, ANONYMIZE, SYNTHESIZE]
+    balanced:
+      description: Default real council.
+      ordered-stages: [GENERATE, ANONYMIZE, REVIEW, SCORE, SYNTHESIZE, VALIDATE]
+      stage-options:
+        SCORE:
+          artifact-label: initial
+    rigorous:
+      description: High-rigor council with bounded debate and export.
+      ordered-stages: [GENERATE, ANONYMIZE, REVIEW, SCORE, DEBATE, SCORE, SYNTHESIZE, VALIDATE, EXPORT]
+      stage-options:
+        SCORE:
+          artifact-label: initial
+        DEBATE:
+          max-rounds: 2
+          debate-trigger-score-variance: 120.0
+          debate-trigger-dissent-count: 2
+          force-run: true
+          preserve-dissent: true
+        EXPORT:
+          export-raw-artifacts: false
+          artifact-label: redacted

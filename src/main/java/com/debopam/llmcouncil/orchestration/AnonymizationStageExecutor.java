@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
+import static com.debopam.llmcouncil.orchestration.StageType.ANONYMIZE;
+
 @Component
 public class AnonymizationStageExecutor implements StageExecutor {
     private final ArtifactStore artifactStore;
@@ -22,12 +24,12 @@ public class AnonymizationStageExecutor implements StageExecutor {
     }
 
     @Override
-    public String stage() {
-        return "ANONYMIZE";
+    public StageType stage() {
+        return ANONYMIZE;
     }
 
     @Override
-    public CouncilContext execute(CouncilContext context) {
+    public CouncilContext execute(CouncilContext context, ProtocolStageOptions options) {
         long seed = context.session().id().getLeastSignificantBits();
         List<Draft> shuffled = new ArrayList<>(context.drafts());
         Collections.shuffle(shuffled, new Random(seed));
@@ -45,7 +47,7 @@ public class AnonymizationStageExecutor implements StageExecutor {
         context.setAnonymizedDraftSet(draftSet);
         artifactStore.writeJson(context.session().id(), "private/anonymization-map.json", hiddenMap);
         artifactStore.writeJson(context.session().id(), "normalized/anonymized-drafts.json", anonymized);
-        events.publish(context.session().id(), stage(), "DRAFT_ANONYMIZED", null, Map.of("draftCount", anonymized.size()));
+        events.publish(context.session().id(), stage().name(), "DRAFT_ANONYMIZED", null, Map.of("draftCount", anonymized.size()));
         return context;
     }
 }
