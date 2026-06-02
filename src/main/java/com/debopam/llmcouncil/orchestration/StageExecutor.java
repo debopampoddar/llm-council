@@ -1,6 +1,6 @@
 package com.debopam.llmcouncil.orchestration;
 
 public interface StageExecutor {
-    String stage();
-    CouncilContext execute(CouncilContext context);
+    StageType stage();
+    CouncilContext execute(CouncilContext context, ProtocolStageOptions options);
 }

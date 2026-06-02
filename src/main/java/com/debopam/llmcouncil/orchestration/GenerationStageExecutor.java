@@ -9,6 +9,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
+import static com.debopam.llmcouncil.orchestration.StageType.GENERATE;
+
 @Component
 public class GenerationStageExecutor implements StageExecutor {
     private final ModelRegistry registry;
@@ -21,15 +23,15 @@ public class GenerationStageExecutor implements StageExecutor {
     }
 
     @Override
-    public String stage() {
-        return "GENERATE";
+    public StageType stage() {
+        return GENERATE;
     }
 
     @Override
-    public CouncilContext execute(CouncilContext context) {
+    public CouncilContext execute(CouncilContext context, ProtocolStageOptions options) {
         for (String modelId : context.profile().memberModelIds()) {
             ModelProfile model = registry.model(modelId);
-            events.publish(context.session().id(), stage(), "MODEL_CALL_STARTED", modelId, Map.of());
+            events.publish(context.session().id(), stage().name(), "MODEL_CALL_STARTED", modelId, Map.of());
             ModelCallResult result = registry.clientForModel(modelId).call(new ModelCallRequest(
                     context.session().id(),
                     stage(),
@@ -44,7 +46,7 @@ public class GenerationStageExecutor implements StageExecutor {
             String draftId = model.id();
             context.addDraft(new Draft(draftId, model.id(), result.text()));
             events.publish(context.session().id(),
-                    stage(),
+                    stage().name(),
                     "MODEL_CALL_COMPLETED",
                     modelId,
                     Map.of("characters", result.text().length()));

@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.util.Map;
 
+import static com.debopam.llmcouncil.orchestration.StageType.SYNTHESIZE;
+
 @Component
 public class SynthesisStageExecutor implements StageExecutor {
     private final ModelRegistry registry;
@@ -27,19 +29,23 @@ public class SynthesisStageExecutor implements StageExecutor {
     }
 
     @Override
-    public String stage() {
-        return "SYNTHESIZE";
+    public StageType stage() {
+        return SYNTHESIZE;
     }
 
     @Override
-    public CouncilContext execute(CouncilContext context) {
+    public CouncilContext execute(CouncilContext context, ProtocolStageOptions options) {
         ModelProfile chair = registry.model(context.profile().chairModelId());
         ModelCallResult result = registry.clientForModel(chair.id()).call(new ModelCallRequest(
                 context.session().id(),
                 stage(),
                 chair.id(),
                 chair.providerModelId(),
-                promptBuilder.synthesisMessages(context.session().question(), context.drafts(), context.scoreSummary(), context.reviews()),
+                promptBuilder.synthesisMessages(context.session().question(),
+                        context.drafts(),
+                        context.scoreSummary(),
+                        context.reviews(),
+                        context.debateSummary()),
                 chair.defaultOutputTokens(),
                 0.2,
                 false,
@@ -47,7 +53,8 @@ public class SynthesisStageExecutor implements StageExecutor {
         ));
         context.setFinalAnswer(result.text());
         artifactStore.writeText(context.session().id(), "final/answer.md", result.text());
-        events.publish(context.session().id(), stage(), "SYNTHESIS_COMPLETED", chair.id(), Map.of("characters", result.text().length()));
+        events.publish(context.session().id(), stage().name(), "SYNTHESIS_COMPLETED", chair.id(),
+                Map.of("characters", result.text().length()));
         return context;
     }
 }

@@ -63,6 +63,27 @@ public class FileArtifactStore implements ArtifactStore {
         }
     }
 
+    @Override
+    public void writeBytes(UUID sessionId, String relativePath, byte[] value) {
+        Path target = resolve(sessionId, relativePath);
+        try {
+            Files.createDirectories(target.getParent());
+            Files.write(target, value == null ? new byte[0] : value);
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to write binary artifact " + target, e);
+        }
+    }
+
+    @Override
+    public byte[] readBytes(UUID sessionId, String relativePath) {
+        Path target = resolve(sessionId, relativePath);
+        try {
+            return Files.readAllBytes(target);
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to read artifact " + target, e);
+        }
+    }
+
     private Path resolve(UUID sessionId, String relativePath) {
         Path normalized = Path.of(relativePath).normalize();
         if (normalized.isAbsolute() || normalized.startsWith("..")) {

@@ -5,39 +5,41 @@ import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.model.CouncilProfile;
 import org.springframework.stereotype.Component;
 
-import java.util.Comparator;
-import java.util.List;
 import java.util.Map;
 
 @Component
 public class ProtocolOrchestrator {
-    private final List<StageExecutor> executors;
+    private final ProtocolDefinitionRegistry protocolRegistry;
+    private final StageExecutorRegistry executorRegistry;
     private final EventPublisher events;
 
-    public ProtocolOrchestrator(List<StageExecutor> executors, EventPublisher events) {
-        this.executors = executors.stream().sorted(Comparator.comparingInt(this::order)).toList();
+    public ProtocolOrchestrator(
+            ProtocolDefinitionRegistry protocolRegistry,
+            StageExecutorRegistry executorRegistry,
+            EventPublisher events
+    ) {
+        this.protocolRegistry = protocolRegistry;
+        this.executorRegistry = executorRegistry;
         this.events = events;
     }
 
     public CouncilContext run(CouncilSession session, CouncilProfile profile) {
-        CouncilContext context = new CouncilContext(session, profile);
-        for (StageExecutor executor : executors) {
-            events.publish(session.id(), executor.stage(), "STAGE_STARTED", null, Map.of());
-            context = executor.execute(context);
-            events.publish(session.id(), executor.stage(), "STAGE_COMPLETED", null, Map.of());
-        }
-        return context;
-    }
+        ProtocolDefinition protocol = protocolRegistry.get(profile.protocolId());
+        CouncilContext context = new CouncilContext(session, profile, protocol);
 
-    private int order(StageExecutor executor) {
-        return switch (executor.stage()) {
-            case "GENERATE" -> 10;
-            case "ANONYMIZE" -> 20;
-            case "REVIEW" -> 30;
-            case "SCORE" -> 40;
-            case "SYNTHESIZE" -> 50;
-            case "VALIDATE" -> 60;
-            default -> 100;
-        };
+        events.publish(session.id(), "PROTOCOL", "PROTOCOL_SELECTED", null, Map.of(
+                "protocolId", protocol.id(),
+                "stages", protocol.orderedStages().stream().map(StageType::name).toList()
+        ));
+
+        for (StageType stageType : protocol.orderedStages()) {
+            StageExecutor executor = executorRegistry.get(stageType);
+            ProtocolStageOptions options = protocol.optionsFor(stageType);
+            events.publish(session.id(), stageType.name(), "STAGE_STARTED", null, Map.of());
+            context = executor.execute(context, options);
+            events.publish(session.id(), stageType.name(), "STAGE_COMPLETED", null, Map.of());
+        }
+
+        return context;
     }
 }
