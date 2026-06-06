@@ -1,3 +1,8 @@
+/**
+ * Auto-generated documentation for ModelCallResult.java.
+ * Part of the llm-council Java implementation of multi-LLM deliberation.
+ */
+
 package com.debopam.llmcouncil.model;
 
 import java.time.Duration;

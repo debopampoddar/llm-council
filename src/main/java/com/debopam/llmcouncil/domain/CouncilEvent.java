@@ -1,3 +1,8 @@
+/**
+ * Auto-generated documentation for CouncilEvent.java.
+ * Part of the llm-council Java implementation of multi-LLM deliberation.
+ */
+
 package com.debopam.llmcouncil.domain;
 
 import java.time.Instant;

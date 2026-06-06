@@ -1,3 +1,8 @@
+/**
+ * Auto-generated documentation for CouncilController.java.
+ * Part of the llm-council Java implementation of multi-LLM deliberation.
+ */
+
 package com.debopam.llmcouncil.api;
 
 import com.debopam.llmcouncil.application.CouncilService;

@@ -1,3 +1,8 @@
+/**
+ * Auto-generated documentation for ModelClientConfig.java.
+ * Part of the llm-council Java implementation of multi-LLM deliberation.
+ */
+
 package com.debopam.llmcouncil.config;
 
 import com.debopam.llmcouncil.model.CouncilModelClient;
