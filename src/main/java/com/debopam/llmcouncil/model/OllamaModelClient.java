@@ -1,3 +1,8 @@
+/**
+ * Auto-generated documentation for OllamaModelClient.java.
+ * Part of the llm-council Java implementation of multi-LLM deliberation.
+ */
+
 package com.debopam.llmcouncil.model;
 
 import org.springframework.http.MediaType;

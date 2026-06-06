@@ -1,3 +1,8 @@
+/**
+ * Auto-generated documentation for LlmCouncilApplication.java.
+ * Part of the llm-council Java implementation of multi-LLM deliberation.
+ */
+
 package com.debopam.llmcouncil;
 
 import com.debopam.llmcouncil.config.CouncilProperties;

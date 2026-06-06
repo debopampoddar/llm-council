@@ -1,3 +1,8 @@
+/**
+ * Auto-generated documentation for ExportPackageService.java.
+ * Part of the llm-council Java implementation of multi-LLM deliberation.
+ */
+
 package com.debopam.llmcouncil.export;
 
 import com.debopam.llmcouncil.orchestration.CouncilContext;

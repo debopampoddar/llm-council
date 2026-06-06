@@ -1,3 +1,8 @@
+/**
+ * Auto-generated documentation for ModelCallException.java.
+ * Part of the llm-council Java implementation of multi-LLM deliberation.
+ */
+
 package com.debopam.llmcouncil.model;
 
 public class ModelCallException extends RuntimeException {

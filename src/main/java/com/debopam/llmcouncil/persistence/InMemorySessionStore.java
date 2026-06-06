@@ -1,3 +1,8 @@
+/**
+ * Auto-generated documentation for InMemorySessionStore.java.
+ * Part of the llm-council Java implementation of multi-LLM deliberation.
+ */
+
 package com.debopam.llmcouncil.persistence;
 
 import com.debopam.llmcouncil.domain.CouncilSession;
