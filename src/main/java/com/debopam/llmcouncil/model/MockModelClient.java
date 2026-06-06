@@ -20,8 +20,8 @@ public class MockModelClient implements CouncilModelClient {
     public ModelCallResult call(ModelCallRequest request) {
         Instant started = Instant.now();
         String text = switch (request.stage()) {
-            case "GENERATE" -> "Draft from " + request.logicalModelId() + " for question: " + lastUserMessage(request);
-            case "REVIEW" -> """
+            case GENERATE -> "Draft from " + request.logicalModelId() + " for question: " + lastUserMessage(request);
+            case REVIEW -> """
                 {
                   "evaluations": [
                     {
@@ -41,7 +41,7 @@ public class MockModelClient implements CouncilModelClient {
                   "globalConcerns": ["mock review"]
                 }
                 """;
-            case "VALIDATE" -> "{\"approved\": true, \"confidence\": 0.8, \"issues\": [], \"recommendedFixes\": []}";
+            case VALIDATE -> "{\"approved\": true, \"confidence\": 0.8, \"issues\": [], \"recommendedFixes\": []}";
             default -> "Mock response from " + request.logicalModelId();
         };
         return new ModelCallResult(

@@ -76,14 +76,38 @@ public class ModelRegistry {
 
     private Map<String, ModelProfile> loadModels(CouncilProperties properties) {
         Map<String, ModelProfile> loaded = new HashMap<>();
-        properties.models().forEach((id, cfg) -> loaded.put(id, new ModelProfile(
-                id,
-                cfg.providerId(),
-                cfg.providerModelId(),
-                Boolean.TRUE.equals(cfg.local()),
-                Boolean.TRUE.equals(cfg.supportsJsonMode()),
-                cfg.defaultOutputTokens() == null ? 1200 : cfg.defaultOutputTokens()
-        )));
+
+        properties.models().forEach((id, cfg) -> {
+            int defaultOutputTokens = cfg.defaultOutputTokens() == null
+                                      ? 1200
+                                      : cfg.defaultOutputTokens();
+
+            double temperature = cfg.temperature() == null
+                                 ? 0.2
+                                 : cfg.temperature();
+
+            java.time.Duration timeout = cfg.timeout();
+            if (timeout == null) {
+                CouncilProperties.ProviderConfig providerCfg = properties.providers().get(cfg.providerId());
+                if (providerCfg != null && providerCfg.timeout() != null) {
+                    timeout = providerCfg.timeout();
+                } else {
+                    timeout = java.time.Duration.ofSeconds(120);
+                }
+            }
+
+            loaded.put(id, new ModelProfile(
+                    id,
+                    cfg.providerId(),
+                    cfg.providerModelId(),
+                    Boolean.TRUE.equals(cfg.local()),
+                    Boolean.TRUE.equals(cfg.supportsJsonMode()),
+                    defaultOutputTokens,
+                    temperature,
+                    timeout
+            ));
+        });
+
         return Map.copyOf(loaded);
     }
 
