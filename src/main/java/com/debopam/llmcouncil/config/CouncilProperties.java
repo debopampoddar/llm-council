@@ -48,7 +48,9 @@ public record CouncilProperties(
             String providerModelId,
             Boolean local,
             Boolean supportsJsonMode,
-            Integer defaultOutputTokens
+            Integer defaultOutputTokens,
+            Double temperature,
+            java.time.Duration timeout
     ) {}
 
     public record ProfileConfig(

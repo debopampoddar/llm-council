@@ -24,8 +24,8 @@ public record ModelCallRequest(
         String logicalModelId,
         String providerModelId,
         List<ChatMessage> messages,
-        int maxOutputTokens,
-        double temperature,
+        Integer maxOutputTokens,
+        Double temperature,
         boolean requestJson,
         Duration timeout
 ) {

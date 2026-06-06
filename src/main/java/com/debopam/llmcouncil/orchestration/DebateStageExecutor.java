@@ -73,7 +73,7 @@ public class DebateStageExecutor implements StageExecutor {
                 ModelProfile participant = registry.model(participantModelId);
                 ModelCallResult result = registry.clientForModel(participant.id()).call(new ModelCallRequest(
                         context.session().id(),
-                        stage().name(),
+                        stage(),
                         participant.id(),
                         participant.providerModelId(),
                         promptBuilder.debateMessages(
