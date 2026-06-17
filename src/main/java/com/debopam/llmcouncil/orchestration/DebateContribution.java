@@ -1,19 +1,11 @@
-/**
- * Auto-generated documentation for DebateContribution.java.
- * Part of the llm-council Java implementation of multi-LLM deliberation.
- */
-
 package com.debopam.llmcouncil.orchestration;
 
-import java.util.List;
-
-public record DebateContribution(String modelId,
-                                 String position,
-                                 List<String> supportedDraftIds,
-                                 List<String> challengedDraftIds,
-                                 List<String> newEvidence,
-                                 List<String> unresolvedRisks,
-                                 boolean changedPosition,
-                                 String changeReason,
-                                 double confidence) {
-}
+/**
+ * One model's argument in a single debate round.
+ *
+ * @param modelId    The model making this contribution.
+ * @param text       The argument text.
+ * @param confidence Numeric confidence in the model's current position (0–100).
+ *                   Parsed from a {@code Confidence: NN} line in the model's output.
+ */
+public record DebateContribution(String modelId, String text, int confidence) {}

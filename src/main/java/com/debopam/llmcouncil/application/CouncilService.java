@@ -1,103 +1,90 @@
-/**
- * Auto-generated documentation for CouncilService.java.
- * Part of the llm-council Java implementation of multi-LLM deliberation.
- */
-
 package com.debopam.llmcouncil.application;
 
-import com.debopam.llmcouncil.config.CouncilProperties;
 import com.debopam.llmcouncil.domain.CouncilSession;
-import com.debopam.llmcouncil.domain.DepthMode;
-import com.debopam.llmcouncil.model.CouncilProfile;
-import com.debopam.llmcouncil.model.CreateSessionRequest;
-import com.debopam.llmcouncil.model.ModelRegistry;
-import com.debopam.llmcouncil.model.SessionResponse;
+import com.debopam.llmcouncil.domain.CouncilStatus;
+import com.debopam.llmcouncil.model.CouncilPolicy;
 import com.debopam.llmcouncil.orchestration.CouncilContext;
 import com.debopam.llmcouncil.orchestration.ProtocolOrchestrator;
-import com.debopam.llmcouncil.persistence.ArtifactStore;
 import com.debopam.llmcouncil.persistence.SessionStore;
 import org.springframework.stereotype.Service;
 
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ExecutorService;
+import java.util.NoSuchElementException;
 
+/**
+ * Application service that orchestrates session lifecycle and delegates to
+ * {@link ProtocolOrchestrator} for protocol execution.
+ */
 @Service
 public class CouncilService {
-    private final SessionStore sessionStore;
-    private final ArtifactStore artifactStore;
-    private final EventPublisher events;
+
     private final ProtocolOrchestrator orchestrator;
-    private final ModelRegistry modelRegistry;
-    private final CouncilProperties properties;
-    private final ExecutorService applicationTaskExecutor;
+    private final SessionStore sessionStore;
+    private final CouncilPolicyResolver policyResolver;
 
-    public CouncilService(SessionStore sessionStore,
-                          ArtifactStore artifactStore,
-                          EventPublisher events,
-                          ProtocolOrchestrator orchestrator,
-                          ModelRegistry modelRegistry,
-                          CouncilProperties properties,
-                          ExecutorService applicationTaskExecutor) {
-        this.sessionStore = sessionStore;
-        this.artifactStore = artifactStore;
-        this.events = events;
+    public CouncilService(ProtocolOrchestrator orchestrator,
+                          SessionStore sessionStore,
+                          CouncilPolicyResolver policyResolver) {
         this.orchestrator = orchestrator;
-        this.modelRegistry = modelRegistry;
-        this.properties = properties;
-        this.applicationTaskExecutor = applicationTaskExecutor;
+        this.sessionStore = sessionStore;
+        this.policyResolver = policyResolver;
     }
 
-    public SessionResponse createSession(CreateSessionRequest request) {
-        String profileId = request.profileId() == null || request.profileId().isBlank()
-                ? properties.defaultProfileId()
-                : request.profileId();
-        CouncilSession session = CouncilSession.created(
-                UUID.randomUUID(),
-                request.question(),
-                request.context(),
-                profileId,
-                DepthMode.parse(request.depthMode())
-        );
+    /** Persist a new session. */
+    public CouncilSession createSession(CouncilSession session) {
         sessionStore.save(session);
-        artifactStore.writeJson(session.id(), "request.json", request);
-        events.publish(session.id(), "SESSION", "SESSION_CREATED", null, Map.of("profileId", profileId));
-        applicationTaskExecutor.submit(() -> runSessionAsync(session));
-        return toResponse(session);
+        return session;
     }
 
-    public SessionResponse getSession(UUID sessionId) {
-        return sessionStore.findById(sessionId)
-                .map(this::toResponse)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown council session " + sessionId));
-    }
+    /**
+     * Run the full protocol for the session identified by {@code sessionId}.
+     *
+     * @return The completed {@link CouncilContext}.
+     * @throws NoSuchElementException if no session or profile is found.
+     */
+    public CouncilContext runCouncil(String sessionId) {
+        CouncilSession session = sessionStore.findById(sessionId)
+                                             .orElseThrow(() -> new NoSuchElementException("Session not found: " + sessionId));
+        CouncilPolicyResolver.ResolvedCouncilPolicy resolved =
+                policyResolver.resolve(session.profileId(), session.depthMode());
+        CouncilPolicy policy = resolved.policy();
 
-    private void runSessionAsync(CouncilSession createdSession) {
-        CouncilSession running = sessionStore.save(createdSession.running());
-        events.publish(running.id(), "SESSION", "SESSION_RUNNING", null, Map.of());
+        session = session.withResolution(policy.id(), policy.protocolId())
+                         .withStatus(CouncilStatus.RUNNING);
+        sessionStore.save(session);
+
+        CouncilContext ctx;
         try {
-            CouncilProfile profile = modelRegistry.profile(running.profileId());
-            CouncilContext context = orchestrator.run(running, profile);
-            CouncilSession completed = sessionStore.save(running.completed(context.finalAnswer()));
-            artifactStore.writeJson(completed.id(), "events.json", events.history(completed.id()));
-            events.publish(completed.id(), "SESSION", "SESSION_COMPLETED", null, Map.of());
-        } catch (RuntimeException e) {
-            CouncilSession failed = sessionStore.save(running.failed(e.getMessage()));
-            artifactStore.writeJson(failed.id(), "events.json", events.history(failed.id()));
-            events.publish(failed.id(), "SESSION", "SESSION_FAILED", null, Map.of("reason", e.getMessage()));
+            ctx = orchestrator.run(session, resolved.profile(), policy);
+        } catch (Exception ex) {
+            CouncilSession failed = session.withStatus(CouncilStatus.FAILED)
+                                           .withFailureReason(ex.getMessage());
+            sessionStore.save(failed);
+            throw ex;
         }
+
+        CouncilStatus finalStatus = ctx.isTerminal()
+                                    ? (ctx.synthesisResult().isPresent() ? CouncilStatus.PARTIAL : CouncilStatus.FAILED)
+                                    : CouncilStatus.COMPLETED;
+        CouncilSession completed = session.withStatus(finalStatus)
+                                          .withFinalAnswer(ctx.synthesisResult().orElse(null))
+                                          .withFailureReason(ctx.failureMessage().orElse(null));
+        sessionStore.save(completed);
+        return ctx;
     }
 
-    private SessionResponse toResponse(CouncilSession session) {
-        return new SessionResponse(
-                session.id(),
-                session.status(),
-                session.profileId(),
-                session.depthMode().name(),
-                session.createdAt(),
-                session.updatedAt(),
-                session.finalAnswer(),
-                session.failureReason()
-        );
+    /** Retrieve a session by ID. */
+    public CouncilSession getSession(String sessionId) {
+        return sessionStore.findById(sessionId)
+                           .orElseThrow(() -> new NoSuchElementException("Session not found: " + sessionId));
     }
+
+    /** Mark a created session as failed before orchestration starts. */
+    public CouncilSession failSession(String sessionId, String reason) {
+        CouncilSession session = getSession(sessionId);
+        CouncilSession failed = session.withStatus(CouncilStatus.FAILED)
+                                       .withFailureReason(reason);
+        sessionStore.save(failed);
+        return failed;
+    }
+
 }
