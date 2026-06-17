@@ -1,49 +1,300 @@
-server:
-  port: 8080
-
 spring:
   application:
     name: llm-council
-  threads:
-    virtual:
-      enabled: true
-
+  ai:
+    # Spring AI auto-config eagerly creates provider beans. Placeholder keys let
+    # the app boot for local/mock profiles; real OCI/OpenAI-compatible runs must
+    # override these with valid runtime credentials.
+    openai:
+      api-key: ${SPRING_AI_OPENAI_API_KEY:${OCA_LLM_API_TOKEN:unused-development-placeholder}}
+      base-url: ${SPRING_AI_OPENAI_BASE_URL:${OCA_LLM_BASE_URL:https://api.openai.com}}
+      chat:
+        completions-path: ${SPRING_AI_OPENAI_CHAT_COMPLETIONS_PATH:/v1/chat/completions}
+        options:
+          model: ${OCA_LLM_MODEL:gpt-5.4}
+          temperature: 0.2
+    anthropic:
+      api-key: ${SPRING_AI_ANTHROPIC_API_KEY:unused-development-placeholder}
+    ollama:
+      # The local provider uses this URL for direct Ollama /api/chat calls.
+      # Use http://ollama:11434 inside full Docker Compose. Use the default when
+      # the Java service runs on the host next to a native Ollama process.
+      base-url: ${SPRING_AI_OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        options:
+          model: ${LLM_COUNCIL_LOCAL_MODEL:llama3.1:8b}
+          temperature: 0.3
+          num-ctx: ${SPRING_AI_OLLAMA_NUM_CTX:4096}
+          num-thread: ${SPRING_AI_OLLAMA_NUM_THREAD:0}
+          keep_alive: ${SPRING_AI_OLLAMA_KEEP_ALIVE:10m}
+server:
+  port: 8080
 management:
   endpoints:
     web:
       exposure:
         include: health,info,metrics
+logging:
+  level:
+    com.debopam.llmcouncil.model.OllamaDirectModelClient: ${LLM_COUNCIL_OLLAMA_LOG_LEVEL:INFO}
 
 council:
+  # Never silently convert a real profile into mock output. The explicit mock
+  # profile remains available for tests and local smoke checks.
+  allowMockFallback: false
+
+  persistence:
+    artifactBasePath: ${LLM_COUNCIL_ARTIFACT_PATH:${user.home}/.llm-council/runs}
+
+  health:
+    provider-timeout-seconds: ${LLM_COUNCIL_PROVIDER_HEALTH_TIMEOUT_SECONDS:5}
+  runtime:
+    # Demo-safe default: one active background council run at a time. Increase
+    # only when the host and model runtime can handle parallel generations.
+    max-concurrent-runs: ${LLM_COUNCIL_MAX_CONCURRENT_RUNS:1}
+    chat-recent-turn-count: ${LLM_COUNCIL_CHAT_RECENT_TURN_COUNT:4}
+
   models:
-    openai-gpt-4:
-      provider-id: openai
-      provider-model-id: gpt-4.1
-      default-output-tokens: 2048
+    # Local Ollama models. The direct Ollama adapter uses the configured base URL
+    # and applies providerModelId to each /api/chat request.
+    - id: local-llama3
+      provider: ollama
+      providerModelId: ${LLM_COUNCIL_LOCAL_MODEL:llama3.1:8b}
+      defaultOutputTokens: ${LLM_COUNCIL_LOCAL_OUTPUT_TOKENS:1200}
+      temperature: 0.3
+      timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
+      role: MEMBER
+    - id: local-mistral
+      provider: ollama
+      providerModelId: ${LLM_COUNCIL_LOCAL_ALT_MODEL:mistral:7b}
+      defaultOutputTokens: ${LLM_COUNCIL_LOCAL_ALT_OUTPUT_TOKENS:1200}
+      temperature: 0.35
+      timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
+      role: MEMBER
+    - id: local-chair
+      provider: ollama
+      providerModelId: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:llama3.1:8b}
+      defaultOutputTokens: ${LLM_COUNCIL_LOCAL_CHAIR_OUTPUT_TOKENS:1800}
       temperature: 0.2
-      timeout: 120s
+      timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
+      role: CHAIR
+
+    # OCI/OpenAI-compatible logical model. Configure Spring AI OpenAI base URL
+    # and key externally for Oracle Code Assist LiteLLM, OCI, or another
+    # compatible endpoint.
+    - id: oci-gpt-5-4
+      provider: openai-compatible
+      providerModelId: ${OCA_LLM_MODEL:gpt-5.4}
+      defaultOutputTokens: 2200
+      temperature: 0.2
+      timeoutSeconds: 120
+      role: CHAIR
+    - id: oci-reviewer
+      provider: openai-compatible
+      providerModelId: ${OCA_LLM_REVIEW_MODEL:gpt-5.4}
+      defaultOutputTokens: 1800
+      temperature: 0.2
+      timeoutSeconds: 120
+      role: VALIDATOR
+
+    # Explicit test-only mocks.
+    - id: mock-member
+      provider: mock
+      providerModelId: mock-member
+      defaultOutputTokens: 800
+      temperature: 0.1
+      timeoutSeconds: 30
+      role: MEMBER
+      testOnly: true
+    - id: mock-chair
+      provider: mock
+      providerModelId: mock-chair
+      defaultOutputTokens: 800
+      temperature: 0.1
+      timeoutSeconds: 30
+      role: CHAIR
+      testOnly: true
+
+  profiles:
+    default:
+      displayName: Local balanced council
+      testOnly: false
+      defaultDepth: BALANCED
+      depthPolicies:
+        QUICK: local-quick
+        BALANCED: local-balanced
+        RIGOROUS: local-rigorous
+    local:
+      displayName: Local Ollama council
+      testOnly: false
+      defaultDepth: BALANCED
+      depthPolicies:
+        QUICK: local-quick
+        BALANCED: local-balanced
+        RIGOROUS: local-rigorous
+    oci:
+      displayName: OCI/OpenAI-compatible council
+      testOnly: false
+      defaultDepth: BALANCED
+      depthPolicies:
+        QUICK: oci-quick
+        BALANCED: oci-balanced
+        RIGOROUS: oci-rigorous
+    hybrid:
+      displayName: Local plus OCI council
+      testOnly: false
+      defaultDepth: BALANCED
+      depthPolicies:
+        QUICK: hybrid-quick
+        BALANCED: hybrid-balanced
+        RIGOROUS: hybrid-rigorous
+    mock:
+      displayName: Mock test council
+      testOnly: true
+      defaultDepth: QUICK
+      depthPolicies:
+        QUICK: mock-quick
+        BALANCED: mock-balanced
+        RIGOROUS: mock-rigorous
+
+  policies:
+    local-quick:
+      protocolId: quick
+      memberModelIds: [local-llama3]
+      chairModelId: local-chair
+      validatorModelId:
+      minimumSuccessfulDrafts: 1
+      minimumReviewsPerDraft: 0
+      validationRequired: false
+      allowPartial: true
+    local-balanced:
+      protocolId: balanced
+      memberModelIds: [local-llama3, local-mistral]
+      chairModelId: local-chair
+      validatorModelId: local-chair
+      minimumSuccessfulDrafts: 2
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+    local-rigorous:
+      protocolId: rigorous
+      memberModelIds: [local-llama3, local-mistral, local-chair]
+      chairModelId: local-chair
+      validatorModelId: local-chair
+      minimumSuccessfulDrafts: 2
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+
+    oci-quick:
+      protocolId: quick
+      memberModelIds: [oci-gpt-5-4]
+      chairModelId: oci-gpt-5-4
+      validatorModelId:
+      minimumSuccessfulDrafts: 1
+      minimumReviewsPerDraft: 0
+      validationRequired: false
+      allowPartial: true
+    oci-balanced:
+      protocolId: balanced
+      memberModelIds: [oci-gpt-5-4, oci-reviewer]
+      chairModelId: oci-gpt-5-4
+      validatorModelId: oci-reviewer
+      minimumSuccessfulDrafts: 2
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+    oci-rigorous:
+      protocolId: rigorous
+      memberModelIds: [oci-gpt-5-4, oci-reviewer]
+      chairModelId: oci-gpt-5-4
+      validatorModelId: oci-reviewer
+      minimumSuccessfulDrafts: 2
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+
+    hybrid-quick:
+      protocolId: quick
+      memberModelIds: [local-llama3]
+      chairModelId: oci-gpt-5-4
+      validatorModelId:
+      minimumSuccessfulDrafts: 1
+      minimumReviewsPerDraft: 0
+      validationRequired: false
+      allowPartial: true
+    hybrid-balanced:
+      protocolId: balanced
+      memberModelIds: [local-llama3, local-mistral, oci-reviewer]
+      chairModelId: oci-gpt-5-4
+      validatorModelId: oci-reviewer
+      minimumSuccessfulDrafts: 2
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+    hybrid-rigorous:
+      protocolId: rigorous
+      memberModelIds: [local-llama3, local-mistral, oci-gpt-5-4, oci-reviewer]
+      chairModelId: oci-gpt-5-4
+      validatorModelId: oci-reviewer
+      minimumSuccessfulDrafts: 3
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+
+    mock-quick:
+      protocolId: quick
+      memberModelIds: [mock-member]
+      chairModelId: mock-chair
+      validatorModelId:
+      minimumSuccessfulDrafts: 1
+      minimumReviewsPerDraft: 0
+      validationRequired: false
+      allowPartial: true
+    mock-balanced:
+      protocolId: balanced
+      memberModelIds: [mock-member, mock-chair]
+      chairModelId: mock-chair
+      validatorModelId: mock-chair
+      minimumSuccessfulDrafts: 1
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+    mock-rigorous:
+      protocolId: rigorous
+      memberModelIds: [mock-member, mock-chair]
+      chairModelId: mock-chair
+      validatorModelId: mock-chair
+      minimumSuccessfulDrafts: 1
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+
   protocols:
     quick:
-      description: Fast low-cost council.
-      ordered-stages: [GENERATE, ANONYMIZE, SYNTHESIZE]
+      description: Fast low-cost council for smoke tests and low-stakes requests.
+      orderedStages: [GENERATE, SYNTHESIZE]
+      stageOptions: {}
     balanced:
-      description: Default real council.
-      ordered-stages: [GENERATE, ANONYMIZE, REVIEW, SCORE, SYNTHESIZE, VALIDATE]
-      stage-options:
+      description: Default council with anonymized review, scoring, synthesis, and Fresh Eyes validation.
+      orderedStages: [GENERATE, ANONYMIZE, REVIEW, SCORE, SYNTHESIZE, VALIDATE]
+      stageOptions:
         SCORE:
           artifact-label: initial
+        SYNTHESIZE:
+          preserve-dissent: true
     rigorous:
-      description: High-rigor council with bounded debate and export.
-      ordered-stages: [GENERATE, ANONYMIZE, REVIEW, SCORE, DEBATE, SCORE, SYNTHESIZE, VALIDATE, EXPORT]
-      stage-options:
+      description: High-rigor council with debate, second scoring pass, validation, and redacted export manifest.
+      orderedStages: [GENERATE, ANONYMIZE, REVIEW, SCORE, DEBATE, SCORE, SYNTHESIZE, VALIDATE, EXPORT]
+      stageOptions:
         SCORE:
           artifact-label: initial
         DEBATE:
-          max-rounds: 2
+          max-rounds: 3
+          ks-convergence-threshold: 0.10
           debate-trigger-score-variance: 120.0
-          debate-trigger-dissent-count: 2
-          force-run: true
+          force-run: false
+        SYNTHESIZE:
           preserve-dissent: true
         EXPORT:
           export-raw-artifacts: false
-          artifact-label: redacted

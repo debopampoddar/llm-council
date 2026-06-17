@@ -1,19 +1,20 @@
-/**
- * Auto-generated documentation for ModelCallResult.java.
- * Part of the llm-council Java implementation of multi-LLM deliberation.
- */
-
 package com.debopam.llmcouncil.model;
 
 import java.time.Duration;
-import java.util.Map;
 
+/**
+ * Normalized model response plus lightweight operational metadata.
+ *
+ * <p>Provider adapters may not always expose token usage, so token fields are
+ * nullable. Latency is populated by the adapter when available.
+ */
 public record ModelCallResult(
-        String logicalModelId,
-        String providerId,
         String text,
-        long promptTokens,
-        long completionTokens,
-        Duration latency,
-        Map<String, Object> raw) {
+        Long promptTokens,
+        Long completionTokens,
+        Duration latency
+) {
+    public ModelCallResult(String text) {
+        this(text, null, null, null);
+    }
 }

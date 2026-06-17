@@ -1,79 +1,98 @@
-/**
- * Auto-generated documentation for CouncilProperties.java.
- * Part of the llm-council Java implementation of multi-LLM deliberation.
- */
-
+// CouncilProperties.java
 package com.debopam.llmcouncil.config;
 
+import com.debopam.llmcouncil.domain.DepthMode;
+import com.debopam.llmcouncil.model.ModelRole;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.validation.annotation.Validated;
+import org.springframework.stereotype.Component;
 
-import java.net.URI;
-import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-@Validated
+@Component
 @ConfigurationProperties(prefix = "council")
-public record CouncilProperties(
-        String runsDir,
-        String defaultProfileId,
-        Map<String, ProviderConfig> providers,
-        Map<String, ModelConfig> models,
-        Map<String, ProfileConfig> profiles,
-        Map<String, ProtocolConfig> protocols) {
+public class CouncilProperties {
+    private List<ModelProps> models = new ArrayList<>();
+    private Map<String, ProfileProps> profiles = new LinkedHashMap<>();
+    private Map<String, PolicyProps> policies = new LinkedHashMap<>();
+    private Map<String, ProtocolProps> protocols = new LinkedHashMap<>();
+    private PersistenceProps persistence = new PersistenceProps();
+    private boolean allowMockFallback = false;
 
-    public String runsDir() {
-        return runsDir == null || runsDir.isBlank() ? "runs" : runsDir;
+    // Getters/setters
+    public List<ModelProps> getModels() { return models; }
+    public void setModels(List<ModelProps> m) { this.models = m; }
+    public Map<String, ProfileProps> getProfiles() { return profiles; }
+    public void setProfiles(Map<String, ProfileProps> p) { this.profiles = p; }
+    public Map<String, PolicyProps> getPolicies() { return policies; }
+    public void setPolicies(Map<String, PolicyProps> p) { this.policies = p; }
+    public Map<String, ProtocolProps> getProtocols() { return protocols; }
+    public void setProtocols(Map<String, ProtocolProps> p) { this.protocols = p; }
+    public PersistenceProps getPersistence() { return persistence; }
+    public void setPersistence(PersistenceProps p) { this.persistence = p; }
+    public boolean isAllowMockFallback() { return allowMockFallback; }
+    public void setAllowMockFallback(boolean allowMockFallback) { this.allowMockFallback = allowMockFallback; }
+
+    public static class ModelProps {
+        private String id, provider, providerModelId;
+        private int defaultOutputTokens = 2000;
+        private double temperature = 0.3;
+        private int timeoutSeconds = 120;
+        private ModelRole role = ModelRole.MEMBER;
+        private boolean testOnly = false;
+        public String getId() { return id; } public void setId(String v) { id = v; }
+        public String getProvider() { return provider; } public void setProvider(String v) { provider = v; }
+        public String getProviderModelId() { return providerModelId; } public void setProviderModelId(String v) { providerModelId = v; }
+        public int getDefaultOutputTokens() { return defaultOutputTokens; } public void setDefaultOutputTokens(int v) { defaultOutputTokens = v; }
+        public double getTemperature() { return temperature; } public void setTemperature(double v) { temperature = v; }
+        public int getTimeoutSeconds() { return timeoutSeconds; } public void setTimeoutSeconds(int v) { timeoutSeconds = v; }
+        public ModelRole getRole() { return role; } public void setRole(ModelRole v) { role = v; }
+        public boolean isTestOnly() { return testOnly; } public void setTestOnly(boolean v) { testOnly = v; }
     }
 
-    public String defaultProfileId() {
-        return defaultProfileId == null || defaultProfileId.isBlank() ? "local-mock" : defaultProfileId;
+    public static class ProfileProps {
+        private String displayName;
+        private boolean testOnly = false;
+        private DepthMode defaultDepth = DepthMode.BALANCED;
+        private Map<String, String> depthPolicies = new LinkedHashMap<>();
+        public String getDisplayName() { return displayName; } public void setDisplayName(String v) { displayName = v; }
+        public boolean isTestOnly() { return testOnly; } public void setTestOnly(boolean v) { testOnly = v; }
+        public DepthMode getDefaultDepth() { return defaultDepth; } public void setDefaultDepth(DepthMode v) { defaultDepth = v; }
+        public Map<String, String> getDepthPolicies() { return depthPolicies; } public void setDepthPolicies(Map<String, String> v) { depthPolicies = v; }
     }
 
-    public Map<String, ProtocolConfig> protocols() {
-        return protocols == null ? Map.of() : protocols;
+    public static class PolicyProps {
+        private String protocolId;
+        private List<String> memberModelIds = new ArrayList<>();
+        private String chairModelId;
+        private String validatorModelId;
+        private int minimumSuccessfulDrafts = 1;
+        private int minimumReviewsPerDraft = 0;
+        private boolean validationRequired = false;
+        private boolean allowPartial = true;
+        public String getProtocolId() { return protocolId; } public void setProtocolId(String v) { protocolId = v; }
+        public List<String> getMemberModelIds() { return memberModelIds; } public void setMemberModelIds(List<String> v) { memberModelIds = v; }
+        public String getChairModelId() { return chairModelId; } public void setChairModelId(String v) { chairModelId = v; }
+        public String getValidatorModelId() { return validatorModelId; } public void setValidatorModelId(String v) { validatorModelId = v; }
+        public int getMinimumSuccessfulDrafts() { return minimumSuccessfulDrafts; } public void setMinimumSuccessfulDrafts(int v) { minimumSuccessfulDrafts = v; }
+        public int getMinimumReviewsPerDraft() { return minimumReviewsPerDraft; } public void setMinimumReviewsPerDraft(int v) { minimumReviewsPerDraft = v; }
+        public boolean isValidationRequired() { return validationRequired; } public void setValidationRequired(boolean v) { validationRequired = v; }
+        public boolean isAllowPartial() { return allowPartial; } public void setAllowPartial(boolean v) { allowPartial = v; }
     }
 
-    public record ProviderConfig(
-            String kind,
-            URI baseUrl,
-            String apiKeyEnv,
-            Integer maxConcurrentRequests,
-            Duration timeout
-    ) {}
+    public static class ProtocolProps {
+        private String description;
+        private List<String> orderedStages = new ArrayList<>();
+        private Map<String, Map<String, Object>> stageOptions = new LinkedHashMap<>();
+        public String getDescription() { return description; } public void setDescription(String v) { description = v; }
+        public List<String> getOrderedStages() { return orderedStages; } public void setOrderedStages(List<String> v) { orderedStages = v; }
+        public Map<String, Map<String, Object>> getStageOptions() { return stageOptions; } public void setStageOptions(Map<String, Map<String, Object>> v) { stageOptions = v; }
+    }
 
-    public record ModelConfig(
-            String providerId,
-            String providerModelId,
-            Boolean local,
-            Boolean supportsJsonMode,
-            Integer defaultOutputTokens,
-            Double temperature,
-            java.time.Duration timeout
-    ) {}
-
-    public record ProfileConfig(
-            List<String> memberModelIds,
-            String chairModelId,
-            String freshEyesModelId,
-            String protocolId
-    ) {}
-
-    public record ProtocolConfig(
-            String description,
-            List<String> orderedStages,
-            Map<String, StageOptionsConfig> stageOptions
-    ) {}
-
-    public record StageOptionsConfig(
-            String reviewMode,
-            Integer maxRounds,
-            Double debateTriggerScoreVariance,
-            Integer debateTriggerDissentCount,
-            Boolean forceRun,
-            Boolean preserveDissent,
-            Boolean exportRawArtifacts,
-            String artifactLabel
-    ) {}
+    public static class PersistenceProps {
+        private String artifactBasePath = System.getProperty("user.home") + "/.llm-council/artifacts";
+        public String getArtifactBasePath() { return artifactBasePath; } public void setArtifactBasePath(String v) { artifactBasePath = v; }
+    }
 }

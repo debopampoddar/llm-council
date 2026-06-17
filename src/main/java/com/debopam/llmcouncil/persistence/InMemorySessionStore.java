@@ -1,29 +1,12 @@
-/**
- * Auto-generated documentation for InMemorySessionStore.java.
- * Part of the llm-council Java implementation of multi-LLM deliberation.
- */
-
 package com.debopam.llmcouncil.persistence;
-
 import com.debopam.llmcouncil.domain.CouncilSession;
 import org.springframework.stereotype.Component;
-
+import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-
 @Component
 public class InMemorySessionStore implements SessionStore {
-    private final ConcurrentHashMap<UUID, CouncilSession> sessions = new ConcurrentHashMap<>();
-
-    @Override
-    public CouncilSession save(CouncilSession session) {
-        sessions.put(session.id(), session);
-        return session;
-    }
-
-    @Override
-    public Optional<CouncilSession> findById(UUID sessionId) {
-        return Optional.ofNullable(sessions.get(sessionId));
-    }
+    private final Map<String, CouncilSession> store = new ConcurrentHashMap<>();
+    @Override public void save(CouncilSession session) { store.put(session.id(), session); }
+    @Override public Optional<CouncilSession> findById(String id) { return Optional.ofNullable(store.get(id)); }
 }

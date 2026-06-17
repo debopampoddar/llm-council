@@ -1,9 +1,10 @@
-/**
- * Auto-generated documentation for CriterionScore.java.
- * Part of the llm-council Java implementation of multi-LLM deliberation.
- */
-
 package com.debopam.llmcouncil.orchestration;
 
-public record CriterionScore(String criterionId, int score, String rationale) {
+/** Per-rubric score produced by a reviewer for one draft. */
+public record CriterionScore(String name, int score, String rationale) {
+    public CriterionScore {
+        if (score < 0 || score > 100) {
+            throw new IllegalArgumentException("Criterion score must be between 0 and 100");
+        }
+    }
 }

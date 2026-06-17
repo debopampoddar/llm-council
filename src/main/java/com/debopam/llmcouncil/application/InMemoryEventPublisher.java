@@ -1,68 +1,54 @@
-/**
- * Auto-generated documentation for InMemoryEventPublisher.java.
- * Part of the llm-council Java implementation of multi-LLM deliberation.
- */
-
 package com.debopam.llmcouncil.application;
-
 import com.debopam.llmcouncil.domain.CouncilEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
+/**
+ * In-memory event store plus logger.
+ *
+ * <p>This gives the API a replayable event history during local development.
+ * It is still process-local; production persistence should swap this component
+ * for a durable implementation without changing stage executors.
+ */
 @Component
 public class InMemoryEventPublisher implements EventPublisher {
-    private final ConcurrentHashMap<UUID, List<CouncilEvent>> events = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<UUID, List<SseEmitter>> emitters = new ConcurrentHashMap<>();
+    private static final Logger log = LoggerFactory.getLogger(InMemoryEventPublisher.class);
+    private final Map<String, List<CouncilEvent>> eventsBySession = new ConcurrentHashMap<>();
+    private final Map<String, List<Consumer<CouncilEvent>>> subscribersBySession = new ConcurrentHashMap<>();
 
     @Override
-    public CouncilEvent publish(UUID sessionId, String stage, String type, String modelId, Map<String, Object> payload) {
-        CouncilEvent event = CouncilEvent.of(sessionId, stage, type, modelId, payload);
-        events.computeIfAbsent(sessionId, ignored -> new CopyOnWriteArrayList<>()).add(event);
-        for (SseEmitter emitter : emitters.getOrDefault(sessionId, List.of())) {
-            send(emitter, event);
-        }
+    public CouncilEvent publish(String sessionId, String stage, String eventType,
+                                String modelId, Map<String, Object> metadata) {
+        CouncilEvent event = CouncilEvent.of(sessionId, stage, eventType, modelId, metadata);
+        eventsBySession.computeIfAbsent(sessionId, ignored -> new CopyOnWriteArrayList<>()).add(event);
+        subscribersBySession.getOrDefault(sessionId, List.of())
+                .forEach(listener -> listener.accept(event));
+        log.info("[{}] {}/{} model={} meta={}", sessionId, stage, eventType, modelId, metadata);
         return event;
     }
 
     @Override
-    public List<CouncilEvent> history(UUID sessionId) {
-        return List.copyOf(events.getOrDefault(sessionId, List.of()));
+    public List<CouncilEvent> history(String sessionId) {
+        return List.copyOf(eventsBySession.getOrDefault(sessionId, new ArrayList<>()));
     }
 
     @Override
-    public SseEmitter subscribe(UUID sessionId) {
-        SseEmitter emitter = new SseEmitter(0L);
-        emitters.computeIfAbsent(sessionId, ignored -> new CopyOnWriteArrayList<>()).add(emitter);
-        emitter.onCompletion(() -> remove(sessionId, emitter));
-        emitter.onTimeout(() -> remove(sessionId, emitter));
-        emitter.onError(error -> remove(sessionId, emitter));
-        for (CouncilEvent event : history(sessionId)) {
-            send(emitter, event);
-        }
-        return emitter;
-    }
-
-    private void send(SseEmitter emitter, CouncilEvent event) {
-        try {
-            emitter.send(SseEmitter.event()
-                    .id(event.id().toString())
-                    .name(event.type())
-                    .data(event));
-        } catch (IOException e) {
-            emitter.completeWithError(e);
-        }
-    }
-
-    private void remove(UUID sessionId, SseEmitter emitter) {
-        List<SseEmitter> sessionEmitters = emitters.getOrDefault(sessionId, new ArrayList<>());
-        sessionEmitters.remove(emitter);
+    public AutoCloseable subscribe(String sessionId, Consumer<CouncilEvent> listener) {
+        List<Consumer<CouncilEvent>> listeners =
+                subscribersBySession.computeIfAbsent(sessionId, ignored -> new CopyOnWriteArrayList<>());
+        listeners.add(listener);
+        return () -> {
+            listeners.remove(listener);
+            if (listeners.isEmpty()) {
+                subscribersBySession.remove(sessionId, listeners);
+            }
+        };
     }
 }

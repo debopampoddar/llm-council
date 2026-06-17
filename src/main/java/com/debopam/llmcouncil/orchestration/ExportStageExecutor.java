@@ -1,50 +1,42 @@
-/**
- * Auto-generated documentation for ExportStageExecutor.java.
- * Part of the llm-council Java implementation of multi-LLM deliberation.
- */
-
+// ── ExportStageExecutor.java ──────────────────────────────────────────────
 package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.EventPublisher;
-import com.debopam.llmcouncil.export.ExportManifest;
-import com.debopam.llmcouncil.export.ExportPackageService;
+import com.debopam.llmcouncil.persistence.ArtifactStore;
 import org.springframework.stereotype.Component;
-
+import java.util.List;
 import java.util.Map;
 
+/**
+ * EXPORT stage: packages all artifacts for download.
+ * Delegates to ExportPackageService (wire in when needed).
+ */
 @Component
 public class ExportStageExecutor implements StageExecutor {
-    private final ExportPackageService exportPackageService;
     private final EventPublisher events;
+    private final ArtifactStore artifactStore;
 
-    public ExportStageExecutor(ExportPackageService exportPackageService, EventPublisher events) {
-        this.exportPackageService = exportPackageService;
-        this.events = events;
+    public ExportStageExecutor(EventPublisher events, ArtifactStore artifactStore) {
+        this.events = events; this.artifactStore = artifactStore;
     }
 
-    @Override
-    public StageType stage() {
-        return StageType.EXPORT;
-    }
-
-    /*
-    Export policy:
-
-    Default rigorous export excludes raw/ and private/.
-    Keep raw prompt/response export as an admin-only option.
-    Never include API keys, provider tokens, or local auth files.
-     */
+    @Override public StageType stage() { return StageType.EXPORT; }
 
     @Override
-    public CouncilContext execute(CouncilContext context, ProtocolStageOptions options) {
-        boolean includeRawArtifacts = options.exportRawArtifactsOrDefault(false);
-        ExportManifest manifest = exportPackageService.export(context, includeRawArtifacts);
-        context.setExportManifest(manifest);
-        events.publish(context.session().id(), stage().name(), "EXPORT_COMPLETED", null, Map.of(
-                "exportPath", manifest.exportPath(),
-                "includedArtifacts", manifest.includedArtifacts().size(),
-                "excludedArtifacts", manifest.excludedArtifacts().size()
-        ));
-        return context;
+    public CouncilContext execute(CouncilContext ctx, ProtocolStageOptions opts) {
+        boolean exportRaw = opts.getBoolean("export-raw-artifacts", false);
+        List<String> artifacts = artifactStore.listArtifacts(ctx.session().id());
+        artifactStore.writeJson(ctx.session().id(), "exports/manifest.json",
+                                Map.of("includeRawArtifacts", exportRaw,
+                                       "artifacts", artifacts.stream()
+                                                .filter(a -> exportRaw || (!a.startsWith("raw/") && !a.startsWith("private/")))
+                                                .toList()));
+        events.publish(ctx.session().id(), stage().name(), "EXPORT_COMPLETED", null,
+                       Map.of("exportRaw", exportRaw,
+                              "draftCount", ctx.drafts().size(),
+                              "reviewCount", ctx.reviews().size(),
+                              "debateRounds", ctx.debateRounds().size(),
+                              "artifactCount", artifacts.size()));
+        return ctx;
     }
 }
