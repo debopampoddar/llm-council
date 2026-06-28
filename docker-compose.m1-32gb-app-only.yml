@@ -1,0 +1,45 @@
+name: llm-council-m1-32gb-app-only
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      # Use native or separately managed Ollama on the Mac host.
+      # Rancher Desktop/Lima exposes the host through host.rancher-desktop.internal.
+      # Docker Desktop users can override this with:
+      # SPRING_AI_OLLAMA_BASE_URL=http://host.docker.internal:11434
+      SPRING_AI_OLLAMA_BASE_URL: ${SPRING_AI_OLLAMA_BASE_URL:-http://host.rancher-desktop.internal:11434}
+      SPRING_AI_OLLAMA_NUM_CTX: "4096"
+      SPRING_AI_OLLAMA_NUM_THREAD: "0"
+      SPRING_AI_OLLAMA_KEEP_ALIVE: 20m
+      LLM_COUNCIL_OLLAMA_LOG_LEVEL: DEBUG
+      JAVA_TOOL_OPTIONS: "-Djava.net.preferIPv4Stack=true -Dhttp.nonProxyHosts=localhost|127.*|[::1]|host.docker.internal|host.rancher-desktop.internal|host.lima.internal|ollama"
+      NO_PROXY: "localhost,127.0.0.1,host.docker.internal,host.rancher-desktop.internal,host.lima.internal,ollama"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,host.rancher-desktop.internal,host.lima.internal,ollama"
+      LLM_COUNCIL_LOCAL_MODEL: ${LLM_COUNCIL_LOCAL_MODEL:-llama3.1:8b}
+      LLM_COUNCIL_LOCAL_ALT_MODEL: ${LLM_COUNCIL_LOCAL_ALT_MODEL:-mistral:7b}
+      LLM_COUNCIL_LOCAL_CHAIR_MODEL: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.1:8b}
+      LLM_COUNCIL_LOCAL_OUTPUT_TOKENS: "1000"
+      LLM_COUNCIL_LOCAL_ALT_OUTPUT_TOKENS: "1000"
+      LLM_COUNCIL_LOCAL_CHAIR_OUTPUT_TOKENS: "1400"
+      LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS: "360"
+      LLM_COUNCIL_ARTIFACT_PATH: /data/llm-council/runs
+      LLM_COUNCIL_MAX_CONCURRENT_RUNS: "1"
+      LLM_COUNCIL_CHAT_RECENT_TURN_COUNT: "4"
+      SPRING_AI_OPENAI_API_KEY: ${SPRING_AI_OPENAI_API_KEY:-unused-development-placeholder}
+      SPRING_AI_OPENAI_BASE_URL: ${SPRING_AI_OPENAI_BASE_URL:-https://api.openai.com}
+      SPRING_AI_ANTHROPIC_API_KEY: ${SPRING_AI_ANTHROPIC_API_KEY:-unused-development-placeholder}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app-m1-artifacts:/data/llm-council
+    mem_limit: 3g
+    cpus: 2.0
+    restart: unless-stopped
+
+volumes:
+  app-m1-artifacts:

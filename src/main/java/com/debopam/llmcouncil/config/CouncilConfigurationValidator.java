@@ -3,6 +3,8 @@ package com.debopam.llmcouncil.config;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.model.ModelRole;
 import com.debopam.llmcouncil.orchestration.StageType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -16,6 +18,8 @@ import java.util.Objects;
  */
 @Component
 public class CouncilConfigurationValidator {
+
+    private static final Logger log = LoggerFactory.getLogger(CouncilConfigurationValidator.class);
 
     public void validate(CouncilProperties props) {
         Map<String, CouncilProperties.ModelProps> modelsById = modelsById(props);
@@ -87,6 +91,9 @@ public class CouncilConfigurationValidator {
                         "Policy " + policyId + " validator model " + validator.getId()
                         + " has incompatible role " + validator.getRole());
             }
+
+            // Warn if all member models share the same architecture family.
+            warnLowDiversity(policyId, policy, modelsById);
         });
     }
 
@@ -142,6 +149,43 @@ public class CouncilConfigurationValidator {
     private void require(boolean condition, String message) {
         if (!condition) {
             throw new IllegalStateException(Objects.requireNonNull(message));
+        }
+    }
+
+    /**
+     * Gap 1.2 — Warn (do not fail) when a policy's member models all belong to
+     * the same model family. Homogeneous councils are more susceptible to shared
+     * biases and correlated errors.
+     */
+    private void warnLowDiversity(String policyId, CouncilProperties.PolicyProps policy,
+                                   Map<String, CouncilProperties.ModelProps> modelsById) {
+        List<String> families = policy.getMemberModelIds().stream()
+                .map(modelsById::get)
+                .filter(Objects::nonNull)
+                .map(CouncilProperties.ModelProps::getModelFamily)
+                .filter(f -> f != null && !f.isBlank())
+                .distinct()
+                .toList();
+
+        long membersWithFamily = policy.getMemberModelIds().stream()
+                .map(modelsById::get)
+                .filter(Objects::nonNull)
+                .filter(m -> m.getModelFamily() != null && !m.getModelFamily().isBlank())
+                .count();
+
+        // Warn if all members with a modelFamily tag share the same family
+        if (membersWithFamily > 1 && families.size() == 1) {
+            log.warn("Policy {} has {} member models all from model family '{}'. "
+                    + "Council diversity is reduced; consider adding models from different architectures.",
+                    policyId, membersWithFamily, families.getFirst());
+        }
+
+        // Warn about untagged models that prevent diversity validation
+        long untagged = policy.getMemberModelIds().size() - membersWithFamily;
+        if (untagged > 0) {
+            log.warn("Policy {} has {} member model(s) without modelFamily set. "
+                    + "Set modelFamily for all models to enable diversity validation.",
+                    policyId, untagged);
         }
     }
 }

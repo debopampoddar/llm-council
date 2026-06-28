@@ -2,6 +2,7 @@
 package com.debopam.llmcouncil.config;
 
 import com.debopam.llmcouncil.domain.DepthMode;
+import com.debopam.llmcouncil.model.CouncilRole;
 import com.debopam.llmcouncil.model.ModelRole;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -42,6 +43,22 @@ public class CouncilProperties {
         private int timeoutSeconds = 120;
         private ModelRole role = ModelRole.MEMBER;
         private boolean testOnly = false;
+
+        /** Maximum number of retry attempts for transient failures (0 = no retries). */
+        private int retryMaxAttempts = 2;
+
+        /** Base delay in milliseconds before the first retry; doubled on each subsequent attempt. */
+        private long retryBaseDelayMs = 1000L;
+
+        // ── Gap 1.1 (Adversarial Roles): debate persona for this model. 
+        // PROPOSER is the default; CRITIC models get adversarial prompts.
+        private CouncilRole councilRole = CouncilRole.PROPOSER;
+
+        // ── Gap 1.2 (Model Heterogeneity): architecture family tag. 
+        // Used by the configuration validator to warn when all council members
+        // share the same model family (e.g., all "llama" or all "gpt").
+        private String modelFamily;
+
         public String getId() { return id; } public void setId(String v) { id = v; }
         public String getProvider() { return provider; } public void setProvider(String v) { provider = v; }
         public String getProviderModelId() { return providerModelId; } public void setProviderModelId(String v) { providerModelId = v; }
@@ -50,6 +67,10 @@ public class CouncilProperties {
         public int getTimeoutSeconds() { return timeoutSeconds; } public void setTimeoutSeconds(int v) { timeoutSeconds = v; }
         public ModelRole getRole() { return role; } public void setRole(ModelRole v) { role = v; }
         public boolean isTestOnly() { return testOnly; } public void setTestOnly(boolean v) { testOnly = v; }
+        public int getRetryMaxAttempts() { return retryMaxAttempts; } public void setRetryMaxAttempts(int v) { retryMaxAttempts = v; }
+        public long getRetryBaseDelayMs() { return retryBaseDelayMs; } public void setRetryBaseDelayMs(long v) { retryBaseDelayMs = v; }
+        public CouncilRole getCouncilRole() { return councilRole; } public void setCouncilRole(CouncilRole v) { councilRole = v; }
+        public String getModelFamily() { return modelFamily; } public void setModelFamily(String v) { modelFamily = v; }
     }
 
     public static class ProfileProps {

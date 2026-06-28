@@ -1,0 +1,86 @@
+name: llm-council-intel-2019-32gb
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    platform: linux/amd64
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: 15m
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+    volumes:
+      - ollama-intel-data:/root/.ollama
+    mem_limit: 18g
+    cpus: 6.0
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 30s
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    platform: linux/amd64
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      LLM_COUNCIL_LOCAL_MODEL: ${LLM_COUNCIL_LOCAL_MODEL:-llama3.2:3b}
+      LLM_COUNCIL_LOCAL_ALT_MODEL: ${LLM_COUNCIL_LOCAL_ALT_MODEL:-qwen2.5:3b}
+      LLM_COUNCIL_LOCAL_CHAIR_MODEL: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}
+    command: >
+      sh -c '
+        ollama pull "${LLM_COUNCIL_LOCAL_MODEL:-llama3.2:3b}" &&
+        ollama pull "${LLM_COUNCIL_LOCAL_ALT_MODEL:-qwen2.5:3b}" &&
+        if [ "${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}" != "${LLM_COUNCIL_LOCAL_MODEL:-llama3.2:3b}" ] &&
+           [ "${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}" != "${LLM_COUNCIL_LOCAL_ALT_MODEL:-qwen2.5:3b}" ]; then
+          ollama pull "${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}";
+        fi
+      '
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+    image: llm-council:java25-intel
+    platform: linux/amd64
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
+      SPRING_AI_OLLAMA_NUM_CTX: "3072"
+      SPRING_AI_OLLAMA_NUM_THREAD: "6"
+      SPRING_AI_OLLAMA_KEEP_ALIVE: 10m
+      LLM_COUNCIL_LOCAL_MODEL: ${LLM_COUNCIL_LOCAL_MODEL:-llama3.2:3b}
+      LLM_COUNCIL_LOCAL_ALT_MODEL: ${LLM_COUNCIL_LOCAL_ALT_MODEL:-qwen2.5:3b}
+      LLM_COUNCIL_LOCAL_CHAIR_MODEL: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}
+      LLM_COUNCIL_LOCAL_OUTPUT_TOKENS: "700"
+      LLM_COUNCIL_LOCAL_ALT_OUTPUT_TOKENS: "700"
+      LLM_COUNCIL_LOCAL_CHAIR_OUTPUT_TOKENS: "900"
+      LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS: "600"
+      LLM_COUNCIL_ARTIFACT_PATH: /data/llm-council/runs
+      LLM_COUNCIL_MAX_CONCURRENT_RUNS: "1"
+      LLM_COUNCIL_CHAT_RECENT_TURN_COUNT: "4"
+      SPRING_AI_OPENAI_API_KEY: ${SPRING_AI_OPENAI_API_KEY:-unused-development-placeholder}
+      SPRING_AI_OPENAI_BASE_URL: ${SPRING_AI_OPENAI_BASE_URL:-https://api.openai.com}
+      SPRING_AI_ANTHROPIC_API_KEY: ${SPRING_AI_ANTHROPIC_API_KEY:-unused-development-placeholder}
+    volumes:
+      - app-intel-artifacts:/data/llm-council
+    mem_limit: 3g
+    cpus: 2.0
+    restart: unless-stopped
+
+volumes:
+  ollama-intel-data:
+  app-intel-artifacts:

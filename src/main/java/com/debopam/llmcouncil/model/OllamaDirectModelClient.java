@@ -82,8 +82,9 @@ public class OllamaDirectModelClient implements ModelClient {
                         + truncate(response.body()));
             }
 
-            String text = parseOllamaResponse(response.body(), request.providerModelId());
-            return new ModelCallResult(text, null, null, Duration.between(start, Instant.now()));
+            OllamaParsedResponse parsed = parseOllamaResponse(response.body(), request.providerModelId());
+            return new ModelCallResult(parsed.text(), parsed.promptTokens(), parsed.completionTokens(),
+                                       Duration.between(start, Instant.now()));
         } catch (ModelCallException ex) {
             throw ex;
         } catch (Exception ex) {
@@ -198,9 +199,16 @@ public class OllamaDirectModelClient implements ModelClient {
         }
     }
 
-    private String parseOllamaResponse(String body, String providerModelId) {
+    /**
+     * Parses Ollama's newline-delimited streaming response, concatenating content
+     * tokens and extracting token usage from the final {@code done: true} chunk.
+     *
+     * <p>Ollama reports {@code prompt_eval_count} (prompt tokens) and
+     * {@code eval_count} (completion tokens) only in the terminal chunk.
+     */
+    private OllamaParsedResponse parseOllamaResponse(String body, String providerModelId) {
         if (body == null || body.isBlank()) {
-            return "";
+            return new OllamaParsedResponse("", null, null);
         }
 
         if (!body.contains("\n")) {
@@ -208,6 +216,9 @@ public class OllamaDirectModelClient implements ModelClient {
         }
 
         StringBuilder text = new StringBuilder();
+        Long promptTokens = null;
+        Long completionTokens = null;
+
         for (String line : body.split("\\R")) {
             if (line.isBlank()) {
                 continue;
@@ -226,11 +237,24 @@ public class OllamaDirectModelClient implements ModelClient {
             if (root.has("response")) {
                 text.append(root.path("response").asText(""));
             }
+
+            // The final chunk (done: true) carries token usage statistics.
+            if (root.path("done").asBoolean(false)) {
+                if (root.has("prompt_eval_count")) {
+                    promptTokens = root.path("prompt_eval_count").asLong();
+                }
+                if (root.has("eval_count")) {
+                    completionTokens = root.path("eval_count").asLong();
+                }
+            }
         }
-        return text.toString();
+        return new OllamaParsedResponse(text.toString(), promptTokens, completionTokens);
     }
 
-    private String contentFromJson(String body, String providerModelId) {
+    /**
+     * Parses a single (non-streamed) Ollama JSON response body.
+     */
+    private OllamaParsedResponse contentFromJson(String body, String providerModelId) {
         JsonNode root = readJson(body, providerModelId);
         JsonNode error = root.get("error");
         if (error != null && !error.asText("").isBlank()) {
@@ -246,7 +270,11 @@ public class OllamaDirectModelClient implements ModelClient {
         if (text.isBlank()) {
             text = root.path("response").asText("");
         }
-        return text;
+
+        // Extract token counts if present (single-response mode)
+        Long promptTokens = root.has("prompt_eval_count") ? root.path("prompt_eval_count").asLong() : null;
+        Long completionTokens = root.has("eval_count") ? root.path("eval_count").asLong() : null;
+        return new OllamaParsedResponse(text, promptTokens, completionTokens);
     }
 
     private JsonNode readJson(String body, String providerModelId) {
@@ -336,4 +364,7 @@ public class OllamaDirectModelClient implements ModelClient {
     }
 
     private record OllamaHttpResponse(int statusCode, String body) {}
+
+    /** Bundles parsed text content with optional token usage counts from Ollama. */
+    private record OllamaParsedResponse(String text, Long promptTokens, Long completionTokens) {}
 }

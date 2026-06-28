@@ -1,11 +1,14 @@
 package com.debopam.llmcouncil.orchestration;
 
 /**
- * One model's argument in a single debate round.
+ * A single model's contribution to a debate round.
  *
- * @param modelId    The model making this contribution.
- * @param text       The argument text.
- * @param confidence Numeric confidence in the model's current position (0–100).
- *                   Parsed from a {@code Confidence: NN} line in the model's output.
+ * @param modelId    The contributing model's ID.
+ * @param text       The full debate argument text.
+ * @param confidence Parsed confidence score (0–100), or {@code -1} if confidence
+ *                   could not be extracted from the model's output. The sentinel
+ *                   value allows {@link DebateRound#confidenceScores()} to exclude
+ *                   unparseable entries from the KS convergence calculation rather
+ *                   than injecting a misleading default (Gap 4.4).
  */
 public record DebateContribution(String modelId, String text, int confidence) {}

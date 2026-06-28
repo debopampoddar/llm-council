@@ -6,6 +6,7 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 
 ## What This Implements
 
+### Core Council Engine
 - Profile plus depth policy resolution.
 - Separate local, OCI/OpenAI-compatible, hybrid, and explicit mock profiles.
 - Config-owned protocols: `quick`, `balanced`, and `rigorous`.
@@ -21,7 +22,27 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Fresh Eyes validation with structured JSON output.
 - In-memory session and event history.
 - Local artifact storage for raw, normalized, final, and export metadata.
-- Focused JUnit tests for policy resolution, parsing, and quorum.
+
+### Anti-Sycophancy & Quality (Phase 3)
+- **Adversarial debate roles**: `PROPOSER`, `CRITIC`, and `SYNTHESIZER` council personas with role-specific system prompts. CRITIC models receive explicit instructions to challenge emerging consensus.
+- **Sycophancy detection**: per-round Jaccard word similarity plus confidence delta toward majority median. Models that shift opinion without changing their argument are flagged.
+- **Post-debate draft revision** (`REVISE` stage): each model revises its draft incorporating debate arguments before re-scoring.
+- **Post-debate re-review** (`REVIEW_POST_DEBATE` stage): reviewers re-evaluate drafts considering debate transcript, so the second SCORE pass uses genuinely updated evidence.
+- **Model heterogeneity enforcement**: startup warning when all council members share the same `modelFamily`.
+
+### Scoring & Resilience (Phases 1–2)
+- **Confidence-weighted scoring** (default): reviewer scores weighted by self-reported confidence.
+- **Pluggable scoring strategies**: `average`, `confidence-weighted`, `median`, `trimmed-mean` — selectable per protocol stage.
+- **Disagreement escalation**: `SYNTHESIZE_WITH_DISSENT` or `HALT_AND_ESCALATE` when post-debate score variance remains high.
+- **Retry with exponential backoff**: `RetryableModelClient` decorator retries transient failures (`PROVIDER_UNAVAILABLE`, `MODEL_TIMEOUT`) with jitter.
+- **Robust confidence parsing**: multi-pattern extraction handles `Confidence: 85`, `confidence: 0.85`, `85%`, and more.
+- **JSON parsing resilience**: markdown fence stripping, trailing comma tolerance, lenient Jackson configuration.
+- **Token usage tracking**: Ollama (`prompt_eval_count`/`eval_count`) and Spring AI (`getUsage()`) token extraction.
+- **Minimum debate rounds**: prevents premature convergence from sycophantic first-round agreement.
+- **Immutable ModelRegistry**: constructor-injected via `@Bean` — no mutable post-construction registration.
+
+### Testing
+- 70 JUnit tests: policy resolution, parsing, quorum, KS convergence math, sycophancy detection, all scoring strategies, retry logic, and full protocol integration.
 
 ## Runtime Requirements
 
@@ -90,7 +111,75 @@ Configuration maps that pair to a `CouncilPolicy`.
 |---|---|---|
 | `QUICK` | `quick` | Generate and synthesize only. No review or validation. |
 | `BALANCED` | `balanced` | Generate, anonymize, review, score, synthesize, validate. |
-| `RIGOROUS` | `rigorous` | Balanced flow plus debate, second score, validation, and export manifest. |
+| `RIGOROUS` | `rigorous` | Balanced flow plus debate, draft revision, post-debate re-review, second score, validation, and export manifest. |
+
+### Rigorous Protocol Pipeline
+
+```text
+GENERATE → ANONYMIZE → REVIEW → SCORE → DEBATE → REVISE → REVIEW_POST_DEBATE → SCORE → SYNTHESIZE → VALIDATE → EXPORT
+```
+
+The `REVISE` stage lets each model incorporate debate arguments into a revised draft. The `REVIEW_POST_DEBATE` stage asks reviewers to re-evaluate with debate context, so the second `SCORE` pass operates on genuinely updated evidence.
+
+## Architecture
+
+### Council Roles
+
+Each council member model is assigned a `CouncilRole` (separate from structural `ModelRole`):
+
+| Role | Behavior |
+|---|---|
+| `PROPOSER` | Default. Produces an independent answer with chain-of-thought reasoning. |
+| `CRITIC` | Devil's advocate. System prompt explicitly requires challenging the consensus. |
+| `SYNTHESIZER` | Seeks common ground across perspectives. |
+
+Configure via `application.yml`:
+
+```yaml
+council:
+  models:
+    local-llama3:
+      councilRole: PROPOSER
+      modelFamily: llama
+    local-mistral:
+      councilRole: CRITIC
+      modelFamily: mistral
+```
+
+### Scoring Strategies
+
+The `SCORE` stage supports pluggable aggregation via the `scoring-strategy` stage option:
+
+| Strategy | Description |
+|---|---|
+| `confidence-weighted` | Default. Weights reviews by reviewer confidence. |
+| `average` | Simple arithmetic mean. Vulnerable to outlier manipulation. |
+| `median` | Robust to outliers but loses score nuance. |
+| `trimmed-mean` | Drops highest and lowest review, then averages. |
+
+### Sycophancy Detection
+
+After each debate round (from round 1 onward), the `SycophancyDetector` computes:
+
+```text
+sycophancyIndex = textSimilarity × (confidenceDelta / 100)
+```
+
+- **textSimilarity**: Jaccard word overlap between a model's consecutive debate contributions.
+- **confidenceDelta**: How much confidence shifted toward the group majority median.
+- A high index means the model changed its stated confidence toward the majority without meaningfully changing its argument — a sycophancy signal.
+
+Flagged models are recorded in `CouncilContext.sycophancyWarnings()` and emitted as `DEBATE_SYCOPHANCY_WARNING` events.
+
+### Retry Logic
+
+`RetryableModelClient` wraps each provider client with exponential backoff:
+
+```text
+delay = baseDelay × 2^attempt + random(0–500ms)
+```
+
+Only transient failures retry: `PROVIDER_UNAVAILABLE`, `MODEL_TIMEOUT`. Non-retryable categories (`MODEL_NOT_FOUND`, `CONFIGURATION_ERROR`) are propagated immediately.
 
 ## Build And Test
 
@@ -394,10 +483,11 @@ Then call with:
 com.debopam.llmcouncil.api              REST controller and DTOs
 com.debopam.llmcouncil.application      service, policy resolver, event publisher
 com.debopam.llmcouncil.chat             chat sessions, turns, async chat service, event broker
-com.debopam.llmcouncil.config           configuration binding and registry setup
+com.debopam.llmcouncil.config           configuration binding, validation, and registry setup
 com.debopam.llmcouncil.domain           session, status, depth, event records
-com.debopam.llmcouncil.model            model profiles, policies, clients
-com.debopam.llmcouncil.orchestration    protocol, stages, prompts, parser, artifacts
+com.debopam.llmcouncil.model            model profiles, policies, clients, retry decorator
+com.debopam.llmcouncil.orchestration    protocol, stages, prompts, parser, scoring strategies,
+                                        sycophancy detection, convergence detector, artifacts
 com.debopam.llmcouncil.persistence      in-memory sessions and local artifacts
 ```
 

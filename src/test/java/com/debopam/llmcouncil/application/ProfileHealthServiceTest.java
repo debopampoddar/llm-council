@@ -22,8 +22,7 @@ class ProfileHealthServiceTest {
 
     @Test
     void reportsProfileRunnableWhenRequiredModelsAreHealthy() {
-        ModelRegistry registry = new ModelRegistry();
-        registry.register(
+        ModelRegistry registry = new ModelRegistry(
                 Map.of(
                         "member", model("member", ModelRole.MEMBER),
                         "chair", model("chair", ModelRole.CHAIR)),

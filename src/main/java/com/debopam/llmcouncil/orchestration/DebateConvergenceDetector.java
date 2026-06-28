@@ -46,6 +46,11 @@ public class DebateConvergenceDetector {
      * Both lists are sorted to build empirical CDFs; the maximum absolute
      * difference is returned.
      *
+     * <p>The merge walk advances through both sorted lists simultaneously.
+     * After one list is exhausted, the remaining elements in the other list
+     * must still be checked — their CDF steps can produce new maxima that
+     * were missed by the original implementation.
+     *
      * @param a First sample.
      * @param b Second sample.
      * @return KS statistic in [0, 1].
@@ -56,11 +61,22 @@ public class DebateConvergenceDetector {
         int n = sa.size(), m = sb.size(), i = 0, j = 0;
         double maxDiff = 0.0;
         while (i < n && j < m) {
-            double fa = (double)(i + 1) / n;
-            double fb = (double)(j + 1) / m;
             if (sa.get(i) <= sb.get(j)) i++;
             else j++;
+            double fa = (double) i / n;
+            double fb = (double) j / m;
             maxDiff = Math.max(maxDiff, Math.abs(fa - fb));
+        }
+        // Account for remaining elements in the longer list. Each step
+        // advances one CDF while the other stays at 1.0, so new maxima
+        // are possible.
+        while (i < n) {
+            i++;
+            maxDiff = Math.max(maxDiff, Math.abs((double) i / n - (double) j / m));
+        }
+        while (j < m) {
+            j++;
+            maxDiff = Math.max(maxDiff, Math.abs((double) i / n - (double) j / m));
         }
         return maxDiff;
     }

@@ -1,4 +1,4 @@
-// ── SynthesisStageExecutor.java ───────────────────────────────────────────
+// ── SynthesisStageExecutor.java 
 package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.EventPublisher;
