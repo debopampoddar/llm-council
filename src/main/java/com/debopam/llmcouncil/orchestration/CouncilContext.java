@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Mutable state container passed through all protocol stages.
@@ -24,8 +25,10 @@ import java.util.Optional;
  *   <li>Terminal status if a stage fails fatally.</li>
  * </ul>
  *
- * <p><b>Thread safety:</b> not thread-safe — callers must ensure sequential
- * stage execution or synchronise externally.
+ * <p><b>Thread safety:</b> collection fields use {@link CopyOnWriteArrayList}
+ * so that stage executors running model calls on virtual threads can safely
+ * call {@link #excludeModel} and {@link #recordModelFailure} concurrently.
+ * Scalar fields that indicate terminal state are {@code volatile}.
  */
 public class CouncilContext {
 
@@ -34,20 +37,24 @@ public class CouncilContext {
     private final CouncilPolicy policy;
     private final ProtocolDefinition protocol;
 
-    private final List<Draft> drafts = new ArrayList<>();
-    private final List<ReviewArtifact> reviews = new ArrayList<>();
-    private final List<ScoreArtifact> scores = new ArrayList<>();
-    private final List<DebateRound> debateRounds = new ArrayList<>();
-    private final List<String> excludedModels = new ArrayList<>();
-    private final List<ModelFailure> modelFailures = new ArrayList<>();
-    private final List<String> warnings = new ArrayList<>();
+    // CopyOnWriteArrayList: writes are infrequent (one per model call) but
+    // concurrent from virtual threads in GENERATE, AGGREGATE, and DEBATE stages.
+    private final List<Draft> drafts = new CopyOnWriteArrayList<>();
+    private final List<ReviewArtifact> reviews = new CopyOnWriteArrayList<>();
+    private final List<ScoreArtifact> scores = new CopyOnWriteArrayList<>();
+    private final List<DebateRound> debateRounds = new CopyOnWriteArrayList<>();
+    private final List<String> excludedModels = new CopyOnWriteArrayList<>();
+    private final List<ModelFailure> modelFailures = new CopyOnWriteArrayList<>();
+    private final List<String> warnings = new CopyOnWriteArrayList<>();
+    // Sycophancy warnings flagged during debate rounds.
+    private final List<String> sycophancyWarnings = new CopyOnWriteArrayList<>();
 
-    private String synthesisResult;
-    private ScoreSummary scoreSummary;
-    private ValidationArtifact validation;
-    private boolean terminal = false;
-    private StageType failedStage;
-    private Throwable failureCause;
+    private volatile String synthesisResult;
+    private volatile ScoreSummary scoreSummary;
+    private volatile ValidationArtifact validation;
+    private volatile boolean terminal = false;
+    private volatile StageType failedStage;
+    private volatile Throwable failureCause;
 
     /**
      * @param session  The originating council session.
@@ -64,7 +71,7 @@ public class CouncilContext {
         this.protocol = protocol;
     }
 
-    // ── Session / Profile / Protocol ─────────────────────────────────────
+    // ── Session / Profile / Protocol 
 
     /** @return The council session this context belongs to. */
     public CouncilSession session() { return session; }
@@ -78,35 +85,39 @@ public class CouncilContext {
     /** @return The protocol being executed. */
     public ProtocolDefinition protocol() { return protocol; }
 
-    // ── Drafts ────────────────────────────────────────────────────────────
+    // ── Drafts 
 
     /** Add a new draft to the context. */
     public void addDraft(Draft draft) { drafts.add(draft); }
 
-    /** @return Unmodifiable snapshot of all current drafts. */
-    public List<Draft> drafts() { return Collections.unmodifiableList(drafts); }
+    /** @return Snapshot of all current drafts. Thread-safe via CopyOnWriteArrayList. */
+    public List<Draft> drafts() { return List.copyOf(drafts); }
 
     /**
      * Replace all current drafts with the refined (aggregated) versions.
      * Called by {@link StageType#AGGREGATE} executor after fan-out.
      */
-    public void clearDrafts() { drafts.clear(); }
+    public void clearDrafts() {
+        // CopyOnWriteArrayList.clear() is atomic; safe to call from main thread
+        // between stage boundaries.
+        drafts.clear();
+    }
 
-    // ── Reviews ───────────────────────────────────────────────────────────
+    // ── Reviews 
 
     /** Add a review artifact. */
     public void addReview(ReviewArtifact review) { reviews.add(review); }
 
-    /** @return Unmodifiable list of review artifacts. */
-    public List<ReviewArtifact> reviews() { return Collections.unmodifiableList(reviews); }
+    /** @return Snapshot of review artifacts. Thread-safe via CopyOnWriteArrayList. */
+    public List<ReviewArtifact> reviews() { return List.copyOf(reviews); }
 
-    // ── Scores ────────────────────────────────────────────────────────────
+    // ── Scores 
 
     /** Add a score artifact. */
     public void addScore(ScoreArtifact score) { scores.add(score); }
 
-    /** @return Unmodifiable list of score artifacts. */
-    public List<ScoreArtifact> scores() { return Collections.unmodifiableList(scores); }
+    /** @return Snapshot of score artifacts. Thread-safe via CopyOnWriteArrayList. */
+    public List<ScoreArtifact> scores() { return List.copyOf(scores); }
 
     /** Replace the latest score summary. */
     public void setScoreSummary(ScoreSummary scoreSummary) { this.scoreSummary = scoreSummary; }
@@ -114,15 +125,15 @@ public class CouncilContext {
     /** @return The latest score summary, if scoring ran successfully. */
     public Optional<ScoreSummary> scoreSummary() { return Optional.ofNullable(scoreSummary); }
 
-    // ── Debate ────────────────────────────────────────────────────────────
+    // ── Debate 
 
     /** Add a completed debate round. */
     public void addDebateRound(DebateRound round) { debateRounds.add(round); }
 
-    /** @return Unmodifiable list of debate rounds. */
-    public List<DebateRound> debateRounds() { return Collections.unmodifiableList(debateRounds); }
+    /** @return Snapshot of debate rounds. Thread-safe via CopyOnWriteArrayList. */
+    public List<DebateRound> debateRounds() { return List.copyOf(debateRounds); }
 
-    // ── Synthesis ─────────────────────────────────────────────────────────
+    // ── Synthesis 
 
     /** Set the chair's final synthesised answer. */
     public void setSynthesisResult(String text) { this.synthesisResult = text; }
@@ -130,7 +141,7 @@ public class CouncilContext {
     /** @return The synthesised answer, or empty if SYNTHESIZE has not run yet. */
     public Optional<String> synthesisResult() { return Optional.ofNullable(synthesisResult); }
 
-    // ── Validation ──────────────────────────────────────────────────────────
+    // ── Validation 
 
     /** Set the Fresh Eyes validation result. */
     public void setValidation(ValidationArtifact validation) { this.validation = validation; }
@@ -138,7 +149,7 @@ public class CouncilContext {
     /** @return Fresh Eyes validation result, if validation ran. */
     public Optional<ValidationArtifact> validation() { return Optional.ofNullable(validation); }
 
-    // ── Model exclusions / warnings ─────────────────────────────────────────
+    // ── Model exclusions / warnings 
 
     /** Record a model that failed or was excluded by policy. */
     public void excludeModel(String modelId, String reason) {
@@ -146,7 +157,7 @@ public class CouncilContext {
     }
 
     /** @return Models excluded from the final result with reasons. */
-    public List<String> excludedModels() { return Collections.unmodifiableList(excludedModels); }
+    public List<String> excludedModels() { return List.copyOf(excludedModels); }
 
     /** Record a structured model call failure for API consumers. */
     public void recordModelFailure(ModelProfile model, ModelCallException failure) {
@@ -159,15 +170,21 @@ public class CouncilContext {
     }
 
     /** @return Structured model call failures accumulated during the run. */
-    public List<ModelFailure> modelFailures() { return Collections.unmodifiableList(modelFailures); }
+    public List<ModelFailure> modelFailures() { return List.copyOf(modelFailures); }
 
     /** Add a non-terminal warning for API and event consumers. */
     public void addWarning(String warning) { warnings.add(warning); }
 
     /** @return Non-terminal warnings accumulated during the run. */
-    public List<String> warnings() { return Collections.unmodifiableList(warnings); }
+    public List<String> warnings() { return List.copyOf(warnings); }
 
-    // ── Terminal state ────────────────────────────────────────────────────
+    /** Record a sycophancy warning detected during debate. Gap 1.3. */
+    public void addSycophancyWarning(String warning) { sycophancyWarnings.add(warning); }
+
+    /** @return Sycophancy warnings detected during debate rounds. Gap 1.3. */
+    public List<String> sycophancyWarnings() { return List.copyOf(sycophancyWarnings); }
+
+    // ── Terminal state 
 
     /**
      * Mark this context as terminal due to a stage failure.

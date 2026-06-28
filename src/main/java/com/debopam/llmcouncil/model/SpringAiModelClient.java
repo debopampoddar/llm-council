@@ -47,9 +47,32 @@ public class SpringAiModelClient implements ModelClient {
                                            .maxTokens(request.maxOutputTokens())
                                            .temperature(request.temperature())
                                            .build());
-            String response = spec.user(user).call().content();
+            // Use the full CallResponseSpec to access both content and usage metadata.
+            var chatResponse = spec.user(user).call();
+            String response = chatResponse.content();
+
+            // Extract token usage from Spring AI metadata if available.
+            // Token tracking is best-effort; not all providers report usage.
+            // Spring AI 1.0.0 Usage interface returns Integer; we widen to Long
+            // for consistency with ModelCallResult's nullable Long fields.
+            Long promptTokens = null;
+            Long completionTokens = null;
+            try {
+                var result = chatResponse.chatResponse();
+                if (result != null && result.getMetadata() != null
+                        && result.getMetadata().getUsage() != null) {
+                    var usage = result.getMetadata().getUsage();
+                    Integer pt = usage.getPromptTokens();
+                    Integer ct = usage.getCompletionTokens();
+                    promptTokens = pt != null ? pt.longValue() : null;
+                    completionTokens = ct != null ? ct.longValue() : null;
+                }
+            } catch (Exception ignored) {
+                // Token tracking is best-effort; swallow failures silently.
+            }
             return new ModelCallResult(response == null ? "" : response,
-                                       null, null, Duration.between(start, Instant.now()));
+                                       promptTokens, completionTokens,
+                                       Duration.between(start, Instant.now()));
         } catch (Exception ex) {
             throw new ModelCallException(
                     category(ex),

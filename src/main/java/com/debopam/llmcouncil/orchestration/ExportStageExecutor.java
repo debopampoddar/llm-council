@@ -1,4 +1,4 @@
-// ── ExportStageExecutor.java ──────────────────────────────────────────────
+// ── ExportStageExecutor.java 
 package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.EventPublisher;

@@ -1,4 +1,4 @@
-// ── GenerationStageExecutor.java ──────────────────────────────────────────
+// ── GenerationStageExecutor.java 
 package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.EventPublisher;
@@ -58,13 +58,19 @@ public class GenerationStageExecutor implements StageExecutor {
 
     private Draft callModel(CouncilContext ctx, String modelId) {
         ModelProfile model = registry.model(modelId);
+        // Log the council role so operators can verify adversarial assignment.
+        log.debug("Generating draft for model {} with council role {}", modelId, model.councilRole());
         events.publish(ctx.session().id(), stage().name(), "MODEL_CALL_STARTED", modelId,
-                       Map.of("providerModelId", model.providerModelId()));
+                       Map.of("providerModelId", model.providerModelId(),
+                              "councilRole", model.councilRole().name()));
         try {
+            // Use role-aware prompt so CRITIC and SYNTHESIZER models
+            // receive persona-specific system instructions.
             ModelCallResult result = registry.clientForModel(modelId).call(
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                                          model.providerModelId(),
-                                         promptBuilder.generationMessagesWithCoT(ctx.session().question(), ctx.session().context()),
+                                         promptBuilder.generationMessagesForRole(ctx.session().question(),
+                                                                                  ctx.session().context(), model.councilRole()),
                                          model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()));
             artifactStore.writeText(ctx.session().id(), "raw/generate-" + modelId + ".txt", result.text());
             events.publish(ctx.session().id(), stage().name(), "MODEL_CALL_COMPLETED", modelId,

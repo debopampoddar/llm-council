@@ -43,6 +43,12 @@ council:
   # profile remains available for tests and local smoke checks.
   allowMockFallback: false
 
+  # Retry configuration for transient model failures (PROVIDER_UNAVAILABLE,
+  # MODEL_TIMEOUT). Per-model overrides are supported via the model entry.
+  # Defaults (applied when not specified per model):
+  #   retryMaxAttempts: 2      — number of retry attempts after the initial call
+  #   retryBaseDelayMs: 1000   — base delay in ms; doubled on each retry with jitter
+
   persistence:
     artifactBasePath: ${LLM_COUNCIL_ARTIFACT_PATH:${user.home}/.llm-council/runs}
 
@@ -64,6 +70,8 @@ council:
       temperature: 0.3
       timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
       role: MEMBER
+      councilRole: PROPOSER         # default debate persona
+      modelFamily: llama            # architecture family for diversity check
     - id: local-mistral
       provider: ollama
       providerModelId: ${LLM_COUNCIL_LOCAL_ALT_MODEL:mistral:7b}
@@ -71,6 +79,8 @@ council:
       temperature: 0.35
       timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
       role: MEMBER
+      councilRole: CRITIC           # adversarial devil's advocate persona
+      modelFamily: mistral          # different family from llama
     - id: local-chair
       provider: ollama
       providerModelId: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:llama3.1:8b}
@@ -78,6 +88,8 @@ council:
       temperature: 0.2
       timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
       role: CHAIR
+      councilRole: SYNTHESIZER      # bridge-builder persona for the chair
+      modelFamily: llama
 
     # OCI/OpenAI-compatible logical model. Configure Spring AI OpenAI base URL
     # and key externally for Oracle Code Assist LiteLLM, OCI, or another
@@ -89,6 +101,8 @@ council:
       temperature: 0.2
       timeoutSeconds: 120
       role: CHAIR
+      councilRole: SYNTHESIZER
+      modelFamily: gpt
     - id: oci-reviewer
       provider: openai-compatible
       providerModelId: ${OCA_LLM_REVIEW_MODEL:gpt-5.4}
@@ -96,6 +110,8 @@ council:
       temperature: 0.2
       timeoutSeconds: 120
       role: VALIDATOR
+      councilRole: CRITIC
+      modelFamily: gpt
 
     # Explicit test-only mocks.
     - id: mock-member
@@ -106,6 +122,8 @@ council:
       timeoutSeconds: 30
       role: MEMBER
       testOnly: true
+      councilRole: PROPOSER
+      modelFamily: mock
     - id: mock-chair
       provider: mock
       providerModelId: mock-chair
@@ -114,6 +132,8 @@ council:
       timeoutSeconds: 30
       role: CHAIR
       testOnly: true
+      councilRole: SYNTHESIZER
+      modelFamily: mock
 
   profiles:
     default:
@@ -284,16 +304,20 @@ council:
         SYNTHESIZE:
           preserve-dissent: true
     rigorous:
-      description: High-rigor council with debate, second scoring pass, validation, and redacted export manifest.
-      orderedStages: [GENERATE, ANONYMIZE, REVIEW, SCORE, DEBATE, SCORE, SYNTHESIZE, VALIDATE, EXPORT]
+      description: High-rigor council with debate, post-debate revision, re-review, second scoring, validation, and export.
+      # Gap 2.4 + 4.3: Added REVISE (post-debate draft revision) and
+      # REVIEW_POST_DEBATE (re-review incorporating debate arguments) stages.
+      orderedStages: [GENERATE, ANONYMIZE, REVIEW, SCORE, DEBATE, REVISE, REVIEW_POST_DEBATE, SCORE, SYNTHESIZE, VALIDATE, EXPORT]
       stageOptions:
         SCORE:
           artifact-label: initial
         DEBATE:
+          min-rounds: 2
           max-rounds: 3
           ks-convergence-threshold: 0.10
           debate-trigger-score-variance: 120.0
           force-run: false
+          sycophancy-threshold: 0.70   # Jaccard similarity threshold for sycophancy warning
         SYNTHESIZE:
           preserve-dissent: true
         EXPORT:

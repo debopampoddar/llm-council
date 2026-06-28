@@ -25,8 +25,7 @@ class GenerationStageExecutorTest {
 
     @Test
     void marksContextFailedWhenDraftQuorumIsNotMet() {
-        ModelRegistry registry = new ModelRegistry();
-        registry.register(
+        ModelRegistry registry = new ModelRegistry(
                 Map.of("missing", new ModelProfile("missing", "openai", "missing-model",
                                                     100, 0.2, Duration.ofSeconds(1), ModelRole.MEMBER)),
                 Map.of("missing", new UnavailableModelClient("missing", "test unavailable")));

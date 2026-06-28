@@ -1,1 +1,29 @@
-package com.debopam.llmcouncil.orchestration; import java.util.Map; public record ProtocolStageOptions(Map<String, Object> values) { public static ProtocolStageOptions empty(){return new ProtocolStageOptions(Map.of());} public String getString(String k,String d){Object v=values.get(k); return v==null?d:String.valueOf(v);} public int getInt(String k,int d){Object v=values.get(k); return v==null?d:Integer.parseInt(String.valueOf(v));} public double getDouble(String k,double d){Object v=values.get(k); return v==null?d:Double.parseDouble(String.valueOf(v));} public boolean getBoolean(String k,boolean d){Object v=values.get(k); return v==null?d:Boolean.parseBoolean(String.valueOf(v));} }
+package com.debopam.llmcouncil.orchestration;
+
+import java.util.Map;
+
+public record ProtocolStageOptions(Map<String, Object> values) {
+    public static ProtocolStageOptions empty() {
+        return new ProtocolStageOptions(Map.of());
+    }
+
+    public String getString(String k, String d) {
+        Object v = values.get(k);
+        return v == null ? d : String.valueOf(v);
+    }
+
+    public int getInt(String k, int d) {
+        Object v = values.get(k);
+        return v == null ? d : Integer.parseInt(String.valueOf(v));
+    }
+
+    public double getDouble(String k, double d) {
+        Object v = values.get(k);
+        return v == null ? d : Double.parseDouble(String.valueOf(v));
+    }
+
+    public boolean getBoolean(String k, boolean d) {
+        Object v = values.get(k);
+        return v == null ? d : Boolean.parseBoolean(String.valueOf(v));
+    }
+}

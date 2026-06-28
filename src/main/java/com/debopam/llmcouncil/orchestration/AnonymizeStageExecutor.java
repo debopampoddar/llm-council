@@ -1,4 +1,4 @@
-// ── AnonymizeStageExecutor.java ───────────────────────────────────────────
+// ── AnonymizeStageExecutor.java 
 package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.persistence.ArtifactStore;
