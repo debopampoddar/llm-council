@@ -27,6 +27,20 @@ spring:
           num-ctx: ${SPRING_AI_OLLAMA_NUM_CTX:4096}
           num-thread: ${SPRING_AI_OLLAMA_NUM_THREAD:0}
           keep_alive: ${SPRING_AI_OLLAMA_KEEP_ALIVE:10m}
+    vertex:
+      ai:
+        gemini:
+          # Google Cloud project and region for Vertex AI Gemini.
+          # Requires Application Default Credentials (ADC):
+          #   gcloud auth application-default login
+          # Or a service account JSON:
+          #   GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json
+          project-id: ${GOOGLE_CLOUD_PROJECT:}
+          location: ${GOOGLE_CLOUD_LOCATION:us-central1}
+          chat:
+            options:
+              model: ${COUNCIL_GEMINI_MODEL:gemini-2.5-flash}
+              temperature: 0.3
 server:
   port: 8080
 management:
@@ -48,6 +62,15 @@ council:
   # Defaults (applied when not specified per model):
   #   retryMaxAttempts: 2      — number of retry attempts after the initial call
   #   retryBaseDelayMs: 1000   — base delay in ms; doubled on each retry with jitter
+
+  # Provider auto-detection: cloud providers (OpenAI, Anthropic, Gemini) activate
+  # automatically when their API key or GCP project ID is set to a real value.
+  # No explicit "enabled" flags needed. Placeholder keys are detected and ignored.
+  # To activate a provider, just set its credential:
+  #   SPRING_AI_OPENAI_API_KEY=sk-...          → OpenAI active
+  #   SPRING_AI_ANTHROPIC_API_KEY=sk-ant-...   → Anthropic active
+  #   GOOGLE_CLOUD_PROJECT=my-project          → Gemini/Vertex AI active
+  # Ollama is always available (local, no credentials required).
 
   persistence:
     artifactBasePath: ${LLM_COUNCIL_ARTIFACT_PATH:${user.home}/.llm-council/runs}
@@ -135,6 +158,65 @@ council:
       councilRole: SYNTHESIZER
       modelFamily: mock
 
+    # ── Gemini / Vertex AI models ──────────────────────────────────────
+    # Activate with: COUNCIL_GEMINI_ENABLED=true
+    # Requires GCP authentication:
+    #   gcloud auth application-default login
+    # Or: GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+    - id: gemini-flash
+      provider: gemini
+      providerModelId: ${COUNCIL_GEMINI_MODEL:gemini-2.5-flash}
+      defaultOutputTokens: 2000
+      temperature: 0.3
+      timeoutSeconds: 120
+      role: MEMBER
+      councilRole: PROPOSER
+      modelFamily: gemini
+    - id: gemini-pro
+      provider: gemini
+      providerModelId: ${COUNCIL_GEMINI_PRO_MODEL:gemini-2.5-pro}
+      defaultOutputTokens: 2200
+      temperature: 0.2
+      timeoutSeconds: 180
+      role: CHAIR
+      councilRole: SYNTHESIZER
+      modelFamily: gemini
+
+    # ── Anthropic models ───────────────────────────────────────────────
+    # Activate with: COUNCIL_ANTHROPIC_ENABLED=true
+    # Requires: SPRING_AI_ANTHROPIC_API_KEY=sk-ant-...
+    - id: anthropic-sonnet
+      provider: anthropic
+      providerModelId: ${COUNCIL_ANTHROPIC_MODEL:claude-sonnet-4-20250514}
+      defaultOutputTokens: 2000
+      temperature: 0.3
+      timeoutSeconds: 120
+      role: MEMBER
+      councilRole: CRITIC
+      modelFamily: claude
+    - id: anthropic-opus
+      provider: anthropic
+      providerModelId: ${COUNCIL_ANTHROPIC_CHAIR_MODEL:claude-sonnet-4-20250514}
+      defaultOutputTokens: 2200
+      temperature: 0.2
+      timeoutSeconds: 180
+      role: CHAIR
+      councilRole: SYNTHESIZER
+      modelFamily: claude
+
+    # ── Direct OpenAI models ───────────────────────────────────────────
+    # Activate with: COUNCIL_OPENAI_ENABLED=true
+    # Requires: SPRING_AI_OPENAI_API_KEY=sk-...
+    - id: openai-gpt
+      provider: openai
+      providerModelId: ${COUNCIL_OPENAI_MODEL:gpt-4o}
+      defaultOutputTokens: 2000
+      temperature: 0.3
+      timeoutSeconds: 120
+      role: MEMBER
+      councilRole: PROPOSER
+      modelFamily: gpt
+
   profiles:
     default:
       displayName: Local balanced council
@@ -176,6 +258,24 @@ council:
         QUICK: mock-quick
         BALANCED: mock-balanced
         RIGOROUS: mock-rigorous
+    # ── Gemini profile: uses only Gemini models ──
+    gemini:
+      displayName: Google Gemini council
+      testOnly: false
+      defaultDepth: BALANCED
+      depthPolicies:
+        QUICK: gemini-quick
+        BALANCED: gemini-balanced
+        RIGOROUS: gemini-rigorous
+    # ── Multi-cloud profile: maximum diversity across providers ──
+    multi-cloud:
+      displayName: Multi-cloud council (Ollama + Gemini + Anthropic/OpenAI)
+      testOnly: false
+      defaultDepth: BALANCED
+      depthPolicies:
+        QUICK: multi-cloud-quick
+        BALANCED: multi-cloud-balanced
+        RIGOROUS: multi-cloud-rigorous
 
   policies:
     local-quick:
@@ -290,6 +390,64 @@ council:
       validationRequired: true
       allowPartial: true
 
+    # ── Gemini policies ──────────────────────────────────────────────
+    gemini-quick:
+      protocolId: quick
+      memberModelIds: [gemini-flash]
+      chairModelId: gemini-pro
+      validatorModelId:
+      minimumSuccessfulDrafts: 1
+      minimumReviewsPerDraft: 0
+      validationRequired: false
+      allowPartial: true
+    gemini-balanced:
+      protocolId: balanced
+      memberModelIds: [gemini-flash, gemini-pro]
+      chairModelId: gemini-pro
+      validatorModelId: gemini-pro
+      minimumSuccessfulDrafts: 2
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+    gemini-rigorous:
+      protocolId: rigorous
+      memberModelIds: [gemini-flash, gemini-pro]
+      chairModelId: gemini-pro
+      validatorModelId: gemini-pro
+      minimumSuccessfulDrafts: 2
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+
+    # ── Multi-cloud policies ─────────────────────────────────────────
+    multi-cloud-quick:
+      protocolId: quick
+      memberModelIds: [local-llama3, gemini-flash]
+      chairModelId: gemini-pro
+      validatorModelId:
+      minimumSuccessfulDrafts: 1
+      minimumReviewsPerDraft: 0
+      validationRequired: false
+      allowPartial: true
+    multi-cloud-balanced:
+      protocolId: balanced
+      memberModelIds: [local-llama3, local-mistral, gemini-flash, anthropic-sonnet]
+      chairModelId: gemini-pro
+      validatorModelId: anthropic-opus
+      minimumSuccessfulDrafts: 2
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+    multi-cloud-rigorous:
+      protocolId: rigorous
+      memberModelIds: [local-llama3, local-mistral, gemini-flash, anthropic-sonnet, openai-gpt]
+      chairModelId: gemini-pro
+      validatorModelId: anthropic-opus
+      minimumSuccessfulDrafts: 3
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+
   protocols:
     quick:
       description: Fast low-cost council for smoke tests and low-stakes requests.
@@ -305,7 +463,7 @@ council:
           preserve-dissent: true
     rigorous:
       description: High-rigor council with debate, post-debate revision, re-review, second scoring, validation, and export.
-      # Gap 2.4 + 4.3: Added REVISE (post-debate draft revision) and
+      # Added REVISE (post-debate draft revision) and
       # REVIEW_POST_DEBATE (re-review incorporating debate arguments) stages.
       orderedStages: [GENERATE, ANONYMIZE, REVIEW, SCORE, DEBATE, REVISE, REVIEW_POST_DEBATE, SCORE, SYNTHESIZE, VALIDATE, EXPORT]
       stageOptions:

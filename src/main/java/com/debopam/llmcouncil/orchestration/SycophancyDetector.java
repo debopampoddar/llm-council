@@ -7,7 +7,7 @@ import java.util.stream.Collectors;
  * Detects sycophantic behavior in multi-agent debate by measuring how quickly
  * and dramatically agents shift their positions toward the majority.
  *
- * <p><b>Gap 1.3 (Sycophancy Detection Metrics):</b> research shows that rapid
+ * <p><b>(Sycophancy Detection Metrics):</b> research shows that rapid
  * capitulation to majority opinion without substantive argument changes is the
  * primary sycophancy signal in LLM councils. This detector computes two metrics:
  * <ol>

@@ -178,10 +178,10 @@ public class CouncilContext {
     /** @return Non-terminal warnings accumulated during the run. */
     public List<String> warnings() { return List.copyOf(warnings); }
 
-    /** Record a sycophancy warning detected during debate. Gap 1.3. */
+    /** Record a sycophancy warning detected during debate.*/
     public void addSycophancyWarning(String warning) { sycophancyWarnings.add(warning); }
 
-    /** @return Sycophancy warnings detected during debate rounds. Gap 1.3. */
+    /** @return Sycophancy warnings detected during debate rounds.*/
     public List<String> sycophancyWarnings() { return List.copyOf(sycophancyWarnings); }
 
     // ── Terminal state 

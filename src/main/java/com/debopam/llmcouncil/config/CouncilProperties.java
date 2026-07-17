@@ -50,11 +50,11 @@ public class CouncilProperties {
         /** Base delay in milliseconds before the first retry; doubled on each subsequent attempt. */
         private long retryBaseDelayMs = 1000L;
 
-        // ── Gap 1.1 (Adversarial Roles): debate persona for this model. 
+        // (Adversarial Roles): debate persona for this model. 
         // PROPOSER is the default; CRITIC models get adversarial prompts.
         private CouncilRole councilRole = CouncilRole.PROPOSER;
 
-        // ── Gap 1.2 (Model Heterogeneity): architecture family tag. 
+        // (Model Heterogeneity): architecture family tag. 
         // Used by the configuration validator to warn when all council members
         // share the same model family (e.g., all "llama" or all "gpt").
         private String modelFamily;

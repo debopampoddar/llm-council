@@ -127,7 +127,7 @@ public class PromptBuilder {
                                              """.formatted(drafts.get(i).draftId(), drafts.get(i).text()))
                                      .collect(Collectors.joining("\n\n"));
 
-        // ── Gap 1.4 (Review Prompt Reframing) 
+        // (Review Prompt Reframing) 
         // Research shows that prompts asking "find issues/errors" cause LLMs
         // to hallucinate criticisms to appear thorough. Reframed to:
         //   - "What would you improve?" instead of "What errors exist?"
@@ -389,7 +389,7 @@ public class PromptBuilder {
      * Role-aware generation prompt that varies system instructions based on
      * the model's assigned {@link CouncilRole}.
      *
-     * <p><b>Gap 1.1 (Adversarial Roles):</b> CRITIC models are prompted to
+     * <p><b>(Adversarial Roles):</b> CRITIC models are prompted to
      * challenge conventional wisdom and surface edge cases. SYNTHESIZER models
      * are prompted to find common ground across diverse perspectives.
      *
@@ -469,7 +469,7 @@ public class PromptBuilder {
      * Role-aware debate prompt that adds persona-specific instructions to the
      * base debate rules.
      *
-     * <p><b>Gap 1.1 (Adversarial Roles):</b> CRITIC models are explicitly
+     * <p><b>(Adversarial Roles):</b> CRITIC models are explicitly
      * instructed to challenge the emerging consensus. SYNTHESIZER models are
      * told to find common ground and propose integrative positions.
      *

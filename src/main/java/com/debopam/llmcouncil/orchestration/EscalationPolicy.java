@@ -4,7 +4,7 @@ package com.debopam.llmcouncil.orchestration;
  * Defines how the council should handle persistent disagreement between
  * reviewers/debaters after scoring and/or debate stages.
  *
- * <p><b>Gap 2.3 (Disagreement Escalation):</b> when score variance remains
+ * <p><b>(Disagreement Escalation):</b> when score variance remains
  * high after debate, the council should not silently proceed to synthesis.
  * Instead, the escalation policy determines the appropriate response.
  *

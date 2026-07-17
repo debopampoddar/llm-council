@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 /**
  * REVISE stage: each member model revises its draft incorporating debate insights.
  *
- * <p><b>Gap 4.3 (Post-Debate Draft Revision):</b> after the DEBATE stage, each
+ * <p><b>(Post-Debate Draft Revision):</b> after the DEBATE stage, each
  * model produces a revised answer that addresses legitimate criticisms, incorporates
  * strong counterarguments, and retains its original position where evidence supports
  * it. This gives drafts a chance to evolve before the second scoring pass.

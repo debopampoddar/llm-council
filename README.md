@@ -1,6 +1,6 @@
 # LLM Council
 
-LLM Council is a Java 25 / Spring Boot library and service for running a configurable council of language models. A caller submits a question, chooses a profile such as `local`, `oci`, or `hybrid`, and chooses a depth mode such as `QUICK`, `BALANCED`, or `RIGOROUS`. The application resolves that request to an internal policy and protocol, collects independent model drafts, reviews and scores them, optionally debates disagreements, synthesizes a final answer, and validates it with a Fresh Eyes model.
+LLM Council is a Java 25 / Spring Boot library and service for running a configurable council of language models. A caller submits a question, chooses a profile such as `local`, `oci`, `hybrid`, `gemini`, or `multi-cloud`, and chooses a depth mode such as `QUICK`, `BALANCED`, or `RIGOROUS`. The application resolves that request to an internal policy and protocol, collects independent model drafts, reviews and scores them, optionally debates disagreements, synthesizes a final answer, and validates it with a Fresh Eyes model.
 
 The public API does not accept raw protocol IDs. Protocols are owned by application configuration so users cannot bypass validation, quorum, or cost controls.
 
@@ -8,7 +8,7 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 
 ### Core Council Engine
 - Profile plus depth policy resolution.
-- Separate local, OCI/OpenAI-compatible, hybrid, and explicit mock profiles.
+- Separate local, OCI/OpenAI-compatible, hybrid, Gemini, multi-cloud, and explicit mock profiles.
 - Config-owned protocols: `quick`, `balanced`, and `rigorous`.
 - Quorum enforcement before synthesis.
 - Explicit unavailable-provider failures instead of silent mock fallback.
@@ -41,6 +41,13 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - **Minimum debate rounds**: prevents premature convergence from sycophantic first-round agreement.
 - **Immutable ModelRegistry**: constructor-injected via `@Bean` — no mutable post-construction registration.
 
+### Multi-Provider Support
+- **Credential auto-detection**: providers activate automatically when real API keys are set. Placeholder keys (e.g. `unused-development-placeholder`) are detected and ignored — no explicit "enabled" flags needed.
+- **Google Gemini / Vertex AI**: `spring-ai-starter-model-vertex-ai-gemini` with conditional activation. Supports both Application Default Credentials (ADC) and service account JSON.
+- **Pre-built profiles**: `gemini` (Gemini-only), `multi-cloud` (Ollama + Gemini + Anthropic/OpenAI) with full QUICK/BALANCED/RIGOROUS policy sets.
+- **Startup provider banner**: logs which providers were auto-detected at boot.
+- **Graceful degradation**: models on disabled providers fall through to `UnavailableModelClient` with actionable error messages.
+
 ### Testing
 - 70 JUnit tests: policy resolution, parsing, quorum, KS convergence math, sycophancy detection, all scoring strategies, retry logic, and full protocol integration.
 
@@ -50,6 +57,10 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Maven 3.9+.
 - Optional local model runtime: Ollama, either as the macOS app/background service or via `ollama serve`.
 - Optional OCI/OpenAI-compatible runtime: Oracle Code Assist LiteLLM, OCI OpenAI-compatible endpoint, or another Spring AI OpenAI-compatible endpoint.
+- Optional cloud providers (auto-detected via API keys):
+  - **OpenAI**: set `SPRING_AI_OPENAI_API_KEY=sk-...`
+  - **Anthropic**: set `SPRING_AI_ANTHROPIC_API_KEY=sk-ant-...`
+  - **Gemini / Vertex AI**: set `GOOGLE_CLOUD_PROJECT=my-project` and authenticate via `gcloud auth application-default login` or `GOOGLE_APPLICATION_CREDENTIALS`
 
 The project intentionally keeps Java 25 in `pom.xml`:
 

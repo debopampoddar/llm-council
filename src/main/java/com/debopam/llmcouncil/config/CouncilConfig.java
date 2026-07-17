@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.vertexai.gemini.VertexAiGeminiChatModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -33,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -41,11 +43,32 @@ import java.util.stream.Collectors;
  * <p>Model profiles and clients are constructed inside the {@link #modelRegistry()}
  * bean method, which produces an immutable {@link ModelRegistry}. Protocol
  * registration and cross-cutting validation remain in {@link #initRegistries()}.
+ *
+ * <h3>Provider Auto-Detection</h3>
+ * <p>Cloud providers (OpenAI, Anthropic, Gemini) are auto-detected by inspecting
+ * their configured API keys or GCP project ID. If the value is a known
+ * placeholder (e.g. {@code "unused-development-placeholder"}) or blank, the
+ * provider is considered inactive and models using it fall through to
+ * {@link UnavailableModelClient}. No explicit "enabled" flags are needed —
+ * just set a real API key and the provider activates automatically.
  */
 @Configuration
 public class CouncilConfig {
 
     private static final Logger log = LoggerFactory.getLogger(CouncilConfig.class);
+
+    // ── Known placeholder strings that indicate a provider is NOT configured.
+    // Spring AI auto-config requires these to boot without errors, but they
+    // must never be treated as real credentials.
+    private static final Set<String> PLACEHOLDER_KEYS = Set.of(
+            "unused-development-placeholder",
+            "placeholder",
+            "your-api-key-here",
+            "changeme",
+            "CHANGEME",
+            "none",
+            "test"
+    );
 
     private final CouncilProperties props;
     private final ProtocolDefinitionRegistry protocolRegistry;
@@ -55,8 +78,18 @@ public class CouncilConfig {
     private final Integer ollamaNumThread;
     private final String ollamaKeepAlive;
 
+    // ── API keys / credentials injected from configuration.
+    // These are inspected at startup to auto-detect which providers are available.
+    private final String openAiApiKey;
+    private final String anthropicApiKey;
+    private final String geminiProjectId;
+
+    // ── Provider ChatModel beans — injected optionally by Spring AI auto-config.
+    // Each starter creates its bean when on the classpath; we only USE the bean
+    // if the corresponding credential passes the placeholder check.
     @Autowired(required = false) private OpenAiChatModel openAiChatModel;
     @Autowired(required = false) private AnthropicChatModel anthropicChatModel;
+    @Autowired(required = false) private VertexAiGeminiChatModel geminiChatModel;
 
     public CouncilConfig(CouncilProperties props,
                          ProtocolDefinitionRegistry protocolRegistry,
@@ -64,7 +97,10 @@ public class CouncilConfig {
                          @Value("${spring.ai.ollama.base-url:http://localhost:11434}") String ollamaBaseUrl,
                          @Value("${spring.ai.ollama.chat.options.num-ctx:4096}") Integer ollamaNumCtx,
                          @Value("${spring.ai.ollama.chat.options.num-thread:0}") Integer ollamaNumThread,
-                         @Value("${spring.ai.ollama.chat.options.keep_alive:10m}") String ollamaKeepAlive) {
+                         @Value("${spring.ai.ollama.chat.options.keep_alive:10m}") String ollamaKeepAlive,
+                         @Value("${spring.ai.openai.api-key:}") String openAiApiKey,
+                         @Value("${spring.ai.anthropic.api-key:}") String anthropicApiKey,
+                         @Value("${spring.ai.vertex.ai.gemini.project-id:}") String geminiProjectId) {
         this.props = props;
         this.protocolRegistry = protocolRegistry;
         this.configurationValidator = configurationValidator;
@@ -72,6 +108,9 @@ public class CouncilConfig {
         this.ollamaNumCtx = ollamaNumCtx;
         this.ollamaNumThread = ollamaNumThread;
         this.ollamaKeepAlive = ollamaKeepAlive;
+        this.openAiApiKey = openAiApiKey;
+        this.anthropicApiKey = anthropicApiKey;
+        this.geminiProjectId = geminiProjectId;
     }
 
     @Bean
@@ -180,6 +219,10 @@ public class CouncilConfig {
      * <p>Mock and unavailable clients are returned as-is. All other (real)
      * clients are wrapped in a {@link RetryableModelClient} using the per-model
      * retry configuration from {@link CouncilProperties.ModelProps}.
+     *
+     * <p>Cloud providers are auto-detected: the provider's API key or GCP
+     * project ID is checked against known placeholder values. If it looks
+     * real and the ChatModel bean exists, the provider is active.
      */
     private ModelClient buildClient(CouncilProperties.ModelProps mp) {
         // Mock clients never need retry wrapping.
@@ -188,19 +231,31 @@ public class CouncilConfig {
         }
 
         // Build the raw provider-specific client.
+        // Each cloud provider is auto-detected by inspecting its API key or
+        // project ID. If the credential is a placeholder, the model falls
+        // through to UnavailableModelClient. Ollama is always available.
         ModelClient raw = switch (mp.getProvider().toLowerCase()) {
-            case "openai" -> openAiChatModel != null
+            case "openai" -> hasRealCredential(openAiApiKey) && openAiChatModel != null
                              ? new SpringAiModelClient(mp.getId(), ChatClient.create(openAiChatModel))
-                             : fallbackClient(mp, "OpenAI ChatModel bean is not configured");
-            case "anthropic" -> anthropicChatModel != null
+                             : fallbackClient(mp, "OpenAI not available — provide a real "
+                                 + "SPRING_AI_OPENAI_API_KEY (current key is a placeholder or missing).");
+            case "anthropic" -> hasRealCredential(anthropicApiKey) && anthropicChatModel != null
                                 ? new SpringAiModelClient(mp.getId(), ChatClient.create(anthropicChatModel))
-                                : fallbackClient(mp, "Anthropic ChatModel bean is not configured");
+                                : fallbackClient(mp, "Anthropic not available — provide a real "
+                                    + "SPRING_AI_ANTHROPIC_API_KEY (current key is a placeholder or missing).");
+            case "gemini", "vertex-ai", "google" -> hasRealCredential(geminiProjectId) && geminiChatModel != null
+                                ? new SpringAiModelClient(mp.getId(), ChatClient.create(geminiChatModel))
+                                : fallbackClient(mp, "Gemini/Vertex AI not available — provide "
+                                    + "GOOGLE_CLOUD_PROJECT (for Vertex AI with ADC) or configure "
+                                    + "Gemini API key access. Current project ID is blank or missing.");
             case "ollama" -> new OllamaDirectModelClient(mp.getId(), ollamaBaseUrl,
                                                           ollamaNumCtx, ollamaNumThread, ollamaKeepAlive);
-            case "oci", "oci-openai", "openai-compatible" -> openAiChatModel != null
+            case "oci", "oci-openai", "openai-compatible" -> hasRealCredential(openAiApiKey) && openAiChatModel != null
                              ? new SpringAiModelClient(mp.getId(), ChatClient.create(openAiChatModel))
-                             : fallbackClient(mp, "OpenAI-compatible/OCI ChatModel bean is not configured");
-            default -> fallbackClient(mp, "unsupported provider '" + mp.getProvider() + "'");
+                             : fallbackClient(mp, "OpenAI-compatible/OCI not available — provide a real "
+                                 + "SPRING_AI_OPENAI_API_KEY and SPRING_AI_OPENAI_BASE_URL.");
+            default -> fallbackClient(mp, "unsupported provider '" + mp.getProvider() + "'. "
+                           + "Supported: openai, anthropic, gemini, ollama, oci, openai-compatible, mock");
         };
 
         // Wrap with retry logic unless the client is a mock or unavailable
@@ -230,6 +285,31 @@ public class CouncilConfig {
         }
         log.warn("Configured model {} is unavailable: {}", mp.getId(), reason);
         return new UnavailableModelClient(mp.getId(), reason);
+    }
+
+    /**
+     * Checks whether a credential value is a real, usable credential.
+     *
+     * <p>Returns {@code false} if the value is null, blank, or matches any
+     * known placeholder string used in development configuration. This
+     * approach auto-detects provider availability without requiring explicit
+     * "enabled" flags — just set a real API key and the provider activates.
+     *
+     * @param credential the API key or project ID to inspect
+     * @return true if the value looks like a real credential
+     */
+    static boolean hasRealCredential(String credential) {
+        if (credential == null || credential.isBlank()) {
+            return false;
+        }
+        String trimmed = credential.trim();
+        // Reject known placeholder strings (case-insensitive for safety).
+        for (String placeholder : PLACEHOLDER_KEYS) {
+            if (trimmed.equalsIgnoreCase(placeholder)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void validateConfiguration(Map<String, ModelProfile> models,
