@@ -153,7 +153,7 @@ public class CouncilConfigurationValidator {
     }
 
     /**
-     * Gap 1.2 — Warn (do not fail) when a policy's member models all belong to
+     *— Warn (do not fail) when a policy's member models all belong to
      * the same model family. Homogeneous councils are more susceptible to shared
      * biases and correlated errors.
      */

@@ -25,11 +25,11 @@ import java.util.regex.Pattern;
  * Uses the KS convergence test (Hu et al., NeurIPS 2025) to stop early
  * when agent confidence distributions stabilise.
  *
- * <p><b>Gap 4.2 – Minimum Debate Rounds:</b> A configurable {@code min-rounds}
+ * <p><b>Minimum Debate Rounds:</b> A configurable {@code min-rounds}
  * parameter prevents convergence detection from firing until enough rounds have
  * completed, mitigating premature convergence from sycophantic early agreement.
  *
- * <p><b>Gap 4.4 – Robust Confidence Parsing:</b> Multiple regex patterns handle
+ * <p><b>Robust Confidence Parsing:</b> Multiple regex patterns handle
  * the varied confidence formats that different LLMs produce (e.g., decimal
  * scales, percentages, prose phrasing). Unparseable values return
  * {@link OptionalInt#empty()} instead of a hard-coded default, so they do not

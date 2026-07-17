@@ -16,10 +16,12 @@ LLM Council does:
 
 ```text
 question
-  -> independent model drafts
+  -> independent model drafts (role-aware: PROPOSER, CRITIC, SYNTHESIZER)
   -> anonymous review
-  -> scoring
-  -> optional debate
+  -> scoring (pluggable: confidence-weighted, median, trimmed-mean, average)
+  -> optional debate (with sycophancy detection)
+  -> optional draft revision (post-debate)
+  -> optional post-debate re-review
   -> chair synthesis
   -> Fresh Eyes validation
   -> answer plus audit trail
@@ -294,6 +296,109 @@ Use `http://localhost:11434` when the Java service runs on the host beside a
 native Ollama process. Use `http://ollama:11434` when the Java service runs
 inside the Docker Compose network.
 
+## Provider Configuration
+
+LLM Council supports multiple LLM providers. Each cloud provider **auto-activates** when its API key or GCP project ID is set to a real value. No explicit "enabled" flags are needed — placeholder credentials are detected and ignored automatically.
+
+### Supported Providers
+
+| Provider | Config Value | Credential | How It Activates |
+|---|---|---|---|
+| Ollama | `ollama` | None (local) | Always available |
+| OpenAI | `openai` | `SPRING_AI_OPENAI_API_KEY` | Auto-detects real key (not a placeholder) |
+| Anthropic | `anthropic` | `SPRING_AI_ANTHROPIC_API_KEY` | Auto-detects real key (not a placeholder) |
+| Gemini / Vertex AI | `gemini` | `GOOGLE_CLOUD_PROJECT` + ADC or SA | Auto-detects real project ID |
+| OCI/OpenAI-compatible | `openai-compatible` | `SPRING_AI_OPENAI_API_KEY` + `SPRING_AI_OPENAI_BASE_URL` | Uses OpenAI detection |
+| Mock | `mock` | None | Always available (test-only) |
+
+### How Auto-Detection Works
+
+At startup, each provider's configured API key is inspected. If the key matches a known placeholder value (like `unused-development-placeholder`) or is blank, the provider is marked as unavailable. If the key looks real, the provider activates automatically.
+
+The startup banner shows what was detected:
+
+```text
+╔══════════════════════════════════════════════════╗
+║       LLM Council — Provider Status              ║
+╠══════════════════════════════════════════════════╣
+║  OpenAI             ⬚  NOT CONFIGURED            ║
+║  Anthropic          ⬚  NOT CONFIGURED            ║
+║  Gemini             ✅ DETECTED (auto)           ║
+║  Ollama .............. ✅ ALWAYS AVAILABLE       ║
+║  Mock ................ ✅ ALWAYS AVAILABLE       ║
+╚══════════════════════════════════════════════════╝
+```
+
+### Gemini / Vertex AI Setup
+
+Gemini uses Google Cloud Vertex AI. Two authentication options:
+
+**Option 1: Application Default Credentials (ADC)** — simplest for development:
+
+```bash
+# Authenticate with GCP
+gcloud auth application-default login
+
+# Set project (this is what triggers auto-detection)
+export GOOGLE_CLOUD_PROJECT=my-project-id
+export GOOGLE_CLOUD_LOCATION=us-central1  # optional, defaults to us-central1
+
+# Start the application — Gemini auto-activates
+java -jar target/llm-council-2.0.0.jar
+```
+
+**Option 2: Service account JSON** — for CI/CD and production:
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+export GOOGLE_CLOUD_PROJECT=my-project-id
+```
+
+Then use the Gemini profile:
+
+```json
+{
+  "question": "Evaluate this microservices architecture.",
+  "depthMode": "BALANCED",
+  "profileId": "gemini"
+}
+```
+
+### Anthropic Setup
+
+Just set the API key — the provider auto-activates:
+
+```bash
+export SPRING_AI_ANTHROPIC_API_KEY=sk-ant-...
+```
+
+### OpenAI Direct Setup
+
+```bash
+export SPRING_AI_OPENAI_API_KEY=sk-...
+```
+
+### Multi-Cloud Council
+
+For maximum model diversity, set multiple credentials:
+
+```bash
+export GOOGLE_CLOUD_PROJECT=my-project
+export SPRING_AI_ANTHROPIC_API_KEY=sk-ant-...
+
+java -jar target/llm-council-2.0.0.jar
+```
+
+```json
+{
+  "question": "Should we adopt event sourcing?",
+  "depthMode": "RIGOROUS",
+  "profileId": "multi-cloud"
+}
+```
+
+This runs drafts across Ollama (local), Gemini, and Anthropic models simultaneously, maximizing architectural diversity in the council.
+
 ### Profiles
 
 Profiles are user-facing:
@@ -308,7 +413,16 @@ profiles:
       RIGOROUS: hybrid-rigorous
 ```
 
-Profiles can be local-only, OCI/OpenAI-compatible only, or hybrid.
+Profiles can be local-only, OCI/OpenAI-compatible only, hybrid, Gemini-only, or multi-cloud.
+
+| Profile | Purpose |
+|---|---|
+| `local` | Ollama-only local council. Private or offline-capable runs. |
+| `oci` | OCI/OpenAI-compatible council. Oracle Code Assist, OCI, or another endpoint. |
+| `hybrid` | Local models for draft diversity plus OCI/OpenAI-compatible chair and validator. |
+| `gemini` | Google Gemini (Vertex AI) only. Requires `COUNCIL_GEMINI_ENABLED=true`. |
+| `multi-cloud` | Maximum diversity: Ollama + Gemini + Anthropic/OpenAI. Requires enabled providers. |
+| `mock` | Test-only deterministic profile. Use for smoke tests, not real answers. |
 
 ### Policies
 
@@ -340,6 +454,9 @@ Protocols define stage order:
 ```yaml
 balanced:
   orderedStages: [GENERATE, ANONYMIZE, REVIEW, SCORE, SYNTHESIZE, VALIDATE]
+
+rigorous:
+  orderedStages: [GENERATE, ANONYMIZE, REVIEW, SCORE, DEBATE, REVISE, REVIEW_POST_DEBATE, SCORE, SYNTHESIZE, VALIDATE, EXPORT]
 ```
 
 The app ships with:
@@ -369,10 +486,12 @@ Use this for normal engineering decisions.
 ### RIGOROUS
 
 ```text
-GENERATE -> ANONYMIZE -> REVIEW -> SCORE -> DEBATE -> SCORE -> SYNTHESIZE -> VALIDATE -> EXPORT
+GENERATE -> ANONYMIZE -> REVIEW -> SCORE -> DEBATE -> REVISE -> REVIEW_POST_DEBATE -> SCORE -> SYNTHESIZE -> VALIDATE -> EXPORT
 ```
 
 Use this for architecture, risk, or design decisions where the extra cost is justified.
+
+The `REVISE` stage lets each model incorporate debate arguments into a revised draft. The `REVIEW_POST_DEBATE` stage asks reviewers to re-evaluate with debate context, so the second `SCORE` pass operates on genuinely updated evidence.
 
 ## Stage Details
 
@@ -388,9 +507,10 @@ What it does:
 
 1. Fans out the question to each member model in the policy.
 2. Runs calls on virtual threads.
-3. Stores successful drafts in `CouncilContext`.
-4. Records failed models in `excludedModels`.
-5. Enforces `minimumSuccessfulDrafts`.
+3. Uses role-aware prompts — `PROPOSER` gets standard generation, `CRITIC` gets adversarial prompts, `SYNTHESIZER` gets bridge-building prompts.
+4. Stores successful drafts in `CouncilContext`.
+5. Records failed models in `excludedModels`.
+6. Enforces `minimumSuccessfulDrafts`.
 
 Business rule:
 
@@ -466,11 +586,19 @@ What it does:
 
 1. Groups reviews by draft ID.
 2. Checks review quorum per draft.
-3. Averages criteria and overall scores.
+3. Aggregates scores using the configured scoring strategy (default: confidence-weighted).
 4. Creates `ScoreArtifact` per draft.
 5. Creates `ScoreSummary` with variance and winning draft.
+6. If post-debate variance exceeds threshold, triggers escalation policy.
 
-Debate uses score variance to decide if disagreement is large enough to discuss.
+Available scoring strategies (selectable per protocol stage via `scoring-strategy` option):
+
+| Strategy | Description |
+|---|---|
+| `confidence-weighted` | Default. Weights reviews by reviewer confidence. |
+| `average` | Simple arithmetic mean. |
+| `median` | Robust to outliers. |
+| `trimmed-mean` | Drops highest and lowest, then averages. |
 
 ### DEBATE
 
@@ -483,11 +611,50 @@ DebateStageExecutor
 What it does:
 
 1. Checks whether debate is forced or score variance exceeds threshold.
-2. Runs bounded debate rounds.
-3. Parses confidence from each contribution.
-4. Stops early if confidence distributions converge.
+2. Runs bounded debate rounds (minimum 2 by default to prevent premature convergence).
+3. Uses role-aware debate prompts — `CRITIC` models are explicitly instructed to challenge consensus.
+4. Parses confidence from each contribution using multi-pattern extraction.
+5. Detects sycophancy via Jaccard word similarity + confidence delta toward majority.
+6. Stops early if confidence distributions converge (KS statistic below threshold).
+
+Sycophancy detection formula:
+
+```text
+sycophancyIndex = textSimilarity × (confidenceDelta / 100)
+```
 
 This is intentionally bounded. More debate is not automatically better.
+
+### REVISE
+
+Class:
+
+```text
+RevisionStageExecutor
+```
+
+What it does:
+
+1. After debate, each member model receives its original draft plus debate transcript.
+2. The model produces a revised draft incorporating the strongest debate arguments.
+3. Revised drafts replace originals in context (same draft ID for lineage tracking).
+4. If a model fails to revise, its original draft is retained.
+5. System prompt explicitly prevents blind capitulation to majority.
+
+### REVIEW_POST_DEBATE
+
+Class:
+
+```text
+ReviewPostDebateStageExecutor
+```
+
+What it does:
+
+1. Reviewers re-evaluate drafts considering the debate transcript.
+2. Uses `postDebateReviewMessages()` — the prompt includes debate history alongside drafts.
+3. Post-debate reviews are added to context, so the second SCORE pass uses genuinely updated evidence.
+4. System prompt: "Do not simply copy your pre-debate review."
 
 ### SYNTHESIZE
 
@@ -817,9 +984,19 @@ Then choose:
 
 Add a model:
 
-1. Add model under `council.models`.
+1. Add model under `council.models` with the appropriate provider name.
 2. Add it to a policy's `memberModelIds`, `chairModelId`, or `validatorModelId`.
-3. Ensure the provider bean exists or implement a provider-specific `ModelClient`.
+3. Ensure the provider is activated (`council.providers.<name>.enabled=true`).
+4. Set the model's `councilRole` for debate persona (PROPOSER, CRITIC, SYNTHESIZER).
+5. Set `modelFamily` for heterogeneity validation.
+
+Add a provider:
+
+1. Add the Spring AI starter dependency to `pom.xml`.
+2. Inject the `ChatModel` bean in `CouncilConfig` with `@Autowired(required = false)`.
+3. Add a case to `buildClient()` gated by `isProviderActive()`.
+4. Add a provider activation flag under `council.providers` in `application.yml`.
+5. Add model entries with the new provider name.
 
 Add a protocol:
 
@@ -839,7 +1016,6 @@ Add a stage:
 - Artifact storage is local file only.
 - Spring AI provider-specific option support is intentionally conservative.
 - Review repair prompts are not implemented yet; malformed review JSON excludes that reviewer.
-- Debate output is still text plus confidence parsing.
 - Authentication and authorization are not implemented on the API.
 - Chat API V1 and live SSE exist, but they are demo-grade: no durable chat
   store, no cancellation, no queued run recovery, no SSE reconnect cursor, and

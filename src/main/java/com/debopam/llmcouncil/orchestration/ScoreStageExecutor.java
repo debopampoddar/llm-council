@@ -16,12 +16,12 @@ import java.util.Map;
  * SCORE stage: assigns numeric scores to each draft by aggregating
  * peer-review artifacts using a pluggable {@link ScoringStrategy}.
  *
- * <p><b>Gap 2.1 (Confidence-Weighted Scoring):</b> the default strategy is
+ * <p><b>(Confidence-Weighted Scoring):</b> the default strategy is
  * {@link ConfidenceWeightedScoringStrategy}, which weights each reviewer's
  * scores by their self-reported confidence (0.0–1.0). This gives more
  * influence to reviewers who are confident in their assessment.
  *
- * <p><b>Gap 2.2 (Pluggable Scoring Strategies):</b> the strategy is selected
+ * <p><b>(Pluggable Scoring Strategies):</b> the strategy is selected
  * via the {@code scoring-strategy} stage option in protocol configuration.
  * Supported values:
  * <ul>
@@ -59,7 +59,7 @@ public class ScoreStageExecutor implements StageExecutor {
                 ctx.debateRounds().isEmpty() ? "initial" : "post-debate");
 
         // Select the scoring strategy from protocol stage configuration.
-        // Default: confidence-weighted (Gap 2.1 recommendation).
+        // Default: confidence-weighted.
         ScoringStrategy strategy = resolveStrategy(opts.getString("scoring-strategy", "confidence-weighted"));
         log.debug("SCORE stage using strategy: {}", strategy.name());
 
@@ -98,7 +98,7 @@ public class ScoreStageExecutor implements StageExecutor {
         }
 
         // Produce the summary for downstream debate-trigger and synthesis stages.
-        // ── Gap 2.3 (Disagreement Escalation): check if post-debate scoring
+        // (Disagreement Escalation): check if post-debate scoring
         // still shows high variance and apply the configured escalation policy.
         double escalationThreshold = opts.getDouble("escalation-variance-threshold", 120.0);
         String policyStr = opts.getString("escalation-policy", "SYNTHESIZE_WITH_DISSENT");
@@ -153,7 +153,7 @@ public class ScoreStageExecutor implements StageExecutor {
             case "average"           -> new AverageScoringStrategy();
             case "median"            -> new MedianScoringStrategy();
             case "trimmed-mean"      -> new TrimmedMeanScoringStrategy();
-            // Default to confidence-weighted (Gap 2.1 recommendation).
+            // Default to confidence-weighted.
             default                  -> new ConfidenceWeightedScoringStrategy();
         };
     }
@@ -179,7 +179,7 @@ public class ScoreStageExecutor implements StageExecutor {
      * Compute aggregate statistics across all scored drafts for this stage run.
      * The variance drives the debate trigger (high variance = high disagreement).
      *
-     * <p><b>Gap 2.3:</b> For post-debate scoring runs, if variance still exceeds
+     * <p> For post-debate scoring runs, if variance still exceeds
      * the escalation threshold, the summary is marked as escalated.
      *
      * @param scores              All score artifacts produced in this stage run.

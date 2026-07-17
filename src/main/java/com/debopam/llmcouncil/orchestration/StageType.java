@@ -3,10 +3,10 @@ package com.debopam.llmcouncil.orchestration;
 /**
  * All protocol stages that can appear in a protocol's {@code orderedStages} list.
  *
- * <p><b>Gap 2.4 (Post-Debate Re-Review):</b> {@link #REVIEW_POST_DEBATE} runs
+ * <p><b>(Post-Debate Re-Review):</b> {@link #REVIEW_POST_DEBATE} runs
  * a second peer review after debate so reviewers can incorporate debate arguments.
  *
- * <p><b>Gap 4.3 (Post-Debate Draft Revision):</b> {@link #REVISE} asks each
+ * <p><b>(Post-Debate Draft Revision):</b> {@link #REVISE} asks each
  * member model to produce a revised draft incorporating debate insights.
  */
 public enum StageType {

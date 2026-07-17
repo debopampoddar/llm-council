@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * Aggregate scoring view used by debate triggers and final synthesis.
  *
- * <p><b>Gap 2.3 (Disagreement Escalation):</b> the {@code escalated} and
+ * <p><b>(Disagreement Escalation):</b> the {@code escalated} and
  * {@code escalationPolicy} fields indicate whether the score variance exceeds
  * the post-debate threshold and what action should be taken. Downstream
  * stages (SYNTHESIZE, VALIDATE) can check these fields to add warnings or

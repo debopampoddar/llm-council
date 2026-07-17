@@ -7,7 +7,7 @@ import java.util.List;
  *
  * <p>Contributions with {@code confidence == -1} indicate that confidence
  * could not be parsed from the model output and are excluded from
- * convergence scoring (see Gap 4.4).
+ * convergence scoring.
  *
  * @param roundNumber   Zero-based round index.
  * @param contributions One contribution per council member.

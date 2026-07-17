@@ -6,11 +6,11 @@ import java.time.Duration;
  * Immutable metadata describing a configured model's identity, provider
  * binding, resource limits, and council personas.
  *
- * <p><b>Gap 1.1 (Adversarial Roles):</b> {@code councilRole} defines the
+ * <p><b>(Adversarial Roles):</b> {@code councilRole} defines the
  * debate persona (PROPOSER / CRITIC / SYNTHESIZER) used to vary prompts
  * during GENERATE and DEBATE stages.
  *
- * <p><b>Gap 1.2 (Model Heterogeneity):</b> {@code modelFamily} identifies
+ * <p><b>(Model Heterogeneity):</b> {@code modelFamily} identifies
  * the architecture family (e.g., "llama", "gpt", "claude") for diversity
  * validation at startup.
  *

@@ -4,7 +4,7 @@ package com.debopam.llmcouncil.model;
  * Debate persona assigned to a council member, independent of their structural
  * {@link ModelRole} (MEMBER/CHAIR/VALIDATOR).
  *
- * <p><b>Gap 1.1 (Adversarial Roles):</b> research (DeliberationBench 2025)
+ * <p><b>(Adversarial Roles):</b> research (DeliberationBench 2025)
  * shows that structurally assigning at least one model the {@link #CRITIC}
  * persona reduces groupthink errors by 15–30%. The persona determines how
  * the model's prompts are framed during GENERATE and DEBATE stages.

@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 /**
  * REVIEW_POST_DEBATE stage: post-debate peer review incorporating debate arguments.
  *
- * <p><b>Gap 2.4 (Post-Debate Re-Review):</b> the second SCORE stage in the
+ * <p><b>(Post-Debate Re-Review):</b> the second SCORE stage in the
  * rigorous protocol previously re-scored the same pre-debate reviews, making
  * it effectively redundant. This stage asks reviewers to re-evaluate drafts
  * after considering debate arguments, so the second scoring pass operates on

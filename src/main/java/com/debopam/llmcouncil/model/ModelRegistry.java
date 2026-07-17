@@ -6,7 +6,7 @@ import java.util.NoSuchElementException;
 /**
  * Immutable registry of model profiles and their backing clients.
  *
- * <p><b>Gap 6.1 (ModelRegistry Immutability):</b> previously, this class used
+ * <p><b>(ModelRegistry Immutability):</b> previously, this class used
  * mutable state populated via a {@code register()} method called from
  * {@code @PostConstruct}. The component was technically usable before
  * registration, which is a construction anti-pattern. This refactored version
