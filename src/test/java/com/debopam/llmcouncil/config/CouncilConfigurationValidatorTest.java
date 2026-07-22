@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CouncilConfigurationValidatorTest {
 
-    private final CouncilConfigurationValidator validator = new CouncilConfigurationValidator();
+    private final CouncilConfigurationValidator validator = new CouncilConfigurationValidator(4096);
 
     @Test
     void acceptsMinimalValidConfiguration() {

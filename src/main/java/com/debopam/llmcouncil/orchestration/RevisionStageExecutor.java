@@ -3,6 +3,7 @@ package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.EventPublisher;
 import com.debopam.llmcouncil.model.ModelCallException;
+import com.debopam.llmcouncil.model.ChatMessage;
 import com.debopam.llmcouncil.model.ModelCallRequest;
 import com.debopam.llmcouncil.model.ModelCallResult;
 import com.debopam.llmcouncil.model.ModelProfile;
@@ -124,13 +125,15 @@ public class RevisionStageExecutor implements StageExecutor {
         events.publish(ctx.session().id(), stage().name(), "REVISION_STARTED", modelId, Map.of());
 
         try {
+            PromptBudget budget = PromptBudget.forModel(model);
+            List<ChatMessage> messages = promptBuilder.revisionMessages(
+                    ctx.session().question(), ctx.session().context(), originalDraft,
+                    ctx.debateRounds(), budget);
+            PromptBudgets.record(ctx, events, stage(), modelId, budget);
+
             ModelCallResult result = registry.clientForModel(modelId).call(
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),
-                                         model.providerModelId(),
-                                         promptBuilder.revisionMessages(ctx.session().question(),
-                                                                         ctx.session().context(),
-                                                                         originalDraft,
-                                                                         ctx.debateRounds()),
+                                         model.providerModelId(), messages,
                                          model.defaultOutputTokens(), model.temperature(),
                                          false, model.defaultTimeout()));
 

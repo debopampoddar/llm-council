@@ -2,6 +2,7 @@
 package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.EventPublisher;
+import com.debopam.llmcouncil.model.ChatMessage;
 import com.debopam.llmcouncil.model.ModelCallRequest;
 import com.debopam.llmcouncil.model.ModelCallResult;
 import com.debopam.llmcouncil.model.ModelProfile;
@@ -9,6 +10,7 @@ import com.debopam.llmcouncil.model.ModelRegistry;
 import com.debopam.llmcouncil.persistence.ArtifactStore;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -43,12 +45,15 @@ public class SynthesisStageExecutor implements StageExecutor {
         boolean preserveDissent = opts.getBoolean("preserve-dissent", true);
         events.publish(ctx.session().id(), stage().name(), "SYNTHESIS_STARTED", chairId, Map.of());
 
+        PromptBudget budget = PromptBudget.forModel(chair);
+        List<ChatMessage> messages = promptBuilder.synthesisMessages(
+                ctx.session().question(), ctx.session().context(), ctx.drafts(), ctx.reviews(),
+                ctx.scores(), ctx.debateRounds(), preserveDissent, budget);
+        PromptBudgets.record(ctx, events, stage(), chairId, budget);
+
         ModelCallResult result = registry.clientForModel(chairId).call(
                 new ModelCallRequest(ctx.session().id(), stage(), chair.id(),
-                                     chair.providerModelId(),
-                                     promptBuilder.synthesisMessages(ctx.session().question(),
-                                                                     ctx.session().context(), ctx.drafts(), ctx.reviews(),
-                                                                     ctx.scores(), ctx.debateRounds(), preserveDissent),
+                                     chair.providerModelId(), messages,
                                      chair.defaultOutputTokens(), chair.temperature(), false, chair.defaultTimeout()));
 
         ctx.setSynthesisResult(result.text());
