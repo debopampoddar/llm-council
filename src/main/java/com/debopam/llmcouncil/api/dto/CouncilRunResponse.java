@@ -5,6 +5,8 @@ import com.debopam.llmcouncil.orchestration.ScoreSummary;
 import com.debopam.llmcouncil.orchestration.ValidationArtifact;
 import com.debopam.llmcouncil.model.ModelCallException;
 import com.debopam.llmcouncil.model.ModelFailureCategory;
+import com.debopam.llmcouncil.model.ModelProfile;
+import com.debopam.llmcouncil.model.ValidationIndependence;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -25,6 +27,7 @@ public record CouncilRunResponse(
         List<String> warnings,
         ScoreSummary scoreSummary,
         ValidationArtifact validation,
+        ValidationIndependence validationIndependence,
         String failureReason,
         String failureCategory,
         List<ModelFailureResponse> modelFailures
@@ -44,12 +47,39 @@ public record CouncilRunResponse(
                 ctx.warnings(),
                 ctx.scoreSummary().orElse(null),
                 ctx.validation().orElse(null),
+                validationIndependence(ctx),
                 ctx.failureMessage().orElse(null),
                 failureCategory(ctx),
                 ctx.modelFailures().stream()
                         .map(ModelFailureResponse::from)
                         .collect(Collectors.toList())
         );
+    }
+
+    /**
+     * Report how independent this run's validator was from its chair.
+     *
+     * <p>Surfaced on every run so a reader can tell whether a validated answer
+     * was actually checked by something with different blind spots. A run whose
+     * chair validated its own synthesis must not look identical to one that got
+     * a genuinely independent review.
+     *
+     * @param ctx the completed council context
+     * @return the independence tier, or null when the context has no catalog binding
+     */
+    private static ValidationIndependence validationIndependence(CouncilContext ctx) {
+        if (ctx.catalog() == null) {
+            return null;
+        }
+        var registry = ctx.modelRegistry();
+        ModelProfile chair = registry.findModel(ctx.policy().chairModelId()).orElse(null);
+        ModelProfile validator = registry.findModel(ctx.policy().validatorModelId()).orElse(null);
+        if (chair == null || validator == null) {
+            return ValidationIndependence.NOT_APPLICABLE;
+        }
+        return ValidationIndependence.between(
+                chair.id(), chair.modelFamily(), chair.providerModelId(),
+                validator.id(), validator.modelFamily(), validator.providerModelId());
     }
 
     private static String failureCategory(CouncilContext ctx) {
