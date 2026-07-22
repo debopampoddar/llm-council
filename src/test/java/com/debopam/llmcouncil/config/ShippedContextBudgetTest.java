@@ -50,15 +50,32 @@ class ShippedContextBudgetTest {
         appender.stop();
     }
 
+    private List<String> truncationWarnings() {
+        return appender.list.stream()
+                            .filter(event -> event.getLevel() == Level.WARN)
+                            .map(ILoggingEvent::getFormattedMessage)
+                            .filter(message -> message.contains("Synthesis prompts will be truncated"))
+                            .toList();
+    }
+
+    @Test
+    void theCheckIsLiveAndNotSilentlyDisabled() {
+        // Positive control. The assertion below is "no warnings", which a broken
+        // check satisfies just as well as a healthy configuration. Squeezing the
+        // real config into a tiny window proves the check still fires, so the
+        // absence of warnings at the real window means something.
+        new CouncilConfigurationValidator(1024).validate(props);
+
+        assertTrue(truncationWarnings().size() > 0,
+                   "the over-budget check produced no warnings even at a 1024 token window, "
+                   + "so it is disabled and the sibling assertion is vacuous");
+    }
+
     @Test
     void noShippedPolicyOverflowsItsChairContextWindow() {
         new CouncilConfigurationValidator(ollamaNumCtx).validate(props);
 
-        List<String> overBudget = appender.list.stream()
-                .filter(event -> event.getLevel() == Level.WARN)
-                .map(ILoggingEvent::getFormattedMessage)
-                .filter(message -> message.contains("Synthesis prompts will be truncated"))
-                .toList();
+        List<String> overBudget = truncationWarnings();
 
         assertTrue(overBudget.isEmpty(),
                    "shipped policies whose chair cannot hold the council's evidence:\n"

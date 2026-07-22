@@ -69,6 +69,22 @@ class SynthesisFitWarningTest {
     }
 
     @Test
+    void warnsWhenTheChairWindowIsDerivedRatherThanConfigured() {
+        // Regression guard. Local models leave contextWindowTokens unset and rely
+        // on the provider default, so a validator reading the raw configured
+        // value sees 0 and skips them — silently disabling the check for exactly
+        // the models it exists to protect. The chair below is over budget only
+        // once the window is derived from num-ctx.
+        CouncilProperties props = props(0, 1800, List.of(1200, 1200, 1200),
+                                        List.of("GENERATE", "REVIEW", "DEBATE", "SYNTHESIZE"));
+
+        new CouncilConfigurationValidator(4096).validate(props);
+
+        assertTrue(warnings().anyMatch(message -> message.contains("Synthesis prompts will be truncated")),
+                   "the check must apply to models that derive their window from the provider");
+    }
+
+    @Test
     void doesNotWarnWhenTheChairHasAmpleRoom() {
         CouncilProperties props = props(200_000, 2000, List.of(1200, 1200, 1200),
                                         List.of("GENERATE", "REVIEW", "DEBATE", "SYNTHESIZE"));
@@ -89,7 +105,11 @@ class SynthesisFitWarningTest {
         CouncilProperties props = new CouncilProperties();
 
         CouncilProperties.ModelProps chair = model("chair", ModelRole.CHAIR, chairOutput, "chair-model");
-        chair.setContextWindowTokens(chairWindow);
+        // Zero leaves the window unset so it is derived from the provider, which
+        // is how every shipped local model is configured.
+        if (chairWindow > 0) {
+            chair.setContextWindowTokens(chairWindow);
+        }
         props.getModels().add(chair);
 
         List<String> memberIds = new java.util.ArrayList<>();
