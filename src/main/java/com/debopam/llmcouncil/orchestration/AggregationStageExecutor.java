@@ -3,6 +3,7 @@ package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.EventPublisher;
 import com.debopam.llmcouncil.model.ModelCallException;
+import com.debopam.llmcouncil.model.ChatMessage;
 import com.debopam.llmcouncil.model.ModelCallRequest;
 import com.debopam.llmcouncil.model.ModelCallResult;
 import com.debopam.llmcouncil.model.ModelProfile;
@@ -53,11 +54,14 @@ public class AggregationStageExecutor implements StageExecutor {
         ModelProfile model = registry.model(modelId);
         events.publish(ctx.session().id(), stage().name(), "AGGREGATE_STARTED", modelId, Map.of());
         try {
+            PromptBudget budget = PromptBudget.forModel(model);
+            List<ChatMessage> messages = promptBuilder.aggregationMessages(
+                    ctx.session().question(), ctx.session().context(), allDrafts, modelId, budget);
+            PromptBudgets.record(ctx, events, stage(), modelId, budget);
+
             ModelCallResult result = registry.clientForModel(modelId).call(
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),
-                                         model.providerModelId(),
-                                         promptBuilder.aggregationMessages(ctx.session().question(),
-                                                                           ctx.session().context(), allDrafts, modelId),
+                                         model.providerModelId(), messages,
                                          model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()));
             events.publish(ctx.session().id(), stage().name(), "AGGREGATE_COMPLETED", modelId, Map.of());
             return new Draft(modelId + "_agg", modelId, result.text());

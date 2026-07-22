@@ -3,6 +3,7 @@ package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.EventPublisher;
 import com.debopam.llmcouncil.model.ModelCallException;
+import com.debopam.llmcouncil.model.ChatMessage;
 import com.debopam.llmcouncil.model.ModelCallRequest;
 import com.debopam.llmcouncil.model.ModelCallResult;
 import com.debopam.llmcouncil.model.ModelProfile;
@@ -63,13 +64,14 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
                            "POST_DEBATE_REVIEW_STARTED", modelId, Map.of());
             try {
                 // Use post-debate review prompt that includes debate transcript
+                PromptBudget budget = PromptBudget.forModel(model);
+                List<ChatMessage> messages = promptBuilder.postDebateReviewMessages(
+                        ctx.session().question(), ctx.drafts(), ctx.debateRounds(), budget);
+                PromptBudgets.record(ctx, events, stage(), modelId, budget);
+
                 ModelCallResult result = registry.clientForModel(modelId).call(
                         new ModelCallRequest(ctx.session().id(), stage(), model.id(),
-                                             model.providerModelId(),
-                                             promptBuilder.postDebateReviewMessages(
-                                                     ctx.session().question(),
-                                                     ctx.drafts(),
-                                                     ctx.debateRounds()),
+                                             model.providerModelId(), messages,
                                              model.defaultOutputTokens(), model.temperature(),
                                              false, model.defaultTimeout()));
 

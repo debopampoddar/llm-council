@@ -2,6 +2,7 @@ package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.EventPublisher;
 import com.debopam.llmcouncil.model.ModelCallException;
+import com.debopam.llmcouncil.model.ChatMessage;
 import com.debopam.llmcouncil.model.ModelCallRequest;
 import com.debopam.llmcouncil.model.ModelCallResult;
 import com.debopam.llmcouncil.model.ModelProfile;
@@ -42,10 +43,14 @@ public class ReviewStageExecutor implements StageExecutor {
             ModelProfile model = registry.model(modelId);
             events.publish(ctx.session().id(), stage().name(), "REVIEW_STARTED", modelId, Map.of());
             try {
+                PromptBudget budget = PromptBudget.forModel(model);
+                List<ChatMessage> messages =
+                        promptBuilder.reviewMessages(ctx.session().question(), ctx.drafts(), budget);
+                PromptBudgets.record(ctx, events, stage(), modelId, budget);
+
                 ModelCallResult result = registry.clientForModel(modelId).call(
                         new ModelCallRequest(ctx.session().id(), stage(), model.id(),
-                                             model.providerModelId(),
-                                             promptBuilder.reviewMessages(ctx.session().question(), ctx.drafts()),
+                                             model.providerModelId(), messages,
                                              model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()));
                 artifactStore.writeText(ctx.session().id(), "raw/review-" + modelId + ".json", result.text());
                 List<ReviewArtifact> parsed = parser.parseReviews(result.text()).reviews().stream()

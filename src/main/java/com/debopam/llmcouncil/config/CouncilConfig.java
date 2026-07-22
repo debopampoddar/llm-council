@@ -178,7 +178,8 @@ public class CouncilConfig {
                     mp.getId(), mp.getProvider(), mp.getProviderModelId(),
                     mp.getDefaultOutputTokens(), mp.getTemperature(),
                     Duration.ofSeconds(mp.getTimeoutSeconds()), mp.getRole(),
-                    mp.getCouncilRole(), mp.getModelFamily());
+                    mp.getCouncilRole(), mp.getModelFamily(),
+                    contextWindowTokensFor(mp));
             profiles.put(mp.getId(), profile);
 
             // Build the client and optionally wrap with retry logic.
@@ -277,6 +278,22 @@ public class CouncilConfig {
         policyIds.forEach(id -> origins.put(CouncilCatalog.key("policy", id), ConfigOrigin.BUILT_IN));
         protocolIds.forEach(id -> origins.put(CouncilCatalog.key("protocol", id), ConfigOrigin.BUILT_IN));
         return origins;
+    }
+
+    /**
+     * Resolve a model's context window, deriving a default when unset.
+     *
+     * <p>The default deliberately matches what the runtime actually gives you
+     * rather than what the model architecture supports. Ollama serves
+     * {@code spring.ai.ollama.chat.options.num-ctx} regardless of the model's
+     * theoretical window, so budgeting against the architecture figure would
+     * overflow the runtime and lose content silently.
+     *
+     * @param mp the model configuration
+     * @return context window in tokens, or 0 when unknown (budgeting disabled)
+     */
+    private int contextWindowTokensFor(CouncilProperties.ModelProps mp) {
+        return ModelContextWindows.resolve(mp, ollamaNumCtx);
     }
 
     /**
