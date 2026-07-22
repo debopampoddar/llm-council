@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Local development artifact store rooted at `council.persistence.artifactBasePath`.
@@ -63,9 +64,34 @@ public class LocalArtifactStore implements ArtifactStore {
         }
     }
 
+    @Override
+    public Optional<String> readArtifact(String sessionId, String relativePath) {
+        Path target = resolve(sessionId, relativePath);
+        if (!Files.isRegularFile(target)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(Files.readString(target, StandardCharsets.UTF_8));
+        } catch (IOException ex) {
+            throw new IllegalStateException("Unable to read artifact " + target, ex);
+        }
+    }
+
+    /**
+     * Resolve an artifact path inside a session directory.
+     *
+     * <p>Both paths are made absolute before comparison. Normalising a relative
+     * base would let a crafted {@code relativePath} climb out of it, so the
+     * containment check is only meaningful on absolute, normalised paths.
+     *
+     * @param sessionId    the session the artifact belongs to
+     * @param relativePath the artifact path relative to the session directory
+     * @return the resolved absolute path
+     * @throws IllegalArgumentException if the resolved path escapes the session directory
+     */
     private Path resolve(String sessionId, String relativePath) {
-        Path sessionPath = basePath.resolve(sessionId).normalize();
-        Path target = sessionPath.resolve(relativePath).normalize();
+        Path sessionPath = basePath.resolve(sessionId).toAbsolutePath().normalize();
+        Path target = sessionPath.resolve(relativePath).toAbsolutePath().normalize();
         if (!target.startsWith(sessionPath)) {
             throw new IllegalArgumentException("Artifact path escapes session directory: " + relativePath);
         }

@@ -1,10 +1,12 @@
 package com.debopam.llmcouncil.orchestration;
 
+import com.debopam.llmcouncil.config.CouncilCatalog;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.model.CouncilPolicy;
 import com.debopam.llmcouncil.model.CouncilProfile;
 import com.debopam.llmcouncil.model.ModelCallException;
 import com.debopam.llmcouncil.model.ModelProfile;
+import com.debopam.llmcouncil.model.ModelRegistry;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -37,6 +39,11 @@ public class CouncilContext {
     private final CouncilPolicy policy;
     private final ProtocolDefinition protocol;
 
+    // The configuration snapshot this run was resolved from. Held for the whole
+    // run so that reloading configuration mid-run cannot change the models,
+    // quorum, or stage options a run in progress is operating under.
+    private final CouncilCatalog catalog;
+
     // CopyOnWriteArrayList: writes are infrequent (one per model call) but
     // concurrent from virtual threads in GENERATE, AGGREGATE, and DEBATE stages.
     private final List<Draft> drafts = new CopyOnWriteArrayList<>();
@@ -57,24 +64,68 @@ public class CouncilContext {
     private volatile Throwable failureCause;
 
     /**
+     * Create a context bound to the configuration snapshot the run resolved.
+     *
      * @param session  The originating council session.
      * @param profile  The council member/chair configuration.
+     * @param policy   The resolved execution policy for this run.
+     * @param protocol The protocol currently executing.
+     * @param catalog  The configuration snapshot this run is pinned to. Always
+     *                 supplied on the production path; may be null only when a
+     *                 test constructs a context directly.
+     */
+    public CouncilContext(CouncilSession session,
+                          CouncilProfile profile,
+                          CouncilPolicy policy,
+                          ProtocolDefinition protocol,
+                          CouncilCatalog catalog) {
+        this.session = session;
+        this.profile = profile;
+        this.policy = policy;
+        this.protocol = protocol;
+        this.catalog = catalog;
+    }
+
+    /**
+     * Create a context with no catalog binding.
+     *
+     * <p>For tests and direct construction only. Calling {@link #modelRegistry()}
+     * on a context built this way fails, because there is no snapshot to read.
+     *
+     * @param session  The originating council session.
+     * @param profile  The council member/chair configuration.
+     * @param policy   The resolved execution policy for this run.
      * @param protocol The protocol currently executing.
      */
     public CouncilContext(CouncilSession session,
                           CouncilProfile profile,
                           CouncilPolicy policy,
                           ProtocolDefinition protocol) {
-        this.session = session;
-        this.profile = profile;
-        this.policy = policy;
-        this.protocol = protocol;
+        this(session, profile, policy, protocol, null);
     }
 
-    // ── Session / Profile / Protocol 
+    // ── Session / Profile / Protocol
 
     /** @return The council session this context belongs to. */
     public CouncilSession session() { return session; }
+
+    /**
+     * @return The configuration snapshot this run is pinned to, or {@code null}
+     *         when the context was constructed without one.
+     */
+    public CouncilCatalog catalog() { return catalog; }
+
+    /**
+     * @return The model registry from this run's configuration snapshot.
+     * @throws IllegalStateException if this context has no catalog binding.
+     */
+    public ModelRegistry modelRegistry() {
+        if (catalog == null) {
+            throw new IllegalStateException(
+                    "CouncilContext has no catalog binding; it was constructed without a CouncilCatalog.");
+        }
+        return catalog.modelRegistry();
+    }
 
     /** @return The council profile (members + chair). */
     public CouncilProfile profile() { return profile; }

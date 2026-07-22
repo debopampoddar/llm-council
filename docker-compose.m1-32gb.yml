@@ -68,6 +68,9 @@ services:
       LLM_COUNCIL_LOCAL_ALT_OUTPUT_TOKENS: "1000"
       LLM_COUNCIL_LOCAL_CHAIR_OUTPUT_TOKENS: "1400"
       LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS: "360"
+      # Containers must bind all interfaces for the published port to work.
+      # The app defaults to loopback because it has no authentication.
+      LLM_COUNCIL_BIND_ADDRESS: "0.0.0.0"
       LLM_COUNCIL_ARTIFACT_PATH: /data/llm-council/runs
       LLM_COUNCIL_MAX_CONCURRENT_RUNS: "1"
       LLM_COUNCIL_CHAT_RECENT_TURN_COUNT: "4"

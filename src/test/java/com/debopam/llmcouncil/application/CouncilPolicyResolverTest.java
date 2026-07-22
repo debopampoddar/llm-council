@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.application;
 
+import com.debopam.llmcouncil.config.TestCatalogs;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.model.CouncilPolicy;
 import com.debopam.llmcouncil.model.CouncilProfile;
@@ -21,9 +22,9 @@ class CouncilPolicyResolverTest {
         CouncilPolicy quick = policy("local-quick", "quick");
         CouncilPolicy balanced = policy("local-balanced", "balanced");
 
-        CouncilPolicyResolver resolver = new CouncilPolicyResolver(
+        CouncilPolicyResolver resolver = new CouncilPolicyResolver(TestCatalogs.holder(
                 Map.of("local", profile),
-                Map.of("local-quick", quick, "local-balanced", balanced));
+                Map.of("local-quick", quick, "local-balanced", balanced)));
 
         CouncilPolicyResolver.ResolvedCouncilPolicy resolved = resolver.resolve("local", DepthMode.QUICK);
 
@@ -39,9 +40,9 @@ class CouncilPolicyResolverTest {
                 Map.of(DepthMode.BALANCED, "local-balanced"));
         CouncilPolicy balanced = policy("local-balanced", "balanced");
 
-        CouncilPolicyResolver resolver = new CouncilPolicyResolver(
+        CouncilPolicyResolver resolver = new CouncilPolicyResolver(TestCatalogs.holder(
                 Map.of("local", profile),
-                Map.of("local-balanced", balanced));
+                Map.of("local-balanced", balanced)));
 
         CouncilPolicyResolver.ResolvedCouncilPolicy resolved = resolver.resolve("local", null);
 
@@ -51,7 +52,7 @@ class CouncilPolicyResolverTest {
 
     @Test
     void rejectsUnknownProfile() {
-        CouncilPolicyResolver resolver = new CouncilPolicyResolver(Map.of(), Map.of());
+        CouncilPolicyResolver resolver = new CouncilPolicyResolver(TestCatalogs.holder(Map.of(), Map.of()));
 
         assertThrows(java.util.NoSuchElementException.class,
                      () -> resolver.resolve("missing", DepthMode.BALANCED));

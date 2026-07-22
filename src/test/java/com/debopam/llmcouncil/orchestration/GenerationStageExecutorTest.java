@@ -60,6 +60,11 @@ class GenerationStageExecutorTest {
     }
 
     private static class NoopArtifactStore implements ArtifactStore {
+        @Override
+        public java.util.Optional<String> readArtifact(String sessionId, String relativePath) {
+            return java.util.Optional.empty();
+        }
+
         @Override public void writeText(String sessionId, String relativePath, String text) {}
         @Override public void writeJson(String sessionId, String relativePath, Object value) {}
         @Override public List<String> listArtifacts(String sessionId) { return List.of(); }
