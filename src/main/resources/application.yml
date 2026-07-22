@@ -24,7 +24,14 @@ spring:
         options:
           model: ${LLM_COUNCIL_LOCAL_MODEL:llama3.1:8b}
           temperature: 0.3
-          num-ctx: ${SPRING_AI_OLLAMA_NUM_CTX:4096}
+          # 16384 is what a rigorous local council actually needs: three members
+          # at 1200-1800 output tokens produce roughly 11k tokens of drafts,
+          # reviews, and debate for the chair to synthesise. At the previous
+          # default of 4096 the chair could hold about 2.3k of that and the rest
+          # was truncated away. Costs roughly 2 GiB of KV cache per resident
+          # model on an 8B class model; lower it if memory is tight and accept
+          # the truncation warnings that follow.
+          num-ctx: ${SPRING_AI_OLLAMA_NUM_CTX:16384}
           num-thread: ${SPRING_AI_OLLAMA_NUM_THREAD:0}
           keep_alive: ${SPRING_AI_OLLAMA_KEEP_ALIVE:10m}
     vertex:
