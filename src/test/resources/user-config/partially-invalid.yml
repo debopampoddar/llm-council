@@ -1,0 +1,45 @@
+# Fixture for UserConfigBootTest. Deliberately mixes valid and invalid entities:
+# the valid ones must apply, the invalid one must be dropped and reported, and
+# the application must start either way.
+version: 1
+
+models:
+  # Valid: a second local binding acting as an adversarial critic.
+  - id: my-critic
+    provider: ollama
+    providerModelId: qwen2.5:14b
+    defaultOutputTokens: 1200
+    temperature: 0.35
+    timeoutSeconds: 240
+    role: MEMBER
+    councilRole: CRITIC
+    modelFamily: qwen
+
+  # Invalid: temperature is outside the 0.0 - 2.0 range. This entity alone
+  # should be rejected.
+  - id: bad-temperature
+    provider: ollama
+    providerModelId: llama3.1:8b
+    temperature: 7.5
+    role: MEMBER
+    modelFamily: llama
+
+policies:
+  my-balanced:
+    protocolId: balanced
+    memberModelIds: [local-llama3, my-critic]
+    chairModelId: local-chair
+    validatorModelId: local-validator
+    minimumSuccessfulDrafts: 2
+    minimumReviewsPerDraft: 1
+    validationRequired: true
+    allowPartial: true
+
+profiles:
+  my-council:
+    displayName: My laptop council
+    defaultDepth: BALANCED
+    depthPolicies:
+      QUICK: local-quick
+      BALANCED: my-balanced
+      RIGOROUS: my-balanced

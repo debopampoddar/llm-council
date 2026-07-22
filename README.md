@@ -229,6 +229,46 @@ ollama pull llama3.1:8b
 ollama pull mistral:7b
 ```
 
+### Defining your own models, policies, and profiles
+
+Everything the council runs on is configuration. To add your own without editing
+the shipped `application.yml`, drop an overlay at
+`~/.llm-council/council-user.yml`:
+
+```bash
+cp council-user.example.yml ~/.llm-council/council-user.yml
+```
+
+The example file documents every field and its bounds. The overlay is merged
+over the built-in configuration at startup, so you only state what you want to
+change; unmentioned fields, depths, and entities keep their shipped values.
+
+**Mistakes are survivable.** An invalid entry is dropped and reported while
+everything else still applies and the application still starts. See what was
+accepted or rejected:
+
+```bash
+curl 'localhost:8080/api/council/catalog?include=issues,profiles'
+```
+
+**What you can change:** bind models on any supported provider, compose policies
+and profiles, and tune protocols within validated bounds.
+
+**What you cannot:** add a provider (that needs a `ModelClient` implementation),
+reorder or remove protocol stages, or use the test-only mock models in a real
+council. Anonymised review and adversarial debate are what make the council
+resistant to sycophancy, so they are not removable — you tune protocols rather
+than compose them.
+
+**Never put an API key in the overlay.** Credentials are read from the
+environment only. A key found in the file is refused, and you should rotate it:
+it has been written to disk in plain text. To see which providers are active and
+which environment variable activates the rest:
+
+```bash
+curl 'localhost:8080/api/council/catalog?include=providers'
+```
+
 ### Context window and memory
 
 The council's chair must hold every draft, review, and debate turn its members

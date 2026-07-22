@@ -408,7 +408,7 @@ Details:
 
 ---
 
-## 4. Phase 1 — User configuration overlay
+## 4. Phase 1 — User configuration overlay ✅ IMPLEMENTED (1A/1B/1C/1D)
 
 **Goal:** users define models, policies, profiles, and derived protocols in a file outside the jar; invalid entries degrade gracefully.
 **Depends on:** Phase 0.
@@ -575,6 +575,15 @@ Before this change Ollama silently discarded the excess, so a rigorous local run
 Shipped defaults are now 16384 (`application.yml`, both M1 compose files) and 8192 for Intel, whose 3B models at 700 output tokens produce less evidence. `ShippedContextBudgetTest` fails if any shipped policy goes back over budget — verified to fail by reverting the default to 4096.
 
 Cost is KV cache, roughly 2 GiB per resident 8B-class model at 16384 versus 0.5 GiB at 4096. Documented in the README together with the levers for smaller machines.
+
+### 4.10 Deviations in the delivered 1A
+
+1. **`orderedStages` is prevented by the type, not by a rule.** `UserProtocol` has no such component, so strict binding rejects it at parse time. A test asserts the record component does not exist, which is a stronger guarantee than a validation branch someone could later delete.
+2. **The cascade sweep is defensive, not load-bearing.** Because models are validated before policies and policies before profiles, an entity referencing a rejected one is caught directly. The fixed-point loop remains as a safety net for future orderings.
+3. **Ids may not end in a hyphen.** `^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$`. Ids become map keys and URL path segments; a trailing separator is a nuisance rather than a choice. Found by a boundary test.
+4. **`SecretScanner` patterns are anchored at key position** rather than matching substrings, because `defaultOutputTokens` and `contextWindowTokens` contain "token" and a loose pattern would reject ordinary configuration.
+5. **The prompt-budget validation hook stayed in `CouncilConfigurationValidator`.** It applies to the merged catalog, so user policies are covered by the existing check without duplicating it in `UserConfigValidator`.
+6. **`CouncilProperties` runtime/health binding was not added.** Those keys are still read via `@Value`; the overlay's `runtime` section is validated but not yet applied, since applying it means rebuilding beans that read those values at construction. Deferred to Phase 4, where the reload path handles exactly that.
 
 ### 4.9 Tests
 
