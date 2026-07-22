@@ -229,6 +229,22 @@ ollama pull llama3.1:8b
 ollama pull mistral:7b
 ```
 
+### Context window and memory
+
+The council's chair must hold every draft, review, and debate turn its members
+produce. A rigorous local council generates roughly 11,000 tokens of evidence,
+so `SPRING_AI_OLLAMA_NUM_CTX` defaults to **16384**. Anything smaller is not an
+error — prompts are fitted to the window, truncation is marked in the prompt,
+and both the boot log and the run's `warnings` say what was dropped — but the
+chair then synthesises from part of the council's work.
+
+A larger window costs KV cache, roughly 2 GiB per resident 8B-class model at
+16384 (about 0.5 GiB at 4096). With `keep_alive` holding two models resident
+that is ~4 GiB on top of the weights, which is comfortable on 32 GB. On a
+smaller machine, lower `SPRING_AI_OLLAMA_NUM_CTX` and either use fewer council
+members or reduce `LLM_COUNCIL_LOCAL_OUTPUT_TOKENS` so the evidence still fits.
+The startup log states the numbers for every policy that does not.
+
 For mock smoke testing:
 
 ```bash

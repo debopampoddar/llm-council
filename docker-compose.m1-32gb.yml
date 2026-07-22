@@ -58,7 +58,9 @@ services:
       - "8080:8080"
     environment:
       SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
-      SPRING_AI_OLLAMA_NUM_CTX: "4096"
+      # Sized so the chair can hold a full rigorous council transcript.
+      # 32 GB Apple Silicon: ~2 GiB KV cache per resident 8B model.
+      SPRING_AI_OLLAMA_NUM_CTX: "16384"
       SPRING_AI_OLLAMA_NUM_THREAD: "0"
       SPRING_AI_OLLAMA_KEEP_ALIVE: 20m
       LLM_COUNCIL_LOCAL_MODEL: ${LLM_COUNCIL_LOCAL_MODEL:-llama3.1:8b}

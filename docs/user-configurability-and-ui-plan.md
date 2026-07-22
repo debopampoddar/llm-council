@@ -563,6 +563,19 @@ Deviations from this section as originally written:
 
 Before this change Ollama silently discarded the excess, so a rigorous local run synthesised its answer from roughly a fifth of the council's work with no signal anywhere.
 
+**1D — window sizing (shipped with 1B).** Budgeting made the overflow visible and safe; it did not make it go away. The remedy is capacity, and the required figure was measured by booting at each window size and reading the warnings:
+
+| `num-ctx` | Over-budget policies |
+|---|---|
+| 4096 (previous default) | `local-balanced`, `local-rigorous` |
+| 8192 | `local-rigorous` |
+| 12288 | `local-rigorous` |
+| **16384** | none |
+
+Shipped defaults are now 16384 (`application.yml`, both M1 compose files) and 8192 for Intel, whose 3B models at 700 output tokens produce less evidence. `ShippedContextBudgetTest` fails if any shipped policy goes back over budget — verified to fail by reverting the default to 4096.
+
+Cost is KV cache, roughly 2 GiB per resident 8B-class model at 16384 versus 0.5 GiB at 4096. Documented in the README together with the levers for smaller machines.
+
 ### 4.9 Tests
 
 - `UserConfigLoaderTest` — absent file, malformed YAML, unknown top-level key, unknown field inside a model.

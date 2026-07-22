@@ -59,7 +59,9 @@ services:
       - "8080:8080"
     environment:
       SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
-      SPRING_AI_OLLAMA_NUM_CTX: "3072"
+      # Sized so the chair can hold a full rigorous council transcript.
+      # 3B models need less: 8192 covers a rigorous council here.
+      SPRING_AI_OLLAMA_NUM_CTX: "8192"
       SPRING_AI_OLLAMA_NUM_THREAD: "6"
       SPRING_AI_OLLAMA_KEEP_ALIVE: 10m
       LLM_COUNCIL_LOCAL_MODEL: ${LLM_COUNCIL_LOCAL_MODEL:-llama3.2:3b}
