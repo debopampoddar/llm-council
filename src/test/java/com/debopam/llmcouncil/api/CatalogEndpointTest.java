@@ -75,13 +75,15 @@ class CatalogEndpointTest {
     }
 
     @Test
-    void reportsValidationIndependencePerPolicy() throws Exception {
+    void exposesValidationIndependenceOnEveryPolicy() throws Exception {
+        // Which tier each shipped policy has is pinned by
+        // ShippedValidationIndependenceTest. This asserts only that the endpoint
+        // carries the field at all, so the two do not have to change together.
         mockMvc.perform(get("/api/council/catalog").param("include", "policies"))
                .andExpect(status().isOk())
+               .andExpect(jsonPath("$.policies[*].validationIndependence").exists())
                .andExpect(jsonPath("$.policies[?(@.id == 'multi-cloud-balanced')].validationIndependence")
-                                  .value("INDEPENDENT"))
-               .andExpect(jsonPath("$.policies[?(@.id == 'gemini-balanced')].validationIndependence")
-                                  .value("SELF_VALIDATION"));
+                                  .value("INDEPENDENT"));
     }
 
     @Test
