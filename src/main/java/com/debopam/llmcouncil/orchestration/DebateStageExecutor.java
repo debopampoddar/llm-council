@@ -3,6 +3,7 @@ package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.EventPublisher;
 import com.debopam.llmcouncil.model.ModelCallException;
+import com.debopam.llmcouncil.model.ChatMessage;
 import com.debopam.llmcouncil.model.ModelCallRequest;
 import com.debopam.llmcouncil.model.ModelCallResult;
 import com.debopam.llmcouncil.model.ModelProfile;
@@ -160,12 +161,15 @@ public class DebateStageExecutor implements StageExecutor {
         try {
             // Use role-aware debate prompt so CRITIC models
             // challenge consensus and SYNTHESIZER models seek common ground.
+            PromptBudget budget = PromptBudget.forModel(model);
+            List<ChatMessage> messages = promptBuilder.debateMessagesForRole(
+                    ctx.session().question(), ctx.session().context(), ctx.drafts(),
+                    ctx.debateRounds(), round, model.councilRole(), budget);
+            PromptBudgets.record(ctx, events, stage(), modelId, budget);
+
             ModelCallResult result = registry.clientForModel(modelId).call(
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),
-                                         model.providerModelId(),
-                                         promptBuilder.debateMessagesForRole(ctx.session().question(),
-                                                                              ctx.session().context(), ctx.drafts(), ctx.debateRounds(), round,
-                                                                              model.councilRole()),
+                                         model.providerModelId(), messages,
                                          model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()));
 
             // Attempt to parse confidence; mark as -1 if unparseable

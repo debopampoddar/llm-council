@@ -6,6 +6,7 @@ import com.debopam.llmcouncil.model.ValidationIndependence;
 import com.debopam.llmcouncil.orchestration.StageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -21,6 +22,20 @@ import java.util.Objects;
 public class CouncilConfigurationValidator {
 
     private static final Logger log = LoggerFactory.getLogger(CouncilConfigurationValidator.class);
+
+    /** Flat allowance for synthesis instructions, scores, and scaffolding. */
+    private static final int SYNTHESIS_OVERHEAD_TOKENS = 600;
+
+    private final Integer ollamaNumCtx;
+
+    /**
+     * @param ollamaNumCtx the configured Ollama context size, used to resolve
+     *                     the effective window of local models
+     */
+    public CouncilConfigurationValidator(
+            @Value("${spring.ai.ollama.chat.options.num-ctx:4096}") Integer ollamaNumCtx) {
+        this.ollamaNumCtx = ollamaNumCtx;
+    }
 
     public void validate(CouncilProperties props) {
         Map<String, CouncilProperties.ModelProps> modelsById = modelsById(props);
@@ -98,6 +113,9 @@ public class CouncilConfigurationValidator {
 
             // Warn when the Fresh Eyes validator is not actually fresh.
             warnLowValidationIndependence(policyId, policy, modelsById);
+
+            // Warn when the chair cannot physically hold the evidence it must synthesise.
+            warnSynthesisWillNotFit(policyId, policy, modelsById, props.getProtocols().get(policy.getProtocolId()));
         });
     }
 
@@ -140,6 +158,64 @@ public class CouncilConfigurationValidator {
                  + "provider model, so validation errors are likely to be correlated. Prefer a validator "
                  + "from a different model family.",
                  policyId, policy.getChairModelId(), policy.getValidatorModelId());
+    }
+
+    /**
+     * Warn when a policy's chair cannot hold the evidence it will be asked to
+     * synthesise.
+     *
+     * <p>The chair's synthesis prompt carries every member draft plus reviews,
+     * scores, and debate turns. When that exceeds the chair's context window the
+     * prompt is truncated to fit, and the final answer is built from part of the
+     * council's work. That is reported at run time too, but a user is far better
+     * served by learning it at boot than by silently getting weaker answers.
+     *
+     * <p>Estimate only: it counts drafts at their configured output size and adds
+     * allowances for reviews and debate <em>when the protocol actually runs those
+     * stages</em>, so it catches clearly-broken configurations without warning
+     * about protocols that never accumulate that evidence.
+     *
+     * @param policyId   the policy being validated
+     * @param policy     the policy configuration
+     * @param modelsById all configured models, keyed by id
+     */
+    private void warnSynthesisWillNotFit(String policyId,
+                                         CouncilProperties.PolicyProps policy,
+                                         Map<String, CouncilProperties.ModelProps> modelsById,
+                                         CouncilProperties.ProtocolProps protocol) {
+        CouncilProperties.ModelProps chair = modelsById.get(policy.getChairModelId());
+        if (chair == null) {
+            return;
+        }
+        int contextWindow = ModelContextWindows.resolve(chair, ollamaNumCtx);
+        if (contextWindow <= 0) {
+            return;
+        }
+
+        int draftTokens = policy.getMemberModelIds().stream()
+                                .map(modelsById::get)
+                                .filter(Objects::nonNull)
+                                .mapToInt(CouncilProperties.ModelProps::getDefaultOutputTokens)
+                                .sum();
+        // Only charge for evidence the protocol actually produces. A QUICK
+        // protocol runs GENERATE then SYNTHESIZE, so billing it for reviews and
+        // debate would warn about a policy that fits comfortably.
+        List<String> stages = protocol == null ? List.of() : protocol.getOrderedStages();
+        int reviewTokens = stages.contains("REVIEW") || stages.contains("REVIEW_POST_DEBATE")
+                           ? draftTokens / 2
+                           : 0;
+        int debateTokens = stages.contains("DEBATE") ? draftTokens : 0;
+        int evidenceTokens = draftTokens + reviewTokens + debateTokens + SYNTHESIS_OVERHEAD_TOKENS;
+        int usableTokens = contextWindow - chair.getDefaultOutputTokens();
+
+        if (evidenceTokens > usableTokens) {
+            log.warn("Policy {} chair '{}' has a {} token context window and reserves {} for its own output, "
+                     + "leaving room for about {} tokens of prompt, but its members can produce roughly {} "
+                     + "tokens of evidence. Synthesis prompts will be truncated. Reduce member "
+                     + "defaultOutputTokens, use fewer members, or raise the chair's contextWindowTokens.",
+                     policyId, chair.getId(), contextWindow, chair.getDefaultOutputTokens(),
+                     usableTokens, evidenceTokens);
+        }
     }
 
     /**

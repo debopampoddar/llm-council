@@ -62,6 +62,13 @@ council:
   # profile remains available for tests and local smoke checks.
   allowMockFallback: false
 
+  # Prompt budgeting: every prompt carrying council evidence (drafts, reviews,
+  # debate turns) is fitted to the target model's context window before the call.
+  # Set contextWindowTokens per model to override; unset derives from the
+  # provider — Ollama models use spring.ai.ollama.chat.options.num-ctx, cloud
+  # models assume 128000. Instructions and the question are never truncated;
+  # anything removed is marked in the prompt and reported as a run warning.
+
   # Retry configuration for transient model failures (PROVIDER_UNAVAILABLE,
   # MODEL_TIMEOUT). Per-model overrides are supported via the model entry.
   # Defaults (applied when not specified per model):
@@ -188,6 +195,7 @@ council:
     #   gcloud auth application-default login
     # Or: GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
     - id: gemini-flash
+      contextWindowTokens: 1048576
       provider: gemini
       providerModelId: ${COUNCIL_GEMINI_MODEL:gemini-2.5-flash}
       defaultOutputTokens: 2000
@@ -197,6 +205,7 @@ council:
       councilRole: PROPOSER
       modelFamily: gemini
     - id: gemini-pro
+      contextWindowTokens: 1048576
       provider: gemini
       providerModelId: ${COUNCIL_GEMINI_PRO_MODEL:gemini-2.5-pro}
       defaultOutputTokens: 2200
@@ -224,6 +233,7 @@ council:
     # Activate with: COUNCIL_ANTHROPIC_ENABLED=true
     # Requires: SPRING_AI_ANTHROPIC_API_KEY=sk-ant-...
     - id: anthropic-sonnet
+      contextWindowTokens: 200000
       provider: anthropic
       providerModelId: ${COUNCIL_ANTHROPIC_MODEL:claude-sonnet-4-20250514}
       defaultOutputTokens: 2000
@@ -233,6 +243,7 @@ council:
       councilRole: CRITIC
       modelFamily: claude
     - id: anthropic-opus
+      contextWindowTokens: 200000
       provider: anthropic
       providerModelId: ${COUNCIL_ANTHROPIC_CHAIR_MODEL:claude-sonnet-4-20250514}
       defaultOutputTokens: 2200
@@ -246,6 +257,7 @@ council:
     # Activate with: COUNCIL_OPENAI_ENABLED=true
     # Requires: SPRING_AI_OPENAI_API_KEY=sk-...
     - id: openai-gpt
+      contextWindowTokens: 128000
       provider: openai
       providerModelId: ${COUNCIL_OPENAI_MODEL:gpt-4o}
       defaultOutputTokens: 2000

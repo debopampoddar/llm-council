@@ -23,6 +23,8 @@ import java.time.Duration;
  * @param role                Structural role in the council (MEMBER/CHAIR/VALIDATOR).
  * @param councilRole         Debate persona (PROPOSER/CRITIC/SYNTHESIZER). Defaults to PROPOSER.
  * @param modelFamily         Architecture family tag for heterogeneity validation (nullable).
+ * @param contextWindowTokens Total context window in tokens (prompt plus response).
+ *                            Zero or less means unknown, which disables prompt budgeting.
  */
 public record ModelProfile(
         String id,
@@ -33,8 +35,30 @@ public record ModelProfile(
         Duration defaultTimeout,
         ModelRole role,
         CouncilRole councilRole,
-        String modelFamily
+        String modelFamily,
+        int contextWindowTokens
 ) {
+    /**
+     * Constructor for callers that do not specify a context window.
+     *
+     * @param id                  Logical model identifier.
+     * @param provider            Provider key.
+     * @param providerModelId     Provider-specific model name.
+     * @param defaultOutputTokens Maximum output tokens for calls to this model.
+     * @param temperature         Sampling temperature.
+     * @param defaultTimeout      Maximum wall-clock time for a single model call.
+     * @param role                Structural role in the council.
+     * @param councilRole         Debate persona.
+     * @param modelFamily         Architecture family tag.
+     */
+    public ModelProfile(String id, String provider, String providerModelId,
+                        int defaultOutputTokens, double temperature,
+                        Duration defaultTimeout, ModelRole role,
+                        CouncilRole councilRole, String modelFamily) {
+        this(id, provider, providerModelId, defaultOutputTokens, temperature,
+             defaultTimeout, role, councilRole, modelFamily, 0);
+    }
+
     /**
      * Backwards-compatible constructor for existing callers that don't specify
      * councilRole or modelFamily. Defaults to PROPOSER and null family.
@@ -43,6 +67,6 @@ public record ModelProfile(
                         int defaultOutputTokens, double temperature,
                         Duration defaultTimeout, ModelRole role) {
         this(id, provider, providerModelId, defaultOutputTokens, temperature,
-             defaultTimeout, role, CouncilRole.PROPOSER, null);
+             defaultTimeout, role, CouncilRole.PROPOSER, null, 0);
     }
 }

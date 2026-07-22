@@ -59,6 +59,15 @@ public class CouncilProperties {
         // share the same model family (e.g., all "llama" or all "gpt").
         private String modelFamily;
 
+        /**
+         * Total context window in tokens, covering prompt plus response.
+         *
+         * <p>Zero means "derive from the provider": local runtimes default to a
+         * small window and cloud providers to a large one. Prompts are budgeted
+         * against this, so setting it too high reintroduces silent overflow.
+         */
+        private int contextWindowTokens = 0;
+
         public String getId() { return id; } public void setId(String v) { id = v; }
         public String getProvider() { return provider; } public void setProvider(String v) { provider = v; }
         public String getProviderModelId() { return providerModelId; } public void setProviderModelId(String v) { providerModelId = v; }
@@ -71,6 +80,8 @@ public class CouncilProperties {
         public long getRetryBaseDelayMs() { return retryBaseDelayMs; } public void setRetryBaseDelayMs(long v) { retryBaseDelayMs = v; }
         public CouncilRole getCouncilRole() { return councilRole; } public void setCouncilRole(CouncilRole v) { councilRole = v; }
         public String getModelFamily() { return modelFamily; } public void setModelFamily(String v) { modelFamily = v; }
+        public int getContextWindowTokens() { return contextWindowTokens; }
+        public void setContextWindowTokens(int v) { contextWindowTokens = v; }
     }
 
     public static class ProfileProps {
