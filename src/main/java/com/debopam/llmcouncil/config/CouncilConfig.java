@@ -12,6 +12,10 @@ import com.debopam.llmcouncil.model.OllamaDirectModelClient;
 import com.debopam.llmcouncil.model.RetryableModelClient;
 import com.debopam.llmcouncil.model.SpringAiModelClient;
 import com.debopam.llmcouncil.model.UnavailableModelClient;
+import com.debopam.llmcouncil.config.user.CatalogMerger;
+import com.debopam.llmcouncil.config.user.UserConfigDocument;
+import com.debopam.llmcouncil.config.user.UserConfigLoader;
+import com.debopam.llmcouncil.config.user.UserConfigValidator;
 import com.debopam.llmcouncil.orchestration.ProtocolDefinition;
 import com.debopam.llmcouncil.orchestration.ProtocolDefinitionRegistry;
 import com.debopam.llmcouncil.orchestration.ProtocolStageOptions;
@@ -212,7 +216,9 @@ public class CouncilConfig {
      * @return a holder already populated with generation 1 of the catalog
      */
     @Bean
-    public CouncilCatalogHolder councilCatalogHolder(ModelRegistry modelRegistry) {
+    public CouncilCatalogHolder councilCatalogHolder(ModelRegistry modelRegistry,
+                                                     UserConfigLoader userConfigLoader,
+                                                     UserConfigValidator userConfigValidator) {
         configurationValidator.validate(props);
 
         // Build protocol definitions.
@@ -250,10 +256,100 @@ public class CouncilConfig {
                 Instant.now(),
                 1L);
 
-        log.info("CouncilConfig: catalog generation 1 built with {} models, {} profiles, "
+        catalog = applyUserOverlay(catalog, userConfigLoader, userConfigValidator);
+
+        log.info("CouncilConfig: catalog generation {} built with {} models, {} profiles, "
                  + "{} policies, {} protocols",
-                 profilesForValidation.size(), profiles.size(), policies.size(), protocols.size());
+                 catalog.generation(), catalog.modelRegistry().size(), catalog.profiles().size(),
+                 catalog.policies().size(), catalog.protocols().size());
         return new CouncilCatalogHolder(catalog);
+    }
+
+    /**
+     * Merge the optional user configuration overlay over the built-in catalog.
+     *
+     * <p>Built-in configuration has already been validated fail-fast by this
+     * point. The overlay is validated fail-soft instead: invalid entities are
+     * dropped and reported, and the application starts with whatever remains.
+     * A user editing a file by hand must not be able to prevent startup.
+     *
+     * @param builtIn   the catalog built from {@code application.yml}
+     * @param loader    reads the overlay from disk
+     * @param validator enforces the capability boundary
+     * @return the merged catalog, or the built-in catalog when no overlay applies
+     */
+    private CouncilCatalog applyUserOverlay(CouncilCatalog builtIn,
+                                            UserConfigLoader loader,
+                                            UserConfigValidator validator) {
+        UserConfigLoader.LoadResult loaded = loader.load();
+        if (loaded.document().isEmpty() && loaded.issues().isEmpty()) {
+            return builtIn;
+        }
+
+        UserConfigValidator.ValidationReport report = validator.validate(loaded.document(), builtIn);
+        List<ConfigIssue> issues = new java.util.ArrayList<>(loaded.issues());
+        issues.addAll(report.issues());
+
+        CouncilCatalog merged = new CatalogMerger(this::buildClientFor)
+                .merge(builtIn, report.sanitised(), issues, builtIn.generation() + 1);
+
+        logUserConfigSummary(loaded, report, merged);
+        return merged;
+    }
+
+    /**
+     * Report what the overlay contributed, in one summary line plus one line per
+     * issue. The file's contents are never logged: it is user-authored text that
+     * may contain anything.
+     */
+    private void logUserConfigSummary(UserConfigLoader.LoadResult loaded,
+                                      UserConfigValidator.ValidationReport report,
+                                      CouncilCatalog merged) {
+        UserConfigDocument sanitised = report.sanitised();
+        log.info("User config: {} models, {} policies, {} profiles, {} protocols applied from {} "
+                 + "({} warnings, {} errors)",
+                 sanitised.models().size(), sanitised.policies().size(), sanitised.profiles().size(),
+                 sanitised.protocols().size(), loaded.path(),
+                 report.warnings().size(), report.errors().size());
+
+        for (ConfigIssue issue : merged.issues()) {
+            String remediation = issue.remediation() == null ? "" : " " + issue.remediation();
+            if (issue.severity() == ConfigIssue.Severity.ERROR) {
+                log.error("User config [{}{}]: {}{}", issue.entityKey(),
+                          issue.field() == null ? "" : "." + issue.field(),
+                          issue.message(), remediation);
+            } else {
+                log.warn("User config [{}{}]: {}{}", issue.entityKey(),
+                         issue.field() == null ? "" : "." + issue.field(),
+                         issue.message(), remediation);
+            }
+        }
+    }
+
+    /**
+     * Build a client for a user-defined model.
+     *
+     * <p>Routed through the same provider auto-detection as built-in models, so
+     * a user model on an unconfigured provider resolves to
+     * {@link UnavailableModelClient} with an actionable message rather than
+     * silently producing mock output.
+     *
+     * @param profile the merged model profile
+     * @return a client for that model
+     */
+    private ModelClient buildClientFor(ModelProfile profile) {
+        CouncilProperties.ModelProps props = new CouncilProperties.ModelProps();
+        props.setId(profile.id());
+        props.setProvider(profile.provider());
+        props.setProviderModelId(profile.providerModelId());
+        props.setDefaultOutputTokens(profile.defaultOutputTokens());
+        props.setTemperature(profile.temperature());
+        props.setTimeoutSeconds((int) profile.defaultTimeout().toSeconds());
+        props.setRole(profile.role());
+        props.setCouncilRole(profile.councilRole());
+        props.setModelFamily(profile.modelFamily());
+        props.setContextWindowTokens(profile.contextWindowTokens());
+        return buildClient(props);
     }
 
     /**

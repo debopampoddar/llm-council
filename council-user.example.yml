@@ -1,0 +1,91 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# LLM Council — user configuration overlay (example)
+#
+# Copy to ~/.llm-council/council-user.yml and edit. Every section is optional.
+# Anything you do not mention keeps its shipped value.
+#
+#   cp council-user.example.yml ~/.llm-council/council-user.yml
+#
+# This file is merged over the built-in configuration at startup. If an entry is
+# invalid it is dropped and reported — the application still starts, and your
+# other entries still apply. See what was accepted or rejected with:
+#
+#   curl 'localhost:8080/api/council/catalog?include=issues,profiles'
+#
+# NEVER put an API key in this file. Credentials are read from the environment
+# only; a key here is refused and should be treated as compromised. To see which
+# providers are active and what to set:
+#
+#   curl 'localhost:8080/api/council/catalog?include=providers'
+# ─────────────────────────────────────────────────────────────────────────────
+version: 1
+
+# ── Models ───────────────────────────────────────────────────────────────────
+# A model binds a logical id to a model at a provider. You can bind models on
+# providers the application already supports (ollama, openai, anthropic, gemini,
+# openai-compatible); adding a new provider needs application code.
+models:
+  - id: my-critic
+    provider: ollama
+    providerModelId: qwen2.5:14b   # must be a tag you have actually pulled
+    defaultOutputTokens: 1200      # 64 – 32000
+    temperature: 0.35              # 0.0 – 2.0
+    timeoutSeconds: 240            # 5 – 900
+    contextWindowTokens: 16384     # 1024 – 1000000; omit to derive from the provider
+    role: MEMBER                   # MEMBER | CHAIR | VALIDATOR
+    councilRole: CRITIC            # PROPOSER | CRITIC | SYNTHESIZER
+    modelFamily: qwen              # used for diversity and validator independence
+
+# ── Policies ─────────────────────────────────────────────────────────────────
+# A policy decides who sits on the council and what quorum it needs. You may
+# reference built-in models by id alongside your own.
+policies:
+  my-balanced:
+    protocolId: balanced
+    memberModelIds: [local-llama3, my-critic]   # 1 – 8 members
+    chairModelId: local-chair
+    # Prefer a validator from a different model family than the chair. A chair
+    # validating its own synthesis shares all of its own blind spots.
+    validatorModelId: local-validator
+    minimumSuccessfulDrafts: 2
+    minimumReviewsPerDraft: 1
+    validationRequired: true
+    allowPartial: true
+
+# ── Protocols ────────────────────────────────────────────────────────────────
+# A user protocol is always a tuned copy of a built-in one. Stage order is not
+# configurable: anonymised review and adversarial debate are what makes the
+# council resistant to sycophancy, so they cannot be removed.
+protocols:
+  my-rigorous:
+    derivedFrom: rigorous
+    description: Rigorous, but only two debate rounds
+    stageOptions:
+      DEBATE:
+        max-rounds: 2              # 1 – 5, at least min-rounds
+        min-rounds: 1              # 1 – 3
+        # sycophancy-threshold above 0.85 hides the warning rather than the
+        # behaviour, and is reported as reducing run integrity.
+
+# ── Profiles ─────────────────────────────────────────────────────────────────
+# A profile is what a caller selects. Overriding a built-in profile merges per
+# depth, so you can repoint just BALANCED and keep the shipped QUICK/RIGOROUS.
+profiles:
+  my-council:
+    displayName: My laptop council
+    defaultDepth: BALANCED
+    depthPolicies:
+      QUICK: local-quick
+      BALANCED: my-balanced
+      RIGOROUS: my-balanced
+
+  # Repoint the profile used when a request names none.
+  # default:
+  #   depthPolicies:
+  #     BALANCED: my-balanced
+
+# ── Runtime ──────────────────────────────────────────────────────────────────
+# runtime:
+#   maxConcurrentRuns: 2           # 1 – 8
+#   chatRecentTurnCount: 4         # 1 – 20
+#   artifactBasePath: /absolute/path/to/runs
