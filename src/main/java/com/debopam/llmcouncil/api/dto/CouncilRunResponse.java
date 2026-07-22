@@ -11,6 +11,17 @@ import com.debopam.llmcouncil.model.ValidationIndependence;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * The result of one council run, as returned to API callers.
+ *
+ * <p>This is where a reader finds out not just what the council concluded but
+ * how much to trust it. {@code sycophancyWarnings} names members that merely
+ * echoed the previous speaker during debate, {@code validationIndependence}
+ * says whether the Fresh Eyes check was actually independent of the chair, and
+ * {@code warnings} carries anything that degraded the run — a truncated
+ * synthesis prompt, an excluded model. A run that hid those would look
+ * identical to one that earned its confidence.
+ */
 public record CouncilRunResponse(
         String sessionId,
         String status,
@@ -25,6 +36,7 @@ public record CouncilRunResponse(
         List<String> participatingModels,
         List<String> excludedModels,
         List<String> warnings,
+        List<String> sycophancyWarnings,
         ScoreSummary scoreSummary,
         ValidationArtifact validation,
         ValidationIndependence validationIndependence,
@@ -45,6 +57,7 @@ public record CouncilRunResponse(
                 ctx.policy().memberModelIds(),
                 ctx.excludedModels(),
                 ctx.warnings(),
+                ctx.sycophancyWarnings(),
                 ctx.scoreSummary().orElse(null),
                 ctx.validation().orElse(null),
                 validationIndependence(ctx),
