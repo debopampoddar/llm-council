@@ -602,6 +602,36 @@ Cost is KV cache, roughly 2 GiB per resident 8B-class model at 16384 versus 0.5 
 **Goal:** a usable chat UI with a live council timeline. No config editing yet.
 **Depends on:** Phase 0.
 
+### 5.0 What the UI must not bury
+
+The council's value is not the answer alone — a single model produces one of
+those in a fraction of the time. The value is knowing **how much to trust it**:
+whether members genuinely disagreed, whether the validator was independent,
+whether the chair saw all the evidence. Every one of those signals already
+exists in the API; a UI that renders the answer prominently and hides the rest
+would reduce the product to an expensive single-model call with extra latency.
+
+The governing principle, applied throughout the phases so far, is **degrade the
+claim, never silently the guarantee**. In the UI that means:
+
+| Signal | Source | Rendering rule |
+|---|---|---|
+| Sycophancy warnings | `CouncilRunResponse.sycophancyWarnings`, plus `DEBATE_SYCOPHANCY_WARNING` events | **Never collapsed by default.** A council whose members echoed each other reached consensus without substance; that is the failure this product exists to detect. |
+| Preserved dissent | inside the synthesised answer | Render as its own section, not as trailing prose. Users skim to the recommendation and stop. |
+| `validationIndependence` | `CouncilRunResponse`, `catalog.policies[]` | A persistent badge. A `SELF_VALIDATION` run must never look like an `INDEPENDENT` one — a "validated" marker makes a reader trust an answer *more*, so an unqualified checkmark on self-review is actively misleading. |
+| `warnings` | `CouncilRunResponse.warnings` | Includes `CONTEXT_BUDGET_EXCEEDED`. A run synthesised from truncated evidence must say so on the result, not only in the boot log. |
+| `excludedModels` / `modelFailures` | `CouncilRunResponse` | A 3-member council that silently ran with 2 is a different result. Show the roster that actually participated. |
+| Profile health | `GET /profiles/{id}/health` | **The highest-value element in the whole UI.** It converts the most common failure — a model that was never pulled — from a confusing `QUORUM_NOT_MET` after several minutes into an obvious message before sending. |
+
+Two rules follow from the table:
+
+1. **Confidence must be qualified by its own provenance.** Never show a
+   confidence figure or a validation verdict without the independence tier next
+   to it. The number means something different when the chair graded itself.
+2. **Absence of a signal is not the same as absence of a problem.** When a
+   protocol skips validation (QUICK) or debate never ran, say so explicitly
+   rather than leaving an empty panel that reads as "nothing to report".
+
 ### 5.1 Files
 
 ```
