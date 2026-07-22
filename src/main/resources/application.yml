@@ -109,6 +109,21 @@ council:
       role: MEMBER
       councilRole: CRITIC           # adversarial devil's advocate persona
       modelFamily: mistral          # different family from llama
+    # Fresh Eyes validator for local councils. Deliberately a different model
+    # family from local-chair: a validator sharing the chair's weights shares
+    # every one of its blind spots and cannot perform an independent check.
+    # This costs nothing extra — mistral:7b is already pulled for local-mistral
+    # and already resident, and VALIDATE runs alone after SYNTHESIZE so the
+    # validator never has to be co-resident with the members.
+    - id: local-validator
+      provider: ollama
+      providerModelId: ${LLM_COUNCIL_LOCAL_ALT_MODEL:mistral:7b}
+      defaultOutputTokens: ${LLM_COUNCIL_LOCAL_ALT_OUTPUT_TOKENS:1200}
+      temperature: 0.2
+      timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
+      role: VALIDATOR
+      councilRole: CRITIC
+      modelFamily: mistral
     - id: local-chair
       provider: ollama
       providerModelId: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:llama3.1:8b}
@@ -131,6 +146,10 @@ council:
       role: CHAIR
       councilRole: SYNTHESIZER
       modelFamily: gpt
+    # Fresh Eyes validator for OCI councils. OCA_LLM_REVIEW_MODEL defaults to the
+    # SAME model as OCA_LLM_MODEL, which makes validation correlated with the
+    # chair rather than independent. Set it to a different model to get a real
+    # independent check; the boot log warns while the two resolve to one model.
     - id: oci-reviewer
       provider: openai-compatible
       providerModelId: ${OCA_LLM_REVIEW_MODEL:gpt-5.4}
@@ -185,6 +204,20 @@ council:
       timeoutSeconds: 180
       role: CHAIR
       councilRole: SYNTHESIZER
+      modelFamily: gemini
+
+    # Validator binding for the single-provider Gemini profile. Flash and Pro
+    # share a family, so this is CORRELATED rather than INDEPENDENT — the best
+    # achievable without leaving the provider, and still better than the chair
+    # validating its own synthesis.
+    - id: gemini-validator
+      provider: gemini
+      providerModelId: ${COUNCIL_GEMINI_MODEL:gemini-2.5-flash}
+      defaultOutputTokens: 2000
+      temperature: 0.2
+      timeoutSeconds: 120
+      role: VALIDATOR
+      councilRole: CRITIC
       modelFamily: gemini
 
     # ── Anthropic models ───────────────────────────────────────────────
@@ -296,7 +329,7 @@ council:
       protocolId: balanced
       memberModelIds: [local-llama3, local-mistral]
       chairModelId: local-chair
-      validatorModelId: local-chair
+      validatorModelId: local-validator
       minimumSuccessfulDrafts: 2
       minimumReviewsPerDraft: 1
       validationRequired: true
@@ -305,7 +338,7 @@ council:
       protocolId: rigorous
       memberModelIds: [local-llama3, local-mistral, local-chair]
       chairModelId: local-chair
-      validatorModelId: local-chair
+      validatorModelId: local-validator
       minimumSuccessfulDrafts: 2
       minimumReviewsPerDraft: 1
       validationRequired: true
@@ -348,11 +381,15 @@ council:
       minimumReviewsPerDraft: 0
       validationRequired: false
       allowPartial: true
+    # Validation runs on the local mistral binding rather than a second OCI
+    # model: the chair is a GPT-family model, so a local validator is a genuinely
+    # different family, and this profile already has Ollama in play. It is also
+    # the cheaper of the two options.
     hybrid-balanced:
       protocolId: balanced
       memberModelIds: [local-llama3, local-mistral, oci-reviewer]
       chairModelId: oci-gpt-5-4
-      validatorModelId: oci-reviewer
+      validatorModelId: local-validator
       minimumSuccessfulDrafts: 2
       minimumReviewsPerDraft: 1
       validationRequired: true
@@ -361,7 +398,7 @@ council:
       protocolId: rigorous
       memberModelIds: [local-llama3, local-mistral, oci-gpt-5-4, oci-reviewer]
       chairModelId: oci-gpt-5-4
-      validatorModelId: oci-reviewer
+      validatorModelId: local-validator
       minimumSuccessfulDrafts: 3
       minimumReviewsPerDraft: 1
       validationRequired: true
@@ -413,7 +450,7 @@ council:
       protocolId: balanced
       memberModelIds: [gemini-flash, gemini-pro]
       chairModelId: gemini-pro
-      validatorModelId: gemini-pro
+      validatorModelId: gemini-validator
       minimumSuccessfulDrafts: 2
       minimumReviewsPerDraft: 1
       validationRequired: true
@@ -422,7 +459,7 @@ council:
       protocolId: rigorous
       memberModelIds: [gemini-flash, gemini-pro]
       chairModelId: gemini-pro
-      validatorModelId: gemini-pro
+      validatorModelId: gemini-validator
       minimumSuccessfulDrafts: 2
       minimumReviewsPerDraft: 1
       validationRequired: true

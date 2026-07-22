@@ -502,7 +502,7 @@ User config: 3 models, 1 policy, 1 profile loaded from /Users/x/.llm-council/cou
 
 Then each issue on its own line at `WARN` (warnings) or `ERROR` (errors). Never log the file contents.
 
-### 4.7 Shipped-config fix for validator independence (fixes F1)
+### 4.7 Shipped-config fix for validator independence (fixes F1) ✅ IMPLEMENTED — shipped separately as 1C
 
 Config-only, no Java. The local fix costs nothing: `mistral:7b` is already pulled as part of the documented local setup and is already loaded during GENERATE, so using it as validator adds no download and no extra peak RAM. VALIDATE runs alone at the end of the pipeline, after SYNTHESIZE, so the validator never needs to be co-resident with the members — the ceiling is set by the GENERATE fan-out.
 
@@ -525,8 +525,14 @@ Then repoint:
 | Policy | Change | Resulting tier |
 |---|---|---|
 | `local-balanced`, `local-rigorous` | `validatorModelId: local-validator` | `INDEPENDENT` |
-| `gemini-balanced`, `gemini-rigorous` | `validatorModelId: gemini-flash` (chair stays `gemini-pro`) | `CORRELATED` — best achievable in a single-family profile, still better than identical |
-| `oci-*`, `hybrid-*` | document that `OCA_LLM_REVIEW_MODEL` should be set to a different model than `OCA_LLM_MODEL` | `CORRELATED` until the operator differentiates them |
+| `hybrid-balanced`, `hybrid-rigorous` | `validatorModelId: local-validator` | `INDEPENDENT` |
+| `gemini-balanced`, `gemini-rigorous` | `validatorModelId: gemini-validator` | `CORRELATED` — best achievable in a single-provider profile, still better than identical |
+| `oci-*` | document that `OCA_LLM_REVIEW_MODEL` should be set to a different model than `OCA_LLM_MODEL` | `CORRELATED` until the operator differentiates them |
+
+Two deviations from this section as originally written:
+
+1. **Gemini needed its own `gemini-validator` binding**, not a direct repoint to `gemini-flash`. The existing role check requires the validator to be `VALIDATOR` or `CHAIR`, and `gemini-flash` is `MEMBER` — the same obstacle that made `local-validator` necessary. Both are second logical bindings over an already-configured provider model.
+2. **`hybrid-*` reached `INDEPENDENT` rather than staying `CORRELATED`.** The hybrid profile already runs Ollama members, so pointing validation at `local-validator` against a GPT-family chair is both genuinely independent and cheaper than a second OCI call. Not in the original plan; taken because it was free.
 
 Update `docs/testing-m1-32gb.md` and `docs/testing-intel-2019-32gb.md` if they enumerate the local model set.
 
