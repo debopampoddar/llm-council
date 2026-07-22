@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
@@ -88,6 +89,34 @@ public class ChatCouncilService {
     public ChatSession getChat(String chatId) {
         return chatStore.findById(chatId)
                 .orElseThrow(() -> new NoSuchElementException("Chat not found: " + chatId));
+    }
+
+    /**
+     * List every chat, most recently updated first.
+     *
+     * @return all stored chats
+     */
+    public List<ChatSession> listChats() {
+        return chatStore.findAll();
+    }
+
+    /**
+     * Delete a chat and its turns.
+     *
+     * <p>A chat with a turn still running is not deletable: the run would
+     * complete and try to write back to a chat that no longer exists.
+     *
+     * @param chatId the chat to delete
+     * @throws NoSuchElementException if no chat has that id
+     * @throws IllegalStateException  if the chat has a running turn
+     */
+    public void deleteChat(String chatId) {
+        ChatSession chat = getChat(chatId);
+        if (chat.hasRunningTurn()) {
+            throw new IllegalStateException(
+                    "Chat " + chatId + " has a running turn and cannot be deleted until it finishes.");
+        }
+        chatStore.delete(chatId);
     }
 
     private void handleCompletion(String chatId, String turnId, CouncilRunCompletion completion) {

@@ -1,6 +1,7 @@
 package com.debopam.llmcouncil.application;
 
 import com.debopam.llmcouncil.api.dto.ProfileHealthResponse;
+import com.debopam.llmcouncil.config.TestCatalogs;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.model.CouncilPolicy;
 import com.debopam.llmcouncil.model.CouncilProfile;
@@ -34,9 +35,7 @@ class ProfileHealthServiceTest {
                 "policy", "quick", List.of("member"), "chair", null,
                 1, 0, false, true);
         ProfileHealthService service = new ProfileHealthService(
-                Map.of("local", profile),
-                Map.of("policy", policy),
-                registry,
+                TestCatalogs.holder(registry, Map.of("local", profile), Map.of("policy", policy)),
                 List.of(new AlwaysHealthyChecker()));
 
         ProfileHealthResponse response = service.health("local", DepthMode.QUICK);

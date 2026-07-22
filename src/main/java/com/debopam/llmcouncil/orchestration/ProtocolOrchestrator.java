@@ -1,6 +1,7 @@
 package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.EventPublisher;
+import com.debopam.llmcouncil.config.CouncilCatalog;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.model.CouncilPolicy;
 import com.debopam.llmcouncil.model.CouncilProfile;
@@ -40,12 +41,33 @@ public class ProtocolOrchestrator {
      *
      * @param session The council session to run.
      * @param profile The council member and chair configuration.
+     * @param policy  The resolved execution policy.
      * @return The completed (or partially completed) {@link CouncilContext}.
      */
     public CouncilContext run(CouncilSession session, CouncilProfile profile, CouncilPolicy policy) {
+        return run(session, profile, policy, null);
+    }
+
+    /**
+     * Run a full protocol, pinning the run to one configuration snapshot.
+     *
+     * <p>The catalog is resolved by the caller before the run begins and carried
+     * on the {@link CouncilContext} for its whole duration, so that every stage
+     * of a single run sees the same models, quorum, and stage options.
+     *
+     * @param session The council session to run.
+     * @param profile The council member and chair configuration.
+     * @param policy  The resolved execution policy.
+     * @param catalog The configuration snapshot for this run; may be null in tests.
+     * @return The completed (or partially completed) {@link CouncilContext}.
+     */
+    public CouncilContext run(CouncilSession session, CouncilProfile profile, CouncilPolicy policy,
+                              CouncilCatalog catalog) {
         String protocolId = policy.protocolId();
-        ProtocolDefinition protocol = protocolRegistry.get(protocolId);
-        CouncilContext context = new CouncilContext(session, profile, policy, protocol);
+        ProtocolDefinition protocol = catalog != null && catalog.protocols().containsKey(protocolId)
+                                      ? catalog.protocols().get(protocolId)
+                                      : protocolRegistry.get(protocolId);
+        CouncilContext context = new CouncilContext(session, profile, policy, protocol, catalog);
 
         events.publish(session.id(), "PROTOCOL", "PROTOCOL_STARTED", null,
                        Map.of("protocolId", protocolId,

@@ -2,6 +2,7 @@ package com.debopam.llmcouncil.api;
 
 import com.debopam.llmcouncil.api.dto.ChatMessageRequest;
 import com.debopam.llmcouncil.api.dto.ChatResponse;
+import com.debopam.llmcouncil.api.dto.ChatSummaryResponse;
 import com.debopam.llmcouncil.api.dto.CreateChatRequest;
 import com.debopam.llmcouncil.application.EventPublisher;
 import com.debopam.llmcouncil.chat.ChatCouncilService;
@@ -16,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -64,6 +66,30 @@ public class ChatController {
     @GetMapping("/{chatId}")
     public ResponseEntity<ChatResponse> get(@PathVariable("chatId") String chatId) {
         return ResponseEntity.ok(ChatResponse.from(chatService.getChat(chatId)));
+    }
+
+    /**
+     * List every chat, most recently updated first.
+     *
+     * @return 200 OK with chat summaries, without turn bodies
+     */
+    @GetMapping
+    public ResponseEntity<List<ChatSummaryResponse>> list() {
+        return ResponseEntity.ok(chatService.listChats().stream()
+                                            .map(ChatSummaryResponse::from)
+                                            .toList());
+    }
+
+    /**
+     * Delete a chat and its turns.
+     *
+     * @param chatId the chat to delete
+     * @return 204 No Content, or 409 Conflict when a turn is still running
+     */
+    @DeleteMapping("/{chatId}")
+    public ResponseEntity<Void> delete(@PathVariable("chatId") String chatId) {
+        chatService.deleteChat(chatId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping(path = "/{chatId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -139,6 +165,12 @@ public class ChatController {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<String> handleBadRequest(IllegalArgumentException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ex.getMessage());
+    }
+
+    /** A chat that is mid-run cannot be deleted; report that as a conflict. */
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<String> handleConflict(IllegalStateException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getMessage());
     }
 
     private static class StreamState {

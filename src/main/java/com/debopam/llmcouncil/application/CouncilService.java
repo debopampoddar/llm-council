@@ -54,7 +54,7 @@ public class CouncilService {
 
         CouncilContext ctx;
         try {
-            ctx = orchestrator.run(session, resolved.profile(), policy);
+            ctx = orchestrator.run(session, resolved.profile(), policy, resolved.catalog());
         } catch (Exception ex) {
             CouncilSession failed = session.withStatus(CouncilStatus.FAILED)
                                            .withFailureReason(ex.getMessage());
