@@ -16,6 +16,14 @@ public class UnavailableModelClient implements ModelClient {
         this.reason = reason;
     }
 
+    /**
+     * @return why this model is unavailable, phrased as an actionable
+     *         instruction. Never contains credential material.
+     */
+    public String reason() {
+        return reason;
+    }
+
     @Override
     public ModelCallResult call(ModelCallRequest request) throws ModelCallException {
         throw new ModelCallException(ModelFailureCategory.CONFIGURATION_ERROR,

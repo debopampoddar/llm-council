@@ -43,6 +43,11 @@ spring:
               temperature: 0.3
 server:
   port: 8080
+  # Bind to loopback by default. This is the only real access control the app
+  # has: there is no authentication, so any endpoint reachable on the network is
+  # reachable by anyone on it. Docker deployments must override this explicitly
+  # with LLM_COUNCIL_BIND_ADDRESS=0.0.0.0 and accept that consequence.
+  address: ${LLM_COUNCIL_BIND_ADDRESS:127.0.0.1}
 management:
   endpoints:
     web:
@@ -372,6 +377,8 @@ council:
       validationRequired: false
       allowPartial: true
     mock-balanced:
+      # Single-model test fixture: self-validation is the point, not an oversight.
+      acknowledgeSelfValidation: true
       protocolId: balanced
       memberModelIds: [mock-member, mock-chair]
       chairModelId: mock-chair
@@ -381,6 +388,8 @@ council:
       validationRequired: true
       allowPartial: true
     mock-rigorous:
+      # Single-model test fixture: self-validation is the point, not an oversight.
+      acknowledgeSelfValidation: true
       protocolId: rigorous
       memberModelIds: [mock-member, mock-chair]
       chairModelId: mock-chair

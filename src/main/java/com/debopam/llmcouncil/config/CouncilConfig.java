@@ -16,7 +16,6 @@ import com.debopam.llmcouncil.orchestration.ProtocolDefinition;
 import com.debopam.llmcouncil.orchestration.ProtocolDefinitionRegistry;
 import com.debopam.llmcouncil.orchestration.ProtocolStageOptions;
 import com.debopam.llmcouncil.orchestration.StageType;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.anthropic.AnthropicChatModel;
@@ -29,6 +28,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,7 +42,8 @@ import java.util.stream.Collectors;
  *
  * <p>Model profiles and clients are constructed inside the {@link #modelRegistry()}
  * bean method, which produces an immutable {@link ModelRegistry}. Protocol
- * registration and cross-cutting validation remain in {@link #initRegistries()}.
+ * registration, cross-cutting validation, and assembly of the immutable
+ * {@link CouncilCatalog} happen in {@link #councilCatalogHolder(ModelRegistry)}.
  *
  * <h3>Provider Auto-Detection</h3>
  * <p>Cloud providers (OpenAI, Anthropic, Gemini) are auto-detected by inspecting
@@ -113,8 +114,17 @@ public class CouncilConfig {
         this.geminiProjectId = geminiProjectId;
     }
 
-    @Bean
-    public Map<String, CouncilProfile> councilProfiles() {
+    /**
+     * Build the profile map for the catalog.
+     *
+     * <p>Not a {@code @Bean}: profiles used to be injected by raw generic type
+     * ({@code Map<String, CouncilProfile>}), which cannot be swapped and blocks
+     * a second map of the same type from existing. They now reach consumers
+     * through {@link CouncilCatalog} instead.
+     *
+     * @return profile id to profile, in declaration order
+     */
+    private Map<String, CouncilProfile> buildProfiles() {
         Map<String, CouncilProfile> result = new LinkedHashMap<>();
         props.getProfiles().forEach((id, p) -> {
             Map<DepthMode, String> depthPolicies = new LinkedHashMap<>();
@@ -129,8 +139,12 @@ public class CouncilConfig {
         return Collections.unmodifiableMap(result);
     }
 
-    @Bean
-    public Map<String, CouncilPolicy> councilPolicies() {
+    /**
+     * Build the policy map for the catalog.
+     *
+     * @return policy id to policy, in declaration order
+     */
+    private Map<String, CouncilPolicy> buildPolicies() {
         Map<String, CouncilPolicy> result = new LinkedHashMap<>();
         props.getPolicies().forEach((id, p) ->
                 result.put(id, new CouncilPolicy(id, p.getProtocolId(), p.getMemberModelIds(),
@@ -177,13 +191,27 @@ public class CouncilConfig {
     }
 
     /**
-     * Registers protocol definitions and performs cross-cutting validation.
+     * Validates configuration, builds the {@link CouncilCatalog}, and returns
+     * the holder every consumer reads through.
      *
-     * <p>This runs after all {@code @Bean} methods, so the {@link ModelRegistry}
-     * bean is already available in the application context.
+     * <p>This is a {@code @Bean} rather than a {@code @PostConstruct} method
+     * because {@code @PostConstruct} on a {@code @Configuration} class runs when
+     * the configuration object itself is initialised — which is <em>before</em>
+     * its {@code @Bean} methods are invoked. Declaring {@link ModelRegistry} as
+     * a parameter is what guarantees the registry exists before the catalog is
+     * assembled, and makes anything injecting the holder transitively depend on
+     * a fully-built catalog.
+     *
+     * <p>Built-in configuration is validated fail-fast: an unknown cross
+     * reference throws and the application does not start. That is deliberate —
+     * shipped configuration is the control plane and a broken one must not
+     * degrade quietly.
+     *
+     * @param modelRegistry the fully-constructed model registry
+     * @return a holder already populated with generation 1 of the catalog
      */
-    @PostConstruct
-    public void initRegistries() {
+    @Bean
+    public CouncilCatalogHolder councilCatalogHolder(ModelRegistry modelRegistry) {
         configurationValidator.validate(props);
 
         // Build protocol definitions.
@@ -209,8 +237,46 @@ public class CouncilConfig {
         }
         validateConfiguration(profilesForValidation, protocols);
 
-        log.info("CouncilConfig: {} models, {} protocols registered",
-                 profilesForValidation.size(), protocols.size());
+        Map<String, CouncilProfile> profiles = buildProfiles();
+        Map<String, CouncilPolicy> policies = buildPolicies();
+        CouncilCatalog catalog = new CouncilCatalog(
+                modelRegistry,
+                profiles,
+                policies,
+                protocols,
+                builtInOrigins(profiles.keySet(), policies.keySet(), protocols.keySet()),
+                List.of(),
+                Instant.now(),
+                1L);
+
+        log.info("CouncilConfig: catalog generation 1 built with {} models, {} profiles, "
+                 + "{} policies, {} protocols",
+                 profilesForValidation.size(), profiles.size(), policies.size(), protocols.size());
+        return new CouncilCatalogHolder(catalog);
+    }
+
+    /**
+     * Stamp every entity in this catalog as {@link ConfigOrigin#BUILT_IN}.
+     *
+     * <p>Only built-in configuration exists in this phase. The map is populated
+     * anyway so the catalog contract does not change when the user overlay is
+     * introduced.
+     *
+     * @param profileIds  configured profile ids
+     * @param policyIds   configured policy ids
+     * @param protocolIds configured protocol ids
+     * @return entity key to origin
+     */
+    private Map<String, ConfigOrigin> builtInOrigins(Set<String> profileIds,
+                                                     Set<String> policyIds,
+                                                     Set<String> protocolIds) {
+        Map<String, ConfigOrigin> origins = new LinkedHashMap<>();
+        props.getModels().forEach(mp ->
+                origins.put(CouncilCatalog.key("model", mp.getId()), ConfigOrigin.BUILT_IN));
+        profileIds.forEach(id -> origins.put(CouncilCatalog.key("profile", id), ConfigOrigin.BUILT_IN));
+        policyIds.forEach(id -> origins.put(CouncilCatalog.key("policy", id), ConfigOrigin.BUILT_IN));
+        protocolIds.forEach(id -> origins.put(CouncilCatalog.key("protocol", id), ConfigOrigin.BUILT_IN));
+        return origins;
     }
 
     /**

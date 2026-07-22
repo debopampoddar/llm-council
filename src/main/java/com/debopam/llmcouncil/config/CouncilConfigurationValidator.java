@@ -2,6 +2,7 @@ package com.debopam.llmcouncil.config;
 
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.model.ModelRole;
+import com.debopam.llmcouncil.model.ValidationIndependence;
 import com.debopam.llmcouncil.orchestration.StageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,7 +95,72 @@ public class CouncilConfigurationValidator {
 
             // Warn if all member models share the same architecture family.
             warnLowDiversity(policyId, policy, modelsById);
+
+            // Warn when the Fresh Eyes validator is not actually fresh.
+            warnLowValidationIndependence(policyId, policy, modelsById);
         });
+    }
+
+    /**
+     * Warn (do not fail) when a policy's validator is not independent of its chair.
+     *
+     * <p>The validation stage exists to catch errors the chair made while
+     * synthesising, which only works if the validator does not share the chair's
+     * blind spots. A validator running on the same weights as the chair shares
+     * all of them.
+     *
+     * <p>This is never a hard failure — a machine that can only run one model
+     * must still be able to run a council. What it must not do is report
+     * validated output without saying how independent that validation was: a
+     * "validated" marker makes a reader trust an answer more, so rubber-stamped
+     * validation is worse than none. Set {@code acknowledgeSelfValidation: true}
+     * on the policy to silence the warning where the trade-off is deliberate;
+     * the tier is still reported on the run either way.
+     *
+     * @param policyId   the policy being validated
+     * @param policy     the policy configuration
+     * @param modelsById all configured models, keyed by id
+     */
+    private void warnLowValidationIndependence(String policyId,
+                                               CouncilProperties.PolicyProps policy,
+                                               Map<String, CouncilProperties.ModelProps> modelsById) {
+        ValidationIndependence tier = validationIndependence(policy, modelsById);
+        if (!tier.isReduced() || policy.isAcknowledgeSelfValidation()) {
+            return;
+        }
+        if (tier == ValidationIndependence.SELF_VALIDATION) {
+            log.warn("Policy {} uses the same model ('{}') as both chair and validator. "
+                     + "Fresh Eyes validation cannot be independent: the chair is validating its own "
+                     + "synthesis and shares all of its own blind spots. Prefer a validator from a "
+                     + "different model family, or set acknowledgeSelfValidation: true to accept this.",
+                     policyId, policy.getChairModelId());
+            return;
+        }
+        log.warn("Policy {} chair '{}' and validator '{}' share a model family or resolve to the same "
+                 + "provider model, so validation errors are likely to be correlated. Prefer a validator "
+                 + "from a different model family.",
+                 policyId, policy.getChairModelId(), policy.getValidatorModelId());
+    }
+
+    /**
+     * Classify how independent a policy's validator is from its chair.
+     *
+     * @param policy     the policy configuration
+     * @param modelsById all configured models, keyed by id
+     * @return the independence tier, or {@link ValidationIndependence#NOT_APPLICABLE}
+     *         when the policy declares no validator
+     */
+    static ValidationIndependence validationIndependence(
+            CouncilProperties.PolicyProps policy,
+            Map<String, CouncilProperties.ModelProps> modelsById) {
+        CouncilProperties.ModelProps chair = modelsById.get(policy.getChairModelId());
+        CouncilProperties.ModelProps validator = modelsById.get(policy.getValidatorModelId());
+        if (chair == null || validator == null) {
+            return ValidationIndependence.NOT_APPLICABLE;
+        }
+        return ValidationIndependence.between(
+                chair.getId(), chair.getModelFamily(), chair.getProviderModelId(),
+                validator.getId(), validator.getModelFamily(), validator.getProviderModelId());
     }
 
     private void validateProfiles(CouncilProperties props,

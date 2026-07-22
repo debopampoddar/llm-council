@@ -2,6 +2,8 @@ package com.debopam.llmcouncil.model;
 
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Immutable registry of model profiles and their backing clients.
@@ -66,6 +68,23 @@ public class ModelRegistry {
             throw new NoSuchElementException("No client configured for model: " + id);
         }
         return c;
+    }
+
+    /**
+     * Look up a model profile without throwing when it is absent.
+     *
+     * @param id The model's logical ID.
+     * @return The model profile, or empty if the model ID is not registered.
+     */
+    public Optional<ModelProfile> findModel(String id) {
+        return Optional.ofNullable(id == null ? null : profiles.get(id));
+    }
+
+    /**
+     * @return Every registered model ID, in registration order.
+     */
+    public Set<String> modelIds() {
+        return profiles.keySet();
     }
 
     /**

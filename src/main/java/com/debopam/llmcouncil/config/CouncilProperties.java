@@ -93,6 +93,14 @@ public class CouncilProperties {
         private int minimumReviewsPerDraft = 0;
         private boolean validationRequired = false;
         private boolean allowPartial = true;
+
+        /**
+         * Suppress the boot warning when this policy's validator is not
+         * independent of its chair. The independence tier is still reported on
+         * every run — this only acknowledges that the trade-off is deliberate,
+         * typically on hardware that cannot host a second model family.
+         */
+        private boolean acknowledgeSelfValidation = false;
         public String getProtocolId() { return protocolId; } public void setProtocolId(String v) { protocolId = v; }
         public List<String> getMemberModelIds() { return memberModelIds; } public void setMemberModelIds(List<String> v) { memberModelIds = v; }
         public String getChairModelId() { return chairModelId; } public void setChairModelId(String v) { chairModelId = v; }
@@ -101,6 +109,8 @@ public class CouncilProperties {
         public int getMinimumReviewsPerDraft() { return minimumReviewsPerDraft; } public void setMinimumReviewsPerDraft(int v) { minimumReviewsPerDraft = v; }
         public boolean isValidationRequired() { return validationRequired; } public void setValidationRequired(boolean v) { validationRequired = v; }
         public boolean isAllowPartial() { return allowPartial; } public void setAllowPartial(boolean v) { allowPartial = v; }
+        public boolean isAcknowledgeSelfValidation() { return acknowledgeSelfValidation; }
+        public void setAcknowledgeSelfValidation(boolean v) { acknowledgeSelfValidation = v; }
     }
 
     public static class ProtocolProps {
