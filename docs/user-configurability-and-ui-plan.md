@@ -536,7 +536,7 @@ Two deviations from this section as originally written:
 
 Update `docs/testing-m1-32gb.md` and `docs/testing-intel-2019-32gb.md` if they enumerate the local model set.
 
-### 4.8 Prompt budgeting (fixes F2)
+### 4.8 Prompt budgeting (fixes F2) ✅ IMPLEMENTED — shipped separately as 1B
 
 New `orchestration/PromptBudget.java`, applied by `PromptBuilder` to every multi-input prompt (`aggregationMessages`, `reviewMessages`, `debateMessages`, `synthesisMessages`).
 
@@ -545,7 +545,36 @@ New `orchestration/PromptBudget.java`, applied by `PromptBuilder` to every multi
 - **Allocation.** Instructions and the user question are never truncated. The remaining budget is divided evenly across the variable-length sections (drafts, reviews, scores, debate), then evenly within each section across its items, so no single long draft starves the others.
 - **Truncation marker.** Cut at a paragraph boundary where possible and append `\n\n[... truncated: N characters omitted ...]` so downstream models can see that content was removed rather than silently reasoning over a fragment.
 - **Signal.** On any truncation call `ctx.addWarning(...)` and publish a `CONTEXT_BUDGET_EXCEEDED` event naming the stage, the model, the estimated tokens, and the budget. This surfaces in `CouncilRunResponse.warnings` and the Phase 2 timeline.
-- **Validation hook.** `UserConfigValidator` emits a `WARNING` when a policy's worst-case synthesis prompt — `sum(members × defaultOutputTokens)` plus a reviews allowance — exceeds the chair's `contextWindowTokens`. This is the check that stops §2.2's 8-member policies from silently producing degraded synthesis.
+- **Validation hook.** Implemented in `CouncilConfigurationValidator` rather than `UserConfigValidator`, which does not exist until Phase 1A. The estimate is **protocol-aware**: reviews and debate are only charged when the protocol actually runs those stages, so `quick` is not warned about evidence it never accumulates. Move or extend this when 1A lands.
+
+Deviations from this section as originally written:
+
+1. **`CHARS_PER_TOKEN` is 3.5, not 4.** Assuming fewer characters per token claims less room than the model really has. Erring this way truncates slightly early; erring the other way overflows and loses content silently, which is the failure being fixed.
+2. **Allocation is max-min fair, not evenly split.** An even split would strand a quarter of the window on a two-line score summary while the drafts were being cut. Sections and items that need less than their share release the surplus for redistribution.
+3. **The context window derivation is shared** via `ModelContextWindows`, used by both `CouncilConfig` and the validator. The first implementation had the validator read the raw configured value, which meant it silently skipped every model relying on the provider default — that is, all the local models the check exists for.
+4. **Six prompts are budgeted, not four**: synthesis, review, post-debate review, debate, aggregation, and revision. Each keeps an unbudgeted overload so existing callers and tests are unchanged.
+
+**What the warning reports on the shipped local config** (`num-ctx: 4096`):
+
+| Policy | Chair prompt room | Evidence produced | Overrun |
+|---|---|---|---|
+| `local-balanced` | ~2,296 tokens | ~4,200 | 1.8× |
+| `local-rigorous` | ~2,296 tokens | ~11,100 | **4.8×** |
+
+Before this change Ollama silently discarded the excess, so a rigorous local run synthesised its answer from roughly a fifth of the council's work with no signal anywhere.
+
+**1D — window sizing (shipped with 1B).** Budgeting made the overflow visible and safe; it did not make it go away. The remedy is capacity, and the required figure was measured by booting at each window size and reading the warnings:
+
+| `num-ctx` | Over-budget policies |
+|---|---|
+| 4096 (previous default) | `local-balanced`, `local-rigorous` |
+| 8192 | `local-rigorous` |
+| 12288 | `local-rigorous` |
+| **16384** | none |
+
+Shipped defaults are now 16384 (`application.yml`, both M1 compose files) and 8192 for Intel, whose 3B models at 700 output tokens produce less evidence. `ShippedContextBudgetTest` fails if any shipped policy goes back over budget — verified to fail by reverting the default to 4096.
+
+Cost is KV cache, roughly 2 GiB per resident 8B-class model at 16384 versus 0.5 GiB at 4096. Documented in the README together with the levers for smaller machines.
 
 ### 4.9 Tests
 

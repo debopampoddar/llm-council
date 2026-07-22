@@ -4,7 +4,9 @@ import com.debopam.llmcouncil.model.ChatMessage;
 import com.debopam.llmcouncil.model.CouncilRole;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -16,6 +18,25 @@ import java.util.stream.IntStream;
  */
 @Component
 public class PromptBuilder {
+
+    // Approximate size of each prompt's fixed scaffolding: system instructions
+    // plus the template around the variable sections. Deliberately rounded up so
+    // the budget reserves slightly more than the template really needs.
+    private static final int SYNTHESIS_FIXED_CHARS = 1_400;
+    private static final int REVIEW_FIXED_CHARS = 1_800;
+    private static final int DEBATE_FIXED_CHARS = 1_600;
+    private static final int AGGREGATION_FIXED_CHARS = 1_000;
+    private static final int REVISION_FIXED_CHARS = 1_200;
+
+    /**
+     * Null-safe length used when reserving space for caller-supplied text.
+     *
+     * @param text the text, may be null
+     * @return its length, or 0 when null
+     */
+    private static int length(String text) {
+        return text == null ? 0 : text.length();
+    }
 
     // ── Generation 
 
@@ -72,13 +93,33 @@ public class PromptBuilder {
      */
     public List<ChatMessage> aggregationMessages(String question, String context,
                                                  List<Draft> allDrafts, String thisModelId) {
-        String draftsText = IntStream.range(0, allDrafts.size())
-                                     .mapToObj(i -> """
-                                             <untrusted-draft id="%s">
-                                             %s
-                                             </untrusted-draft>
-                                             """.formatted(allDrafts.get(i).draftId(), allDrafts.get(i).text()))
-                                     .collect(Collectors.joining("\n\n"));
+        return aggregationMessages(question, context, allDrafts, thisModelId, PromptBudget.unlimited());
+    }
+
+    /**
+     * Aggregation prompt, fitted to the aggregating model's context window.
+     *
+     * @param question    The original question.
+     * @param context     Optional additional context.
+     * @param allDrafts   All initial drafts from the GENERATE stage.
+     * @param thisModelId The model doing the aggregation.
+     * @param budget      Context budget for that model.
+     * @return Messages for the aggregation call.
+     */
+    public List<ChatMessage> aggregationMessages(String question, String context,
+                                                 List<Draft> allDrafts, String thisModelId,
+                                                 PromptBudget budget) {
+        List<String> draftItems = allDrafts.stream()
+                                           .map(d -> """
+                                                   <untrusted-draft id="%s">
+                                                   %s
+                                                   </untrusted-draft>
+                                                   """.formatted(d.draftId(), d.text()))
+                                           .toList();
+        Map<String, List<String>> fitted = budget.fit(
+                AGGREGATION_FIXED_CHARS + length(question) + length(context),
+                new LinkedHashMap<>(Map.of("drafts", draftItems)));
+        String draftsText = String.join("\n\n", fitted.get("drafts"));
 
         String systemPrompt = """
                 You are an expert council member refining your answer.
@@ -119,13 +160,33 @@ public class PromptBuilder {
      * @return Messages for the review call.
      */
     public List<ChatMessage> reviewMessages(String question, List<Draft> drafts) {
-        String draftsText = IntStream.range(0, drafts.size())
-                                     .mapToObj(i -> """
-                                             <untrusted-draft id="%s">
-                                             %s
-                                             </untrusted-draft>
-                                             """.formatted(drafts.get(i).draftId(), drafts.get(i).text()))
-                                     .collect(Collectors.joining("\n\n"));
+        return reviewMessages(question, drafts, PromptBudget.unlimited());
+    }
+
+    /**
+     * Peer review prompt, fitted to the reviewing model's context window.
+     *
+     * <p>Every reviewer receives every draft, so this prompt grows with the
+     * square of council size in aggregate and overflows sooner than intuition
+     * suggests on a small local window.
+     *
+     * @param question The original question.
+     * @param drafts   Anonymised drafts to review.
+     * @param budget   Context budget for the reviewing model.
+     * @return Messages for the review call.
+     */
+    public List<ChatMessage> reviewMessages(String question, List<Draft> drafts, PromptBudget budget) {
+        List<String> draftItems = drafts.stream()
+                                        .map(d -> """
+                                                <untrusted-draft id="%s">
+                                                %s
+                                                </untrusted-draft>
+                                                """.formatted(d.draftId(), d.text()))
+                                        .toList();
+        Map<String, List<String>> fitted = budget.fit(
+                REVIEW_FIXED_CHARS + length(question),
+                new LinkedHashMap<>(Map.of("drafts", draftItems)));
+        String draftsText = String.join("\n\n", fitted.get("drafts"));
 
         // (Review Prompt Reframing) 
         // Research shows that prompts asking "find issues/errors" cause LLMs
@@ -265,34 +326,69 @@ public class PromptBuilder {
                                                List<ScoreArtifact> scores,
                                                List<DebateRound> debateRounds,
                                                boolean preserveDissent) {
-        String draftsText = drafts.stream()
-                                  .map(d -> """
-                                          <untrusted-draft id="%s">
-                                          %s
-                                          </untrusted-draft>
-                                          """.formatted(d.draftId(), d.text()))
-                                  .collect(Collectors.joining("\n\n---\n\n"));
+        return synthesisMessages(question, context, drafts, reviews, scores, debateRounds,
+                                 preserveDissent, PromptBudget.unlimited());
+    }
 
-        String reviewText = reviews.isEmpty() ? "None provided." :
-                            reviews.stream()
-                                   .map(r -> "Reviewer " + r.reviewerId() + " on " + r.draftId()
-                                             + " score=" + r.overallScore()
-                                             + " confidence=" + r.confidence()
-                                             + " issues=" + r.issues())
-                                   .collect(Collectors.joining("\n"));
+    /**
+     * Chair synthesis prompt, fitted to the chair's context window.
+     *
+     * <p>This is the largest prompt the council builds — it carries every draft,
+     * review, score line, and debate turn — so it is the one most likely to
+     * overflow. Anything the budget removes is marked in the text and recorded
+     * on {@code budget} for the caller to surface.
+     *
+     * @param question        The original user question.
+     * @param context         Optional additional context.
+     * @param drafts          Final drafts after GENERATE/AGGREGATE.
+     * @param reviews         Peer review artifacts.
+     * @param scores          Scoring artifacts.
+     * @param debateRounds    Debate history (may be empty).
+     * @param preserveDissent Whether to include dissenting views in the final answer.
+     * @param budget          Context budget for the chair model.
+     * @return Messages for the chair synthesis call.
+     */
+    public List<ChatMessage> synthesisMessages(String question, String context,
+                                               List<Draft> drafts,
+                                               List<ReviewArtifact> reviews,
+                                               List<ScoreArtifact> scores,
+                                               List<DebateRound> debateRounds,
+                                               boolean preserveDissent,
+                                               PromptBudget budget) {
+        List<String> draftItems = drafts.stream()
+                                        .map(d -> """
+                                                <untrusted-draft id="%s">
+                                                %s
+                                                </untrusted-draft>
+                                                """.formatted(d.draftId(), d.text()))
+                                        .toList();
+        List<String> reviewItems = reviews.stream()
+                                          .map(r -> "Reviewer " + r.reviewerId() + " on " + r.draftId()
+                                                    + " score=" + r.overallScore()
+                                                    + " confidence=" + r.confidence()
+                                                    + " issues=" + r.issues())
+                                          .toList();
+        List<String> scoreItems = scores.stream()
+                                        .map(s -> s.draftId() + " total=" + s.weightedTotal()
+                                                  + " dimensions=" + s.dimensionScores())
+                                        .toList();
+        List<String> debateItems = debateRounds.stream()
+                                               .flatMap(r -> r.contributions().stream()
+                                                              .map(c -> "Round " + r.roundNumber() + " - " + c.modelId()
+                                                                        + " (conf=" + c.confidence() + "): " + c.text()))
+                                               .toList();
 
-        String scoreText = scores.isEmpty() ? "None provided." :
-                           scores.stream()
-                                 .map(s -> s.draftId() + " total=" + s.weightedTotal()
-                                           + " dimensions=" + s.dimensionScores())
-                                 .collect(Collectors.joining("\n"));
+        Map<String, List<String>> fitted = budget.fit(
+                SYNTHESIS_FIXED_CHARS + length(question) + length(context),
+                new LinkedHashMap<>(Map.of("drafts", draftItems,
+                                           "reviews", reviewItems,
+                                           "scores", scoreItems,
+                                           "debate", debateItems)));
 
-        String debateText = debateRounds.isEmpty() ? "No debate conducted." :
-                            debateRounds.stream()
-                                        .flatMap(r -> r.contributions().stream()
-                                                       .map(c -> "Round " + r.roundNumber() + " - " + c.modelId()
-                                                                 + " (conf=" + c.confidence() + "): " + c.text()))
-                                        .collect(Collectors.joining("\n"));
+        String draftsText = String.join("\n\n---\n\n", fitted.get("drafts"));
+        String reviewText = reviewItems.isEmpty() ? "None provided." : String.join("\n", fitted.get("reviews"));
+        String scoreText = scoreItems.isEmpty() ? "None provided." : String.join("\n", fitted.get("scores"));
+        String debateText = debateItems.isEmpty() ? "No debate conducted." : String.join("\n", fitted.get("debate"));
 
         String dissentInstruction = preserveDissent
                                     ? "\nIf there are significant unresolved disagreements, acknowledge them explicitly in the final answer."
@@ -485,21 +581,49 @@ public class PromptBuilder {
                                                     List<Draft> currentDrafts,
                                                     List<DebateRound> previousRounds,
                                                     int roundNumber, CouncilRole role) {
-        String draftsText = IntStream.range(0, currentDrafts.size())
-                                     .mapToObj(i -> """
-                                             <untrusted-position id="%s">
-                                             %s
-                                             </untrusted-position>
-                                             """.formatted(currentDrafts.get(i).draftId(), currentDrafts.get(i).text()))
-                                     .collect(Collectors.joining("\n\n"));
+        return debateMessagesForRole(question, context, currentDrafts, previousRounds,
+                                     roundNumber, role, PromptBudget.unlimited());
+    }
 
-        String previousText = previousRounds.isEmpty() ? "None" :
-                              previousRounds.stream()
-                                            .map(r -> "Round " + r.roundNumber() + ":\n" +
-                                                      r.contributions().stream()
-                                                       .map(c -> "  Member " + c.modelId() + ": " + c.text())
-                                                       .collect(Collectors.joining("\n")))
-                                            .collect(Collectors.joining("\n\n"));
+    /**
+     * Role-specific debate prompt, fitted to the debating model's context window.
+     *
+     * <p>Debate is the stage that grows fastest: every round appends every
+     * member's contribution to the history carried into the next round.
+     *
+     * @param question       The original question.
+     * @param context        Optional additional context.
+     * @param currentDrafts  Current positions.
+     * @param previousRounds Debate history so far.
+     * @param roundNumber    The round being argued.
+     * @param role           The debate persona for this model.
+     * @param budget         Context budget for the debating model.
+     * @return Messages for the debate call.
+     */
+    public List<ChatMessage> debateMessagesForRole(String question, String context,
+                                                   List<Draft> currentDrafts,
+                                                   List<DebateRound> previousRounds,
+                                                   int roundNumber, CouncilRole role,
+                                                   PromptBudget budget) {
+        List<String> draftItems = currentDrafts.stream()
+                                               .map(d -> """
+                                                       <untrusted-position id="%s">
+                                                       %s
+                                                       </untrusted-position>
+                                                       """.formatted(d.draftId(), d.text()))
+                                               .toList();
+        List<String> previousItems = previousRounds.stream()
+                                                   .map(r -> "Round " + r.roundNumber() + ":\n" +
+                                                             r.contributions().stream()
+                                                              .map(c -> "  Member " + c.modelId() + ": " + c.text())
+                                                              .collect(Collectors.joining("\n")))
+                                                   .toList();
+        Map<String, List<String>> fitted = budget.fit(
+                DEBATE_FIXED_CHARS + length(question) + length(context),
+                new LinkedHashMap<>(Map.of("positions", draftItems, "history", previousItems)));
+
+        String draftsText = String.join("\n\n", fitted.get("positions"));
+        String previousText = previousItems.isEmpty() ? "None" : String.join("\n\n", fitted.get("history"));
 
         // Base debate rules shared by all roles
         String baseRules = """
@@ -576,20 +700,39 @@ public class PromptBuilder {
      */
     public List<ChatMessage> postDebateReviewMessages(String question, List<Draft> drafts,
                                                        List<DebateRound> debateRounds) {
-        String draftsText = IntStream.range(0, drafts.size())
-                                     .mapToObj(i -> """
-                                             <untrusted-draft id="%s">
-                                             %s
-                                             </untrusted-draft>
-                                             """.formatted(drafts.get(i).draftId(), drafts.get(i).text()))
-                                     .collect(Collectors.joining("\n\n"));
+        return postDebateReviewMessages(question, drafts, debateRounds, PromptBudget.unlimited());
+    }
 
-        String debateText = debateRounds.isEmpty() ? "No debate conducted." :
-                            debateRounds.stream()
-                                        .flatMap(r -> r.contributions().stream()
-                                                       .map(c -> "Round " + r.roundNumber() + " - " + c.modelId()
-                                                                 + " (conf=" + c.confidence() + "): " + c.text()))
-                                        .collect(Collectors.joining("\n"));
+    /**
+     * Post-debate review prompt, fitted to the reviewing model's context window.
+     *
+     * @param question     The original question.
+     * @param drafts       Drafts to re-review.
+     * @param debateRounds Debate history reviewers must take into account.
+     * @param budget       Context budget for the reviewing model.
+     * @return Messages for the post-debate review call.
+     */
+    public List<ChatMessage> postDebateReviewMessages(String question, List<Draft> drafts,
+                                                      List<DebateRound> debateRounds,
+                                                      PromptBudget budget) {
+        List<String> draftItems = drafts.stream()
+                                        .map(d -> """
+                                                <untrusted-draft id="%s">
+                                                %s
+                                                </untrusted-draft>
+                                                """.formatted(d.draftId(), d.text()))
+                                        .toList();
+        List<String> debateItems = debateRounds.stream()
+                                               .flatMap(r -> r.contributions().stream()
+                                                              .map(c -> "Round " + r.roundNumber() + " - " + c.modelId()
+                                                                        + " (conf=" + c.confidence() + "): " + c.text()))
+                                               .toList();
+        Map<String, List<String>> fitted = budget.fit(
+                REVIEW_FIXED_CHARS + length(question),
+                new LinkedHashMap<>(Map.of("drafts", draftItems, "debate", debateItems)));
+
+        String draftsText = String.join("\n\n", fitted.get("drafts"));
+        String debateText = debateItems.isEmpty() ? "No debate conducted." : String.join("\n", fitted.get("debate"));
 
         // System prompt explicitly tells reviewers to consider debate arguments
         // and to NOT simply copy pre-debate reviews.
@@ -674,11 +817,37 @@ public class PromptBuilder {
     public List<ChatMessage> revisionMessages(String question, String context,
                                                Draft originalDraft,
                                                List<DebateRound> debateRounds) {
-        String debateText = debateRounds.stream()
-                                        .flatMap(r -> r.contributions().stream()
-                                                       .map(c -> "Round " + r.roundNumber() + " - " + c.modelId()
-                                                                 + " (conf=" + c.confidence() + "): " + c.text()))
-                                        .collect(Collectors.joining("\n"));
+        return revisionMessages(question, context, originalDraft, debateRounds, PromptBudget.unlimited());
+    }
+
+    /**
+     * Post-debate revision prompt, fitted to the revising model's context window.
+     *
+     * <p>The member's own draft is reserved rather than budgeted: a model asked
+     * to revise a truncated copy of its own work would rewrite the missing part
+     * from scratch.
+     *
+     * @param question      The original question.
+     * @param context       Optional additional context.
+     * @param originalDraft The member's own draft, never truncated.
+     * @param debateRounds  Debate history informing the revision.
+     * @param budget        Context budget for the revising model.
+     * @return Messages for the revision call.
+     */
+    public List<ChatMessage> revisionMessages(String question, String context,
+                                              Draft originalDraft,
+                                              List<DebateRound> debateRounds,
+                                              PromptBudget budget) {
+        List<String> debateItems = debateRounds.stream()
+                                               .flatMap(r -> r.contributions().stream()
+                                                              .map(c -> "Round " + r.roundNumber() + " - " + c.modelId()
+                                                                        + " (conf=" + c.confidence() + "): " + c.text()))
+                                               .toList();
+        Map<String, List<String>> fitted = budget.fit(
+                REVISION_FIXED_CHARS + length(question) + length(context)
+                + (originalDraft == null ? 0 : length(originalDraft.text())),
+                new LinkedHashMap<>(Map.of("debate", debateItems)));
+        String debateText = String.join("\n", fitted.get("debate"));
 
         String systemPrompt = """
                 You are a council member revising your answer after structured debate.
