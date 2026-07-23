@@ -1,82 +1,230 @@
-// main.js — app entry point.
+// main.js — app state and orchestration.
 //
-// Step 1 scaffolding: creates a chat on the mock profile, subscribes to its
-// event stream, and prints the raw council events. The point at this stage is
-// to prove the plumbing — static serving with no Java, the SSE lifecycle, and
-// dedupe across a reconnect. The chat list, health gate, timeline and trust
-// strip land on top of this in the steps that follow.
+// Flow: boot loads the catalog and the chat list, then profile + depth drive a
+// preflight call. Sending creates the chat if there isn't one, opens the event
+// stream before the first message so no council event falls into the gap, then
+// posts. The POST response already carries the RUNNING turn and its
+// councilSessionId — the key everything session-scoped is fetched with — so
+// state updates immediately rather than waiting for the stream to say so.
 
 import { api, ApiError } from "./api.js";
 import { subscribe } from "./sse.js";
 import { el, replace } from "./dom.js";
+import { independenceFor } from "./health.js";
+import {
+  renderChatList,
+  renderComposer,
+  renderTopbarConfig,
+  renderTurnStatus,
+  renderUserMessage,
+} from "./chat.js";
 
-const streamInner = document.getElementById("stream-inner");
-const connBadge = document.getElementById("conn");
-const connLabel = document.getElementById("conn-label");
+const dom = {
+  chatList: document.getElementById("chat-list"),
+  topbarConfig: document.getElementById("topbar-config"),
+  streamInner: document.getElementById("stream-inner"),
+  composerSlot: document.getElementById("composer-slot"),
+  conn: document.getElementById("conn"),
+  connLabel: document.getElementById("conn-label"),
+};
+
+const state = {
+  catalog: null,
+  chats: [],
+  activeChatId: null,
+  activeChat: null,
+  profileId: "mock",
+  depthMode: "RIGOROUS",
+  health: null,
+  independence: null,
+  error: null,
+};
 
 let stream = null;
-let events = [];
 
-function setConnection(state, detail) {
-  connBadge.dataset.state = state === "retrying" ? "retrying" : state;
+// ── Connection indicator
+
+function setConnection(status, detail) {
+  dom.conn.dataset.state = status;
   const labels = {
     open: "live",
     retrying: `reconnecting in ${Math.round((detail || 0) / 1000)}s`,
     closed: "not connected",
   };
-  connLabel.textContent = labels[state] || state;
+  dom.connLabel.textContent = labels[status] || status;
 }
 
-function renderEvents() {
-  if (!events.length) {
-    replace(streamInner, el("div.empty", {}, [
-      el("h2", { text: "Waiting for the council" }),
-      el("p", { text: "Events appear here as stages run." }),
+// ── Rendering
+
+function render() {
+  renderChatList(dom.chatList, state.chats, state.activeChatId, { onSelect: selectChat });
+  renderTopbarConfig(dom.topbarConfig, state, {
+    onProfileChange: (profileId) => { state.profileId = profileId; refreshHealth(); },
+    onDepthChange: (depthMode) => { state.depthMode = depthMode; refreshHealth(); },
+  });
+  renderComposer(dom.composerSlot, state, { onSend: send });
+  renderStream();
+}
+
+function renderStream() {
+  if (state.error) {
+    replace(dom.streamInner, el("div.banner.b-crit", {}, [
+      el("span.bt", { text: "Something went wrong" }),
+      el("span.bd", { text: state.error }),
     ]));
     return;
   }
-  const rows = events.map((event) =>
-    el("div.row", {}, [
-      el("span.st", { text: event.stage || "—" }),
-      el("span.ty", { text: event.type }),
-      el("span.pl", { text: JSON.stringify(event.payload || {}) }),
+
+  const turns = state.activeChat?.turns || [];
+  if (!turns.length) {
+    replace(dom.streamInner, el("div.empty", {}, [
+      el("h2", { text: state.activeChat ? "No messages yet" : "No chat selected" }),
+      el("p", {
+        text: state.activeChat
+          ? "Ask the council a question below."
+          : "Pick a profile and ask a question. The mock profile runs the full rigorous protocol offline, with no model runtime.",
+      }),
     ]));
-  replace(streamInner, el("div.eventlog", {}, rows));
+    return;
+  }
+
+  replace(dom.streamInner, turns.map(renderTurn));
 }
 
-function showError(error) {
-  const message = error instanceof ApiError ? error.message : String(error);
-  replace(streamInner, el("div.banner.b-crit", {}, [
-    el("span.bt", { text: "Could not start the council" }),
-    el("span.bd", { text: message }),
-  ]));
+function renderTurn(turn) {
+  const parts = [renderUserMessage(turn.userMessage)];
+
+  if (turn.status === "RUNNING") {
+    parts.push(el("div.banner.b-info", {}, [
+      el("span.bt", { text: "Council running…" }),
+      el("span.bd", { text: "Stages stream in as they complete." }),
+    ]));
+  }
+
+  const status = renderTurnStatus(turn, { onRetry: send });
+  if (status) parts.push(status);
+
+  if (turn.assistantAnswer) {
+    parts.push(el("div.answer", {}, [
+      el("div.ans-body", {}, [el("div.prose", { text: turn.assistantAnswer })]),
+    ]));
+  }
+
+  return el("div.turn", {}, parts);
 }
 
-async function startChat() {
+// ── Data
+
+async function refreshHealth() {
+  state.independence = independenceFor(state.catalog, state.profileId, state.depthMode);
+  state.health = null;
+  render();
   try {
-    events = [];
-    renderEvents();
-
-    const chat = await api.createChat("mock", "RIGOROUS");
-    if (stream) stream.close();
-
-    stream = subscribe(chat.chatId, {
-      onStatus: setConnection,
-      onCouncilEvent: (event) => {
-        events.push(event);
-        renderEvents();
-      },
-    });
-
-    await api.sendMessage(chat.chatId, "Should we migrate our monolith to microservices?");
+    state.health = await api.profileHealth(state.profileId, state.depthMode);
   } catch (error) {
-    showError(error);
+    state.health = { profileId: state.profileId, runnable: false, models: [], warnings: [],
+                     policyId: "unknown", detail: describe(error) };
+  }
+  render();
+}
+
+async function refreshChats() {
+  try {
+    state.chats = await api.listChats();
+  } catch (error) {
+    state.error = describe(error);
   }
 }
 
-document.getElementById("new-chat").addEventListener("click", startChat);
+async function selectChat(chatId) {
+  try {
+    state.activeChatId = chatId;
+    state.activeChat = await api.getChat(chatId);
+    state.profileId = state.activeChat.profileId;
+    state.depthMode = state.activeChat.depthMode;
+    state.independence = independenceFor(state.catalog, state.profileId, state.depthMode);
+    openStream(chatId);
+    render();
+    await refreshHealth();
+  } catch (error) {
+    state.error = describe(error);
+    render();
+  }
+}
 
+function openStream(chatId) {
+  if (stream) stream.close();
+  stream = subscribe(chatId, {
+    onStatus: setConnection,
+    onSnapshot: (chat) => {
+      state.activeChat = chat;
+      render();
+    },
+    onChatEvent: () => {
+      // Turn transitions arrive as chat events; the snapshot carries the bodies,
+      // so refresh the chat rather than patching turn state field by field.
+      api.getChat(chatId).then((chat) => {
+        state.activeChat = chat;
+        render();
+        refreshChats().then(render);
+      }).catch(() => {});
+    },
+  });
+}
+
+async function send(text) {
+  state.error = null;
+  try {
+    if (!state.activeChatId) {
+      const chat = await api.createChat(state.profileId, state.depthMode);
+      state.activeChatId = chat.chatId;
+      state.activeChat = chat;
+      // Subscribe before the first message so no council event lands in the gap.
+      openStream(chat.chatId);
+    }
+    render();
+    state.activeChat = await api.sendMessage(state.activeChatId, text);
+    render();
+    await refreshChats();
+    render();
+  } catch (error) {
+    state.error = describe(error);
+    render();
+  }
+}
+
+function newChat() {
+  if (stream) stream.close();
+  stream = null;
+  state.activeChatId = null;
+  state.activeChat = null;
+  state.error = null;
+  setConnection("closed");
+  render();
+  refreshHealth();
+}
+
+function describe(error) {
+  return error instanceof ApiError ? error.message : String(error);
+}
+
+// ── Boot
+
+document.getElementById("new-chat").addEventListener("click", newChat);
 document.getElementById("sidebar-toggle").addEventListener("click", () => {
   const sidebar = document.getElementById("sidebar");
   sidebar.dataset.open = sidebar.dataset.open === "true" ? "false" : "true";
 });
+
+(async function boot() {
+  try {
+    state.catalog = await api.catalog("profiles,policies");
+    const ids = (state.catalog.profiles || []).map((p) => p.id);
+    if (!ids.includes(state.profileId)) state.profileId = ids[0] || "mock";
+  } catch (error) {
+    state.error = describe(error);
+  }
+  await refreshChats();
+  render();
+  await refreshHealth();
+})();

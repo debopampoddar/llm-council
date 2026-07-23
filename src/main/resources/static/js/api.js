@@ -59,7 +59,13 @@ async function request(method, path, body) {
 
 export const api = {
   // ── Catalog and preflight
-  catalog: (include) => request("GET", `/catalog?include=${encodeURIComponent(include)}`),
+  // Test-only profiles are requested deliberately: `mock` is flagged testOnly
+  // and hidden by default, but it is the profile the local workflow runs on —
+  // the full rigorous protocol with no model runtime. The UI marks such
+  // profiles rather than hiding them, because the product guarantee is that
+  // mock output is never mistaken for a real council answer.
+  catalog: (include) =>
+    request("GET", `/catalog?include=${encodeURIComponent(include)}&includeTestOnly=true`),
   profileHealth: (profileId, depthMode) =>
     request("GET", `/profiles/${encodeURIComponent(profileId)}/health?depthMode=${depthMode}`),
 
