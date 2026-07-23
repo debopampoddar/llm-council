@@ -59,6 +59,8 @@ const state = {
   // Artifact bodies, keyed `${sessionId}::${path}`. Nothing is prefetched: a
   // rigorous run writes 16 files and most stages are never opened.
   artifacts: new Map(),
+  // Sessions with a cancellation requested but not yet observed by the run.
+  cancelling: new Set(),
 };
 
 let stream = null;
@@ -137,6 +139,10 @@ function renderTurn(turn) {
       el("span.bt", { text: "Council starting…" }),
       el("span.bd", { text: "Stages appear as they run." }),
     ]));
+  }
+
+  if (turn.status === "RUNNING") {
+    parts.push(renderRunControls(turn));
   }
 
   const status = renderTurnStatus(turn, { onRetry: send });
@@ -280,6 +286,43 @@ async function loadStageArtifacts(sessionId, stageIndex, events) {
     fetched = true;
   }
   if (fetched) renderStream();
+}
+
+/**
+ * Cancel control for a run in flight.
+ *
+ * <p>The wording is deliberate. Cancellation takes effect at the next stage
+ * boundary, so an Ollama generation already issued keeps running — for up to
+ * its full timeout — before the run stops. A button that implied otherwise
+ * would make that wait look like a hang.
+ */
+function renderRunControls(turn) {
+  const cancelling = state.cancelling.has(turn.councilSessionId);
+
+  return el("div.run-controls", {}, [
+    el("button.btn.btn-sm", {
+      type: "button",
+      disabled: cancelling ? "disabled" : null,
+      onClick: () => cancelRun(turn.councilSessionId),
+    }, [cancelling ? "Stopping…" : "Cancel run"]),
+    el("span.run-note", {
+      text: cancelling
+        ? "Stopping after the current stage. A model call already in flight runs to completion first and its result is discarded."
+        : "Cancelling stops the council at the next stage boundary.",
+    }),
+  ]);
+}
+
+async function cancelRun(sessionId) {
+  state.cancelling.add(sessionId);
+  renderStream();
+  try {
+    await api.cancelRun(sessionId);
+  } catch (error) {
+    state.cancelling.delete(sessionId);
+    state.error = describe(error);
+  }
+  renderStream();
 }
 
 function expandedFor(sessionId) {

@@ -17,16 +17,40 @@ import java.util.NoSuchElementException;
 @Service
 public class CouncilService {
 
+    /** Failure reason recorded on a run the user stopped. */
+    public static final String CANCELLED_BY_USER = "Cancelled by user";
+
     private final ProtocolOrchestrator orchestrator;
     private final SessionStore sessionStore;
     private final CouncilPolicyResolver policyResolver;
+    private final RunRegistry runRegistry;
 
     public CouncilService(ProtocolOrchestrator orchestrator,
                           SessionStore sessionStore,
-                          CouncilPolicyResolver policyResolver) {
+                          CouncilPolicyResolver policyResolver,
+                          RunRegistry runRegistry) {
         this.orchestrator = orchestrator;
         this.sessionStore = sessionStore;
         this.policyResolver = policyResolver;
+        this.runRegistry = runRegistry;
+    }
+
+    /**
+     * Ask a running council to stop at its next stage boundary.
+     *
+     * <p>Cancelling a run that has already finished is a no-op, not an error:
+     * the caller's intent — that this run should not continue — is satisfied
+     * either way, and the race between clicking cancel and the run completing is
+     * one the user cannot avoid.
+     *
+     * @param sessionId the council session to stop
+     * @return the session's status at the moment of the request
+     * @throws NoSuchElementException if no such session exists
+     */
+    public CouncilStatus cancelRun(String sessionId) {
+        CouncilSession session = getSession(sessionId);
+        runRegistry.cancel(sessionId);
+        return session.status();
     }
 
     /** Persist a new session. */
@@ -62,12 +86,20 @@ public class CouncilService {
             throw ex;
         }
 
-        CouncilStatus finalStatus = ctx.isTerminal()
-                                    ? (ctx.synthesisResult().isPresent() ? CouncilStatus.PARTIAL : CouncilStatus.FAILED)
-                                    : CouncilStatus.COMPLETED;
+        // A cancelled run is not a failure and not a success. It gets its own
+        // status so a partial answer produced before the stop is not presented
+        // as a council that finished its protocol.
+        CouncilStatus finalStatus = ctx.isCancelled()
+                                    ? CouncilStatus.CANCELLED
+                                    : ctx.isTerminal()
+                                      ? (ctx.synthesisResult().isPresent() ? CouncilStatus.PARTIAL : CouncilStatus.FAILED)
+                                      : CouncilStatus.COMPLETED;
+        String failureReason = ctx.isCancelled()
+                               ? CANCELLED_BY_USER
+                               : ctx.failureMessage().orElse(null);
         CouncilSession completed = session.withStatus(finalStatus)
                                           .withFinalAnswer(ctx.synthesisResult().orElse(null))
-                                          .withFailureReason(ctx.failureMessage().orElse(null));
+                                          .withFailureReason(failureReason);
         sessionStore.save(completed);
         return ctx;
     }

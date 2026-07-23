@@ -1,6 +1,7 @@
 package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.InMemoryEventPublisher;
+import com.debopam.llmcouncil.application.RunRegistry;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.model.*;
@@ -55,7 +56,7 @@ class ProtocolOrchestratorIntegrationTest {
         protocolRegistry.register(Map.of("quick", quickProtocol));
 
         ProtocolOrchestrator orchestrator = new ProtocolOrchestrator(
-                protocolRegistry, executorRegistry, events);
+                protocolRegistry, executorRegistry, events, new RunRegistry());
 
         // Run the protocol
         CouncilSession session = CouncilSession.create("integration-1",
@@ -117,7 +118,7 @@ class ProtocolOrchestratorIntegrationTest {
         protocolRegistry.register(Map.of("rigorous", rigorousProtocol));
 
         ProtocolOrchestrator orchestrator = new ProtocolOrchestrator(
-                protocolRegistry, executorRegistry, events);
+                protocolRegistry, executorRegistry, events, new RunRegistry());
 
         CouncilSession session = CouncilSession.create("integration-2",
                 "Should we use microservices or monolith?", null,
@@ -167,7 +168,7 @@ class ProtocolOrchestratorIntegrationTest {
         protocolRegistry.register(Map.of("partial", protocol));
 
         ProtocolOrchestrator orchestrator = new ProtocolOrchestrator(
-                protocolRegistry, executorRegistry, events);
+                protocolRegistry, executorRegistry, events, new RunRegistry());
 
         CouncilSession session = CouncilSession.create("integration-3",
                 "Test question", null, DepthMode.QUICK, "mock");

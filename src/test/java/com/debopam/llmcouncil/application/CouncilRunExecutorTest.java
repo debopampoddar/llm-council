@@ -37,7 +37,7 @@ class CouncilRunExecutorTest {
         private final CountDownLatch release = new CountDownLatch(1);
 
         private BlockingCouncilService() {
-            super(null, null, null);
+            super(null, null, null, new RunRegistry());
         }
 
         @Override
