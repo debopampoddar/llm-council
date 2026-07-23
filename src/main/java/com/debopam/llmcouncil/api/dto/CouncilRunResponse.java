@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.api.dto;
 
+import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.orchestration.CouncilContext;
 import com.debopam.llmcouncil.orchestration.ScoreSummary;
 import com.debopam.llmcouncil.orchestration.ValidationArtifact;
@@ -67,6 +68,38 @@ public record CouncilRunResponse(
                         .map(ModelFailureResponse::from)
                         .collect(Collectors.toList())
         );
+    }
+
+    /**
+     * Build a result for a run that died before producing a context.
+     *
+     * <p>{@code CouncilRunExecutor} hands the completion callback a null context
+     * when the run threw rather than failing a stage, so there is no accumulated
+     * evidence to report. Storing this shape anyway keeps the contract simple
+     * for readers: a finished run always has a result, and a 404 means "still
+     * running or unknown session" rather than "finished, but crashed". Every
+     * evidence field is empty because nothing was gathered — that is the honest
+     * report, not a degraded one.
+     *
+     * @param session       the session as it stood when the run died
+     * @param failureReason why the run died
+     * @return a FAILED result carrying only what the session knows
+     */
+    public static CouncilRunResponse failed(CouncilSession session, String failureReason) {
+        return new CouncilRunResponse(
+                session.id(),
+                "FAILED",
+                session.profileId(),
+                session.depthMode() == null ? null : session.depthMode().name(),
+                session.policyId(),
+                session.protocolId(),
+                "",
+                0, 0, 0,
+                List.of(), List.of(), List.of(), List.of(),
+                null, null, null,
+                failureReason,
+                ModelFailureCategory.UNKNOWN.name(),
+                List.of());
     }
 
     /**

@@ -1,9 +1,11 @@
 package com.debopam.llmcouncil.chat;
 
+import com.debopam.llmcouncil.api.dto.CouncilRunResponse;
 import com.debopam.llmcouncil.application.CouncilRunCompletion;
 import com.debopam.llmcouncil.application.CouncilRunExecutor;
 import com.debopam.llmcouncil.application.CouncilRunSubmission;
 import com.debopam.llmcouncil.application.CouncilService;
+import com.debopam.llmcouncil.application.RunResultStore;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.DepthMode;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,17 +27,20 @@ public class ChatCouncilService {
     private final CouncilService councilService;
     private final CouncilRunExecutor runExecutor;
     private final ChatEventBroker chatEvents;
+    private final RunResultStore runResultStore;
     private final int recentTurnCount;
 
     public ChatCouncilService(ChatSessionStore chatStore,
                               CouncilService councilService,
                               CouncilRunExecutor runExecutor,
                               ChatEventBroker chatEvents,
+                              RunResultStore runResultStore,
                               @Value("${council.runtime.chat-recent-turn-count:4}") int recentTurnCount) {
         this.chatStore = chatStore;
         this.councilService = councilService;
         this.runExecutor = runExecutor;
         this.chatEvents = chatEvents;
+        this.runResultStore = runResultStore;
         this.recentTurnCount = Math.max(1, recentTurnCount);
     }
 
@@ -129,6 +134,11 @@ public class ChatCouncilService {
             return;
         }
 
+        // Store the run result before publishing the turn event. A client that
+        // reacts to TURN_COMPLETED by fetching /result would otherwise race the
+        // write and see a 404 for a run that plainly finished.
+        storeRunResult(completion);
+
         String answer = completion.session().finalAnswer();
         String failure = completion.failureReason();
         ChatTurn updated;
@@ -146,6 +156,29 @@ public class ChatCouncilService {
         chat.replaceTurn(updated);
         chat.replaceSummary(updateSummary(chat));
         chatStore.save(chat);
+    }
+
+    /**
+     * Derive and retain the trust signals for a finished run.
+     *
+     * <p>This is the only point at which the chat path still holds the terminal
+     * {@code CouncilContext}. Everything a reader needs in order to calibrate the
+     * answer — sycophancy warnings, excluded models, scores, the validation
+     * verdict and its independence tier — lives on that context and is discarded
+     * immediately afterwards.
+     *
+     * @param completion the finished run, whose context is null if the run threw
+     */
+    private void storeRunResult(CouncilRunCompletion completion) {
+        String sessionId = completion.sessionId();
+        if (completion.context() != null) {
+            runResultStore.save(sessionId, CouncilRunResponse.from(sessionId, completion.context()));
+            return;
+        }
+        String failure = blank(completion.failureReason())
+                ? "Council run failed before producing any evidence"
+                : completion.failureReason();
+        runResultStore.save(sessionId, CouncilRunResponse.failed(completion.session(), failure));
     }
 
     private String buildCouncilContext(ChatSession chat) {
