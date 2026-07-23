@@ -48,8 +48,15 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - **Startup provider banner**: logs which providers were auto-detected at boot.
 - **Graceful degradation**: models on disabled providers fall through to `UnavailableModelClient` with actionable error messages.
 
+### Web UI (Phase 2)
+- Chat view at `/`, served straight from the static classpath root — no Node, no bundler, no build step.
+- Preflight health gate before the send button, with three states: verified, unverified, blocked.
+- Live council stage timeline over SSE, with per-stage evidence expanded from the run's own artifacts.
+- A trust strip above every answer carrying confidence with its independence tier, member roster, sycophancy findings, and preserved dissent.
+- Cancel a running council from the browser.
+
 ### Testing
-- 70 JUnit tests: policy resolution, parsing, quorum, KS convergence math, sycophancy detection, all scoring strategies, retry logic, and full protocol integration.
+- 274 JUnit tests: policy resolution, parsing, quorum, KS convergence math, sycophancy detection, all scoring strategies, retry logic, full protocol integration, the catalog and run-result endpoints, static resource serving, skipped-stage event contracts, score-pass labelling, and cancellation.
 
 ## Runtime Requirements
 
@@ -214,6 +221,13 @@ mvn clean package
 java -jar target/llm-council-2.0.0.jar
 ```
 
+Then open **<http://localhost:8080/>** for the web UI.
+
+To try it with no model runtime at all, pick the `mock` profile in the profile
+dropdown: it runs the full rigorous protocol offline in well under a second.
+`mock` is flagged test-only and is labelled as such wherever it appears, because
+its output is fabricated and must never be mistaken for a council answer.
+
 The default profile is `local`, so make sure Ollama is running and pull the configured models first.
 
 If Ollama is not already running through the macOS app or another service manager, start it in a separate terminal:
@@ -373,6 +387,26 @@ Run the session:
 
 ```bash
 curl -X POST http://localhost:8080/api/council/sessions/{sessionId}/run
+```
+
+Read the trust signals for a finished run — sycophancy warnings, excluded
+models, scores, the validation verdict and its independence tier. The
+synchronous endpoint above returns this shape directly; this is how the chat
+path, which returns as soon as a run is submitted, gets at the same thing.
+404 means the run has not finished, not that anything is wrong:
+
+```bash
+curl http://localhost:8080/api/council/sessions/{sessionId}/result
+```
+
+Stop a running council. Returns 202 with the status at the time of the request.
+Cancellation is honoured at **stage boundaries only** — a model call already in
+flight runs to completion and its result is discarded, so cancelling a long
+Ollama generation still waits for that call. Cancelling a run that already
+finished is a no-op, not an error:
+
+```bash
+curl -X DELETE http://localhost:8080/api/council/sessions/{sessionId}/run
 ```
 
 Preflight a profile before running it:
@@ -556,6 +590,20 @@ com.debopam.llmcouncil.model            model profiles, policies, clients, retry
 com.debopam.llmcouncil.orchestration    protocol, stages, prompts, parser, scoring strategies,
                                         sycophancy detection, convergence detector, artifacts
 com.debopam.llmcouncil.persistence      in-memory sessions and local artifacts
+
+src/main/resources/static                web UI — vanilla HTML/CSS/JS, no build step
+├── index.html                           chat view, served at /
+├── css/app.css                          single stylesheet, light and dark
+└── js/
+    ├── api.js                           fetch wrapper over /api/council/**
+    ├── sse.js                           EventSource lifecycle, dedupe, backoff
+    ├── chat.js                          chat list, composer, turn states
+    ├── health.js                        preflight gate and independence tiers
+    ├── timeline.js                      council stage timeline
+    ├── trust.js                          trust strip, sycophancy, dissent
+    ├── artifacts.js                     per-stage evidence panels
+    ├── dom.js                           node builders
+    └── main.js                          app state and orchestration
 ```
 
 ## More Detail
