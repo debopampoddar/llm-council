@@ -9,6 +9,7 @@ import com.debopam.llmcouncil.api.dto.SessionResponse;
 import com.debopam.llmcouncil.application.CatalogService;
 import com.debopam.llmcouncil.application.CouncilService;
 import com.debopam.llmcouncil.application.EventPublisher;
+import com.debopam.llmcouncil.application.CouncilRunExecutor;
 import com.debopam.llmcouncil.application.ProfileHealthService;
 import com.debopam.llmcouncil.application.RunResultStore;
 import com.debopam.llmcouncil.domain.CouncilEvent;
@@ -21,6 +22,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -57,19 +59,22 @@ public class CouncilController {
     private final ArtifactStore artifactStore;
     private final CatalogService catalogService;
     private final RunResultStore runResultStore;
+    private final CouncilRunExecutor runExecutor;
 
     public CouncilController(CouncilService councilService,
                              ProfileHealthService profileHealthService,
                              EventPublisher eventPublisher,
                              ArtifactStore artifactStore,
                              CatalogService catalogService,
-                             RunResultStore runResultStore) {
+                             RunResultStore runResultStore,
+                             CouncilRunExecutor runExecutor) {
         this.councilService = councilService;
         this.profileHealthService = profileHealthService;
         this.eventPublisher = eventPublisher;
         this.artifactStore = artifactStore;
         this.catalogService = catalogService;
         this.runResultStore = runResultStore;
+        this.runExecutor = runExecutor;
     }
 
     /**
@@ -108,6 +113,28 @@ public class CouncilController {
         CouncilRunResponse result = CouncilRunResponse.from(sessionId, ctx);
         runResultStore.save(sessionId, result);
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Ask a running council to stop.
+     *
+     * <p>Accepted rather than applied: cancellation is honoured at stage
+     * boundaries only, so a model call already in flight runs to completion and
+     * its result is discarded. A user cancelling a four-minute Ollama generation
+     * therefore waits for that call to finish, and the UI says so rather than
+     * appearing stuck.
+     *
+     * <p>Cancelling a run that has already finished is a no-op returning the
+     * current status, not an error.
+     *
+     * @param sessionId the council session to stop
+     * @return 202 Accepted with the status at the time of the request
+     */
+    @DeleteMapping("/sessions/{sessionId}/run")
+    public ResponseEntity<SessionResponse> cancelRun(@PathVariable("sessionId") String sessionId) {
+        councilService.cancelRun(sessionId);
+        runExecutor.cancel(sessionId);
+        return ResponseEntity.accepted().body(SessionResponse.from(councilService.getSession(sessionId)));
     }
 
     /**

@@ -7,6 +7,7 @@ import com.debopam.llmcouncil.application.CouncilRunSubmission;
 import com.debopam.llmcouncil.application.CouncilService;
 import com.debopam.llmcouncil.application.RunResultStore;
 import com.debopam.llmcouncil.domain.CouncilSession;
+import com.debopam.llmcouncil.domain.CouncilStatus;
 import com.debopam.llmcouncil.domain.DepthMode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -142,7 +143,13 @@ public class ChatCouncilService {
         String answer = completion.session().finalAnswer();
         String failure = completion.failureReason();
         ChatTurn updated;
-        if (!blank(answer) && blank(failure)) {
+        if (completion.session().status() == CouncilStatus.CANCELLED) {
+            // Checked before the answer heuristic below: a run cancelled after
+            // synthesis has an answer, and would otherwise be reported as a
+            // PARTIAL result rather than as the stop the user asked for.
+            updated = current.failed(CouncilService.CANCELLED_BY_USER);
+            publishTurn(chatId, "TURN_FAILED", updated);
+        } else if (!blank(answer) && blank(failure)) {
             updated = current.completed(answer);
             publishTurn(chatId, "TURN_COMPLETED", updated);
         } else if (!blank(answer)) {

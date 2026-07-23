@@ -80,6 +80,9 @@ export const api = {
   // The result carries the trust signals; it is absent until the run finishes,
   // so a 404 here means "still going", not "broken".
   runResult: (sessionId) => request("GET", `/sessions/${sessionId}/result`),
+  // 202 with the status at the time of the request. Cancellation is honoured
+  // at stage boundaries, so this asks a run to stop rather than stopping it.
+  cancelRun: (sessionId) => request("DELETE", `/sessions/${sessionId}/run`),
   listArtifacts: (sessionId) => request("GET", `/sessions/${sessionId}/artifacts`),
   readArtifact: (sessionId, path) => request("GET", `/sessions/${sessionId}/artifacts/${path}`),
 };

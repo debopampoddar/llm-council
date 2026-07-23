@@ -60,6 +60,7 @@ public class CouncilContext {
     private volatile ScoreSummary scoreSummary;
     private volatile ValidationArtifact validation;
     private volatile boolean terminal = false;
+    private volatile boolean cancelled = false;
     private volatile StageType failedStage;
     private volatile Throwable failureCause;
 
@@ -254,6 +255,21 @@ public class CouncilContext {
      * @return {@code true} if a previous stage called {@link #markFailed}.
      */
     public boolean isTerminal() { return terminal; }
+
+    /**
+     * Ask the run to stop at the next stage boundary.
+     *
+     * <p>Set from a request thread while the run continues on its own virtual
+     * thread, hence {@code volatile}. This does <b>not</b> interrupt work
+     * already in flight: a model call that has been issued runs to completion
+     * and its result is discarded. A four-minute Ollama generation therefore
+     * keeps the run alive for up to four more minutes after cancelling, and the
+     * UI has to say so rather than appear stuck.
+     */
+    public void cancel() { cancelled = true; }
+
+    /** @return {@code true} once {@link #cancel()} has been called. */
+    public boolean isCancelled() { return cancelled; }
 
     /** @return The stage that marked this context terminal, or {@code null}. */
     public StageType failedStage() { return failedStage; }
