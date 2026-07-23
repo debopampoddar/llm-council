@@ -21,6 +21,7 @@
 //    would be a claim the run did not earn.
 
 import { el, pill } from "./dom.js";
+import { renderInline } from "./markdown.js";
 
 const INDEPENDENCE = {
   INDEPENDENT: ["ok", "independent validator"],
@@ -193,7 +194,7 @@ export function renderDissent(answer, preserveEnabled) {
 
   return el("div.dissent", {}, [
     el("div.hd", {}, [el("h4", { text: "Preserved dissent" }), pill("qual", "always shown")]),
-    el("p", { text: dissent }),
+    el("p", {}, renderInline(dissent)),
   ]);
 }
 

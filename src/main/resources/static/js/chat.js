@@ -17,15 +17,25 @@ export function isTestOnly(catalog, profileId) {
   return Boolean(profile?.testOnly);
 }
 
-/** Render the sidebar chat list. */
-export function renderChatList(container, chats, activeChatId, handlers) {
+/**
+ * Render the sidebar chat list.
+ *
+ * @param liveStatus the open chat's current status, which is fresher than the
+ *                   listing — the listing is refetched after the fact, so
+ *                   relying on it alone leaves a window where a chat that just
+ *                   started a run still looks idle
+ */
+export function renderChatList(container, chats, activeChatId, handlers, liveStatus) {
   if (!chats.length) {
     replace(container, el("p.chat-empty", { text: "No chats yet." }));
     return;
   }
   const items = chats.map((chat) => {
     const title = chat.firstUserMessage || "Untitled chat";
-    return el("button.chat-item", {
+    const status = chat.chatId === activeChatId && liveStatus ? liveStatus : chat.status;
+    const running = status === "RUNNING";
+
+    const open = el("button.chat-open", {
       type: "button",
       "aria-current": String(chat.chatId === activeChatId),
       onClick: () => handlers.onSelect(chat.chatId),
@@ -33,6 +43,22 @@ export function renderChatList(container, chats, activeChatId, handlers) {
       el("span.t", { text: title }),
       el("span.s", { text: `${chat.profileId} · ${chat.depthMode} · ${chat.turnCount} turn${chat.turnCount === 1 ? "" : "s"}` }),
     ]);
+
+    // The server returns 409 while a turn is running, because the run would
+    // finish and write back to a chat that no longer exists. Disabling the
+    // control says that up front instead of surfacing the conflict as an error.
+    const remove = el("button.chat-delete", {
+      type: "button",
+      title: running ? "This chat has a run in progress" : "Delete chat",
+      "aria-label": running ? `Cannot delete ${title} while it is running` : `Delete ${title}`,
+      disabled: running ? "disabled" : null,
+      onClick: (event) => {
+        event.stopPropagation();
+        handlers.onDelete(chat.chatId, title);
+      },
+    }, ["×"]);
+
+    return el(`div.chat-item${chat.chatId === activeChatId ? ".is-active" : ""}`, {}, [open, remove]);
   });
   replace(container, items);
 }

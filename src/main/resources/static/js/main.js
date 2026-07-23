@@ -11,6 +11,7 @@ import { api, ApiError } from "./api.js";
 import { subscribe } from "./sse.js";
 import { el, replace } from "./dom.js";
 import { independenceFor } from "./health.js";
+import { renderMarkdown } from "./markdown.js";
 import { renderTimeline, buildTimeline } from "./timeline.js";
 import {
   renderAbsentSignals,
@@ -80,7 +81,10 @@ function setConnection(status, detail) {
 // ── Rendering
 
 function render() {
-  renderChatList(dom.chatList, state.chats, state.activeChatId, { onSelect: selectChat });
+  renderChatList(dom.chatList, state.chats, state.activeChatId, {
+    onSelect: selectChat,
+    onDelete: deleteChat,
+  }, state.activeChat?.status);
   renderTopbarConfig(dom.topbarConfig, state, {
     onProfileChange: (profileId) => { state.profileId = profileId; refreshHealth(); },
     onDepthChange: (depthMode) => { state.depthMode = depthMode; refreshHealth(); },
@@ -90,17 +94,26 @@ function render() {
 }
 
 function renderStream() {
+  const parts = [];
+
+  // The error renders above the conversation rather than in place of it. A
+  // failed refresh is recoverable and the turns are still in memory; blanking
+  // an answer and its timeline because one request failed destroys work the
+  // user can see no way to get back.
   if (state.error) {
-    replace(dom.streamInner, el("div.banner.b-crit", {}, [
+    parts.push(el("div.banner.b-crit", {}, [
       el("span.bt", { text: "Something went wrong" }),
       el("span.bd", { text: state.error }),
+      el("button.btn.btn-sm", {
+        type: "button",
+        onClick: () => { state.error = null; renderStream(); },
+      }, ["Dismiss"]),
     ]));
-    return;
   }
 
   const turns = state.activeChat?.turns || [];
   if (!turns.length) {
-    replace(dom.streamInner, el("div.empty", {}, [
+    parts.push(el("div.empty", {}, [
       el("h2", { text: state.activeChat ? "No messages yet" : "No chat selected" }),
       el("p", {
         text: state.activeChat
@@ -108,13 +121,19 @@ function renderStream() {
           : "Pick a profile and ask a question. The mock profile runs the full rigorous protocol offline, with no model runtime.",
       }),
     ]));
-    return;
+  } else {
+    parts.push(...turns.map(renderTurn));
   }
 
-  replace(dom.streamInner, turns.map(renderTurn));
+  replace(dom.streamInner, parts);
 }
 
 function renderTurn(turn) {
+  // A cancellation is pending only while its turn is still running. Releasing
+  // the marker here keeps "Stopping…" on screen for exactly as long as the run
+  // is actually draining, and stops the set growing for the life of the page.
+  if (turn.status !== "RUNNING") state.cancelling.delete(turn.councilSessionId);
+
   const parts = [renderUserMessage(turn.userMessage)];
 
   const events = state.councilEvents.get(turn.councilSessionId) || [];
@@ -180,7 +199,7 @@ function renderAnswer(turn) {
         el("span.lead", { text: "Trust" }),
         el("span.pf-msg", { text: "loading run result…" }),
       ]),
-      el("div.ans-body", {}, [el("div.prose", { text: turn.assistantAnswer })]),
+      el("div.ans-body", {}, [el("div.prose", {}, [renderMarkdown(turn.assistantAnswer)])]),
     ]);
   }
 
@@ -195,7 +214,7 @@ function renderAnswer(turn) {
       renderSycophancy(result),
       renderExclusions(result),
       ...(renderWarnings(result) || []),
-      el("div.prose", { text: turn.assistantAnswer }),
+      el("div.prose", {}, [renderMarkdown(turn.assistantAnswer)]),
       renderDissent(turn.assistantAnswer, preserveDissent),
       renderAbsentSignals(skipped),
     ]),
@@ -319,6 +338,8 @@ async function cancelRun(sessionId) {
   try {
     await api.cancelRun(sessionId);
   } catch (error) {
+    // The request failed, so nothing was asked to stop. Drop the marker so the
+    // user can try again rather than being left with a dead "Stopping…".
     state.cancelling.delete(sessionId);
     state.error = describe(error);
   }
@@ -414,6 +435,31 @@ async function send(text) {
     render();
   } catch (error) {
     state.error = describe(error);
+    render();
+  }
+}
+
+/**
+ * Delete a chat, after confirming.
+ *
+ * <p>Deletion is irreversible and nothing is stored durably, so a mis-click
+ * loses the run and its answer for good. The server refuses with 409 while a
+ * turn is running; the control is disabled in that case, and the conflict is
+ * still reported plainly if the state changed between render and click.
+ */
+async function deleteChat(chatId, title) {
+  if (!window.confirm(`Delete "${title}"? Its answers and timeline cannot be recovered.`)) {
+    return;
+  }
+  try {
+    await api.deleteChat(chatId);
+    state.chats = state.chats.filter((chat) => chat.chatId !== chatId);
+    if (state.activeChatId === chatId) newChat();
+    else render();
+  } catch (error) {
+    state.error = error.status === 409
+      ? "That chat has a run in progress. Cancel it or wait for it to finish, then delete."
+      : describe(error);
     render();
   }
 }
