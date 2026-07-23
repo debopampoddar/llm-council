@@ -11,6 +11,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * SCORE stage: assigns numeric scores to each draft by aggregating
@@ -54,9 +56,22 @@ public class ScoreStageExecutor implements StageExecutor {
 
     @Override
     public CouncilContext execute(CouncilContext ctx, ProtocolStageOptions opts) {
-        // Determine artifact label for distinguishing initial vs post-debate scoring runs.
-        String label = opts.getString("artifact-label",
-                ctx.debateRounds().isEmpty() ? "initial" : "post-debate");
+        // Whether this is the protocol's first SCORE pass. Captured before this
+        // pass contributes its own scores.
+        //
+        // This must not be inferred from the artifact label. The label names a
+        // file; which pass this is, is a fact about the protocol. Deriving one
+        // from the other meant that pinning `artifact-label: initial` in
+        // configuration — which the shipped protocols did — silently disabled
+        // escalation entirely, because escalation only fires post-debate.
+        //
+        // It must not be inferred from debateRounds() either: debate is skipped
+        // when scores already agree, and the second pass still scores against
+        // post-debate reviews, so it is genuinely a different result.
+        boolean firstPass = ctx.scores().isEmpty();
+
+        String label = uniqueLabel(
+                opts.getString("artifact-label", firstPass ? "initial" : "post-debate"), ctx);
 
         // Select the scoring strategy from protocol stage configuration.
         // Default: confidence-weighted.
@@ -103,7 +118,7 @@ public class ScoreStageExecutor implements StageExecutor {
         double escalationThreshold = opts.getDouble("escalation-variance-threshold", 120.0);
         String policyStr = opts.getString("escalation-policy", "SYNTHESIZE_WITH_DISSENT");
         EscalationPolicy escalationPolicy = parseEscalationPolicy(policyStr);
-        boolean isPostDebate = "post-debate".equals(label);
+        boolean isPostDebate = !firstPass;
 
         ScoreSummary summary = summarize(stageScores, isPostDebate, escalationThreshold, escalationPolicy);
         ctx.setScoreSummary(summary);
@@ -139,6 +154,42 @@ public class ScoreStageExecutor implements StageExecutor {
                        "escalationPolicy", summary.escalationPolicy() != null
                                ? summary.escalationPolicy().name() : "none"));
         return ctx;
+    }
+
+    /**
+     * Return a label no earlier scoring pass has already used.
+     *
+     * <p>Score artifacts are written to {@code normalized/scores-{label}.json},
+     * so two passes sharing a label means the second silently overwrites the
+     * first. The before/after comparison that file supports is the most direct
+     * evidence available that debate changed anyone's mind — a council that
+     * argued and re-ranked is a materially different result from one that
+     * argued and did not. Reviews are already kept as separate artifacts either
+     * side of debate; scores have to be too.
+     *
+     * <p>This is a guard rather than the primary mechanism: the derived
+     * defaults no longer collide. It exists so a user-supplied
+     * {@code artifact-label} cannot reintroduce the overwrite.
+     *
+     * @param base the configured or derived label
+     * @param ctx  the run so far
+     * @return {@code base}, or a distinct variant when it is already in use
+     */
+    private String uniqueLabel(String base, CouncilContext ctx) {
+        Set<String> used = ctx.scores().stream()
+                              .map(ScoreArtifact::label)
+                              .collect(Collectors.toSet());
+        if (!used.contains(base)) {
+            return base;
+        }
+        if (!used.contains("post-debate")) {
+            return "post-debate";
+        }
+        int pass = 2;
+        while (used.contains(base + "-" + pass)) {
+            pass++;
+        }
+        return base + "-" + pass;
     }
 
     /**
