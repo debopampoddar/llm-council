@@ -341,3 +341,55 @@ select {
 .tl-detail .v { color: var(--ink-2); overflow-wrap: anywhere; }
 .tl-error { display: flex; gap: 9px; font-family: var(--mono); font-size: 11.4px; color: var(--crit); }
 .tl-error .m { font-weight: 600; }
+
+/* ── Trust strip.
+ * Sits above the prose, always. A reader skims to the recommendation and stops;
+ * anything below it becomes a footnote to a conclusion already accepted. */
+.trust {
+  display: flex; flex-wrap: wrap; gap: 7px; align-items: center;
+  padding: 10px 14px; border-bottom: 1px solid var(--line);
+  background: var(--surface-2); border-radius: var(--radius) var(--radius) 0 0;
+}
+.trust .lead { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+
+/* Confidence and its provenance are one element. There is deliberately no
+ * selector that renders the number without the tier beside it. */
+.conf-unit { display: inline-flex; align-items: stretch; border-radius: 100px; overflow: hidden; border: 1px solid var(--line-strong); }
+.conf-unit .v { font-family: var(--mono); font-size: 11.4px; font-weight: 640; padding: 2.5px 9px; font-variant-numeric: tabular-nums; }
+.conf-unit .q { font-family: var(--mono); font-size: 9.6px; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 9px; display: flex; align-items: center; font-weight: 560; }
+.conf-unit.tier-ok { border-color: color-mix(in srgb, var(--ok) 32%, transparent); }
+.conf-unit.tier-ok .v { background: var(--ok-soft); color: var(--ok); }
+.conf-unit.tier-ok .q { background: var(--ok); color: var(--surface); }
+.conf-unit.tier-warn { border-color: color-mix(in srgb, var(--warn) 32%, transparent); }
+.conf-unit.tier-warn .v { background: var(--warn-soft); color: var(--warn); }
+.conf-unit.tier-warn .q { background: var(--warn); color: var(--surface); }
+.conf-unit.tier-qual { border-color: color-mix(in srgb, var(--qualified) 32%, transparent); }
+.conf-unit.tier-qual .v { background: var(--qualified-soft); color: var(--qualified); }
+.conf-unit.tier-qual .q { background: var(--qualified); color: var(--surface); }
+.conf-unit.tier-mute, .conf-unit.conf-none { border-color: var(--line-strong); }
+.conf-unit.tier-mute .v, .conf-unit.conf-none .v { background: var(--surface-3); color: var(--ink-2); }
+.conf-unit.tier-mute .q, .conf-unit.conf-none .q { background: var(--line-strong); color: var(--surface); }
+
+/* ── Sycophancy: never collapsed */
+.syc { border: 1px solid color-mix(in srgb, var(--crit) 32%, transparent); border-radius: 7px; background: var(--crit-soft); padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; }
+.syc .hd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.syc .hd h4 { font-family: var(--mono); font-size: 12.2px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--crit); }
+.syc .row { font-family: var(--mono); font-size: 11.6px; color: var(--ink-2); overflow-wrap: anywhere; }
+.syc .exp { font-size: 13px; color: var(--ink-2); }
+
+/* ── Preserved dissent: its own block, never trailing prose */
+.dissent { border: 1px solid color-mix(in srgb, var(--qualified) 30%, transparent); border-radius: 7px; background: var(--qualified-soft); padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; }
+.dissent .hd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dissent .hd h4 { font-family: var(--mono); font-size: 12.2px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--qualified); }
+.dissent p { font-size: 13.6px; color: var(--ink-2); white-space: pre-wrap; }
+/* "No section found" and "preservation disabled" are different claims from
+ * "dissent was preserved", and must not borrow its visual authority. */
+.dissent.dissent-none, .dissent.dissent-off { background: var(--surface-2); border-color: var(--line); border-style: dashed; }
+.dissent.dissent-none .hd h4, .dissent.dissent-off .hd h4 { color: var(--ink-3); }
+
+/* ── Checks that did not run */
+.emptysig { border: 1px dashed var(--line-strong); border-radius: 7px; padding: 11px 13px; background: var(--surface-2); display: flex; flex-direction: column; gap: 5px; }
+.emptysig .hd { font-family: var(--mono); font-size: 11.2px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.emptysig p { font-size: 13px; color: var(--ink-2); }
+.emptysig p.note { color: var(--warn); }
+.banner .bd.mono { font-family: var(--mono); font-size: 11.6px; }

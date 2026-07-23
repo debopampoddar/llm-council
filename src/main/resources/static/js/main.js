@@ -11,8 +11,17 @@ import { api, ApiError } from "./api.js";
 import { subscribe } from "./sse.js";
 import { el, replace } from "./dom.js";
 import { independenceFor } from "./health.js";
-import { renderTimeline } from "./timeline.js";
+import { renderTimeline, buildTimeline } from "./timeline.js";
 import {
+  renderAbsentSignals,
+  renderDissent,
+  renderExclusions,
+  renderSycophancy,
+  renderTrustStrip,
+  renderWarnings,
+} from "./trust.js";
+import {
+  isTestOnly,
   renderChatList,
   renderComposer,
   renderTopbarConfig,
@@ -43,6 +52,9 @@ const state = {
   // that arrives on the turn — the only bridge from chat-scope to session-scope.
   councilEvents: new Map(),
   expandedStages: new Map(),
+  // CouncilRunResponse per council session — the trust signals, fetched once a
+  // turn reaches a terminal state.
+  runResults: new Map(),
 };
 
 let stream = null;
@@ -125,12 +137,85 @@ function renderTurn(turn) {
   if (status) parts.push(status);
 
   if (turn.assistantAnswer) {
-    parts.push(el("div.answer", {}, [
-      el("div.ans-body", {}, [el("div.prose", { text: turn.assistantAnswer })]),
-    ]));
+    parts.push(renderAnswer(turn));
   }
 
   return el("div.turn", {}, parts);
+}
+
+/**
+ * The answer, with everything that qualifies it above the prose.
+ *
+ * <p>Order is the argument here. Below the recommendation these become
+ * footnotes to a conclusion the reader has already accepted.
+ */
+function renderAnswer(turn) {
+  const result = state.runResults.get(turn.councilSessionId);
+  const events = state.councilEvents.get(turn.councilSessionId) || [];
+  const { rows } = buildTimeline(events);
+  const skipped = rows.filter((row) => row.status === "noop");
+  const debateRow = rows.find((row) => row.name === "DEBATE");
+
+  // Cautious by default: only claim sycophancy was measured when a debate
+  // stage is known to have run. Under-claiming is the safe direction.
+  const debateRan = Boolean(debateRow && debateRow.status === "done");
+
+  if (!result) {
+    // The result is fetched separately, so render the answer rather than
+    // withholding it — but say plainly that the trust signals are not in yet.
+    return el("div.answer", {}, [
+      el("div.trust", {}, [
+        el("span.lead", { text: "Trust" }),
+        el("span.pf-msg", { text: "loading run result…" }),
+      ]),
+      el("div.ans-body", {}, [el("div.prose", { text: turn.assistantAnswer })]),
+    ]);
+  }
+
+  const preserveDissent = preserveDissentFor(result.protocolId);
+
+  return el("div.answer", {}, [
+    renderTrustStrip(result, {
+      debateRan,
+      testOnly: isTestOnly(state.catalog, result.profileId),
+    }),
+    el("div.ans-body", {}, [
+      renderSycophancy(result),
+      renderExclusions(result),
+      ...(renderWarnings(result) || []),
+      el("div.prose", { text: turn.assistantAnswer }),
+      renderDissent(turn.assistantAnswer, preserveDissent),
+      renderAbsentSignals(skipped),
+    ]),
+  ]);
+}
+
+/** Whether the protocol behind a run had dissent preservation switched on. */
+function preserveDissentFor(protocolId) {
+  const protocol = (state.catalog?.protocols || []).find((p) => p.id === protocolId);
+  if (!protocol) return null;
+  const options = protocol.stageOptions?.SYNTHESIZE;
+  if (!options || options["preserve-dissent"] === undefined) return null;
+  return Boolean(options["preserve-dissent"]);
+}
+
+/** Fetch the trust signals for any finished turn that does not have them yet. */
+async function ensureResults() {
+  const turns = state.activeChat?.turns || [];
+  const pending = turns.filter((turn) =>
+    turn.councilSessionId
+    && turn.status !== "RUNNING"
+    && !state.runResults.has(turn.councilSessionId));
+
+  for (const turn of pending) {
+    try {
+      state.runResults.set(turn.councilSessionId, await api.runResult(turn.councilSessionId));
+    } catch {
+      // A 404 means the run produced no result — leave it absent rather than
+      // inventing one, and the answer renders without a trust strip.
+    }
+  }
+  if (pending.length) renderStream();
 }
 
 function expandedFor(sessionId) {
@@ -170,6 +255,7 @@ async function selectChat(chatId) {
     state.independence = independenceFor(state.catalog, state.profileId, state.depthMode);
     openStream(chatId);
     render();
+    await ensureResults();
     await refreshHealth();
   } catch (error) {
     state.error = describe(error);
@@ -197,6 +283,7 @@ function openStream(chatId) {
       api.getChat(chatId).then((chat) => {
         state.activeChat = chat;
         render();
+        ensureResults();
         refreshChats().then(render);
       }).catch(() => {});
     },
@@ -249,7 +336,7 @@ document.getElementById("sidebar-toggle").addEventListener("click", () => {
 
 (async function boot() {
   try {
-    state.catalog = await api.catalog("profiles,policies");
+    state.catalog = await api.catalog("profiles,policies,protocols");
     const ids = (state.catalog.profiles || []).map((p) => p.id);
     if (!ids.includes(state.profileId)) state.profileId = ids[0] || "mock";
   } catch (error) {
