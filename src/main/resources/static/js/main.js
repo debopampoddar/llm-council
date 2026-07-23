@@ -20,6 +20,7 @@ import {
   renderTrustStrip,
   renderWarnings,
 } from "./trust.js";
+import { artifactsForStage, renderArtifact } from "./artifacts.js";
 import {
   isTestOnly,
   renderChatList,
@@ -55,6 +56,9 @@ const state = {
   // CouncilRunResponse per council session — the trust signals, fetched once a
   // turn reaches a terminal state.
   runResults: new Map(),
+  // Artifact bodies, keyed `${sessionId}::${path}`. Nothing is prefetched: a
+  // rigorous run writes 16 files and most stages are never opened.
+  artifacts: new Map(),
 };
 
 let stream = null;
@@ -115,15 +119,17 @@ function renderTurn(turn) {
   if (events.length) {
     // The timeline lives under its own turn rather than in a detached pane, so
     // the evidence never sits apart from the answer it qualifies.
+    const sessionId = turn.councilSessionId;
     const container = el("div.timeline");
     renderTimeline(container, events, {
-      expanded: expandedFor(turn.councilSessionId),
+      expanded: expandedFor(sessionId),
       onToggle: (stageIndex) => {
-        const open = expandedFor(turn.councilSessionId);
+        const open = expandedFor(sessionId);
         if (open.has(stageIndex)) open.delete(stageIndex);
-        else open.add(stageIndex);
+        else { open.add(stageIndex); loadStageArtifacts(sessionId, stageIndex, events); }
         render();
       },
+      renderPanel: (row) => renderStagePanel(sessionId, row),
     });
     parts.push(container);
   } else if (turn.status === "RUNNING") {
@@ -216,6 +222,64 @@ async function ensureResults() {
     }
   }
   if (pending.length) renderStream();
+}
+
+/**
+ * Evidence for one stage: its artifacts where it wrote any, its own events
+ * otherwise.
+ *
+ * <p>A stage that did nothing has no artifact but does have the reason it did
+ * nothing, which is the thing a reader most needs from it.
+ */
+function renderStagePanel(sessionId, row) {
+  const paths = artifactsForStage(row);
+  const parts = [];
+
+  if (row.status === "noop") {
+    parts.push(el("div.emptysig", {}, [
+      el("div.hd", { text: "This stage ran but did nothing" }),
+      el("p", { text: row.noopReason || "No reason reported." }),
+    ]));
+  }
+
+  for (const path of paths) {
+    const cached = state.artifacts.get(`${sessionId}::${path}`);
+    if (cached === undefined) parts.push(el("p.tl-empty", { text: `Loading ${path}…` }));
+    else if (cached === null) parts.push(el("p.tl-empty", { text: `${path} was not written for this run.` }));
+    else parts.push(renderArtifact(path, cached));
+  }
+
+  if (!parts.length) {
+    return row.detail.length
+      ? row.detail.map((entry) => el("div.tl-detail", {}, [
+          el("span.k", { text: entry.type }),
+          el("span.v", { text: JSON.stringify(entry.payload) }),
+        ]))
+      : el("p.tl-empty", { text: "No evidence recorded for this stage." });
+  }
+  return parts;
+}
+
+/** Fetch the artifacts a stage needs, once, when it is first expanded. */
+async function loadStageArtifacts(sessionId, stageIndex, events) {
+  const { rows } = buildTimeline(events);
+  const row = rows.find((r) => r.index === stageIndex);
+  if (!row) return;
+
+  let fetched = false;
+  for (const path of artifactsForStage(row)) {
+    const key = `${sessionId}::${path}`;
+    if (state.artifacts.has(key)) continue;
+    try {
+      state.artifacts.set(key, await api.readArtifact(sessionId, path));
+    } catch {
+      // Distinguish "not written for this run" from "still loading": null is a
+      // definite absence, undefined means the fetch has not happened yet.
+      state.artifacts.set(key, null);
+    }
+    fetched = true;
+  }
+  if (fetched) renderStream();
 }
 
 function expandedFor(sessionId) {
