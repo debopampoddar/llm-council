@@ -393,3 +393,36 @@ select {
 .emptysig p { font-size: 13px; color: var(--ink-2); }
 .emptysig p.note { color: var(--warn); }
 .banner .bd.mono { font-family: var(--mono); font-size: 11.6px; }
+
+/* ── Artifact evidence panels */
+.stack { display: flex; flex-direction: column; gap: 9px; }
+.artifact { display: flex; flex-direction: column; gap: 8px; }
+.artifact .src { font-family: var(--mono); font-size: 10.4px; color: var(--ink-3); }
+.artifact-text { font-family: var(--mono); font-size: 11.4px; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 9px 11px; margin: 0; overflow-x: auto; white-space: pre-wrap; }
+.caption { font-size: 12.4px; color: var(--ink-2); }
+.row-pills { display: flex; flex-wrap: wrap; gap: 7px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 9px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.card .ch { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.card .cid { font-family: var(--mono); font-size: 10.6px; color: var(--ink-3); }
+.card .ct { font-size: 12.6px; color: var(--ink-2); }
+
+/* Wide evidence scrolls inside its own container; the page never scrolls sideways. */
+.tbl-scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12.2px; min-width: 420px; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+th { font-family: var(--mono); font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3); font-weight: 560; background: var(--surface-3); }
+td { color: var(--ink-2); font-family: var(--mono); }
+td.num { text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: 0; }
+
+.map-row { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: 11.8px; }
+.map-row .a { color: var(--accent); font-weight: 560; }
+.map-row .arr { color: var(--ink-3); }
+.map-row .b { color: var(--ink); }
+
+.kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; font-size: 12.4px; align-items: baseline; margin: 0; }
+.kv dt { font-family: var(--mono); font-size: 10.6px; color: var(--ink-3); }
+.kv dd { margin: 0; color: var(--ink-2); }
+.kv dd.mono { font-family: var(--mono); color: var(--ink); }
