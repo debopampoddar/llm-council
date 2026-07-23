@@ -10,6 +10,7 @@ import com.debopam.llmcouncil.application.CatalogService;
 import com.debopam.llmcouncil.application.CouncilService;
 import com.debopam.llmcouncil.application.EventPublisher;
 import com.debopam.llmcouncil.application.ProfileHealthService;
+import com.debopam.llmcouncil.application.RunResultStore;
 import com.debopam.llmcouncil.domain.CouncilEvent;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.DepthMode;
@@ -43,6 +44,7 @@ import java.util.UUID;
  *   <li>POST /api/council/sessions         – Create a new session</li>
  *   <li>POST /api/council/sessions/{id}/run – Run the council protocol</li>
  *   <li>GET  /api/council/sessions/{id}    – Retrieve session status</li>
+ *   <li>GET  /api/council/sessions/{id}/result – Trust signals for a finished run</li>
  * </ul>
  */
 @RestController
@@ -54,17 +56,20 @@ public class CouncilController {
     private final EventPublisher eventPublisher;
     private final ArtifactStore artifactStore;
     private final CatalogService catalogService;
+    private final RunResultStore runResultStore;
 
     public CouncilController(CouncilService councilService,
                              ProfileHealthService profileHealthService,
                              EventPublisher eventPublisher,
                              ArtifactStore artifactStore,
-                             CatalogService catalogService) {
+                             CatalogService catalogService,
+                             RunResultStore runResultStore) {
         this.councilService = councilService;
         this.profileHealthService = profileHealthService;
         this.eventPublisher = eventPublisher;
         this.artifactStore = artifactStore;
         this.catalogService = catalogService;
+        this.runResultStore = runResultStore;
     }
 
     /**
@@ -100,7 +105,30 @@ public class CouncilController {
     @PostMapping("/sessions/{sessionId}/run")
     public ResponseEntity<CouncilRunResponse> runCouncil(@PathVariable("sessionId") String sessionId) {
         CouncilContext ctx = councilService.runCouncil(sessionId);
-        return ResponseEntity.ok(CouncilRunResponse.from(sessionId, ctx));
+        CouncilRunResponse result = CouncilRunResponse.from(sessionId, ctx);
+        runResultStore.save(sessionId, result);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Read the trust signals for a finished run.
+     *
+     * <p>The synchronous run endpoint returns this same shape directly, but the
+     * chat path cannot: it responds as soon as the run is submitted. Without
+     * this endpoint a chat client would have to reassemble sycophancy warnings,
+     * excluded models, scores, the validation verdict and its independence tier
+     * from three separate sources — the event stream, the catalog and the
+     * artifact files — duplicating logic that already exists here in tested Java.
+     *
+     * @param sessionId the council session to read
+     * @return 200 OK with the run result, or 404 while the run is still going
+     */
+    @GetMapping("/sessions/{sessionId}/result")
+    public ResponseEntity<CouncilRunResponse> getRunResult(@PathVariable("sessionId") String sessionId) {
+        councilService.getSession(sessionId);
+        return runResultStore.findById(sessionId)
+                             .map(ResponseEntity::ok)
+                             .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     /**
