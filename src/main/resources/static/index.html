@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LLM Council</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-head">
+        <div class="brand"><strong>LLM Council</strong><span id="brand-profile"></span></div>
+        <button class="btn btn-primary btn-sm" id="new-chat">+ New chat</button>
+      </div>
+      <div class="chat-list" id="chat-list">
+        <p class="chat-empty">No chats yet.</p>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="btn btn-ghost btn-sm sidebar-toggle" id="sidebar-toggle" aria-label="Toggle chat list">☰</button>
+        <div id="topbar-config"></div>
+        <div class="spacer"></div>
+        <span class="conn" id="conn" data-state="closed"><span class="led"></span><span id="conn-label">not connected</span></span>
+      </header>
+
+      <div class="stream" id="stream">
+        <div class="stream-inner" id="stream-inner">
+          <div class="empty">
+            <h2>No chat selected</h2>
+            <p>Create a chat to run the council. The <code>mock</code> profile runs the full
+               rigorous protocol offline, with no model runtime.</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="composer-slot"></div>
+    </main>
+  </div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

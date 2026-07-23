@@ -108,7 +108,7 @@ public class ChatController {
         sendSafe(emitter, "snapshot", ChatResponse.from(chat), state);
 
         for (ChatEvent event : chatEvents.history(chatId)) {
-            sendSafe(emitter, "chat", event, state);
+            sendSafe(emitter, "chat", event.id(), event, state);
             subscribeCouncilIfTurnStarted(event, emitter, state);
         }
         chat.turns().stream()
@@ -116,7 +116,7 @@ public class ChatController {
                 .forEach(sessionId -> subscribeCouncil(sessionId, emitter, state));
 
         AutoCloseable chatSubscription = chatEvents.subscribe(chatId, event -> {
-            sendSafe(emitter, "chat", event, state);
+            sendSafe(emitter, "chat", event.id(), event, state);
             subscribeCouncilIfTurnStarted(event, emitter, state);
         });
         state.add(chatSubscription);
@@ -138,18 +138,42 @@ public class ChatController {
             return;
         }
         for (CouncilEvent event : councilEvents.history(sessionId)) {
-            sendSafe(emitter, "council", event, state);
+            sendSafe(emitter, "council", event.id(), event, state);
         }
         AutoCloseable subscription = councilEvents.subscribe(
                 sessionId,
-                event -> sendSafe(emitter, "council", event, state));
+                event -> sendSafe(emitter, "council", event.id(), event, state));
         state.add(subscription);
     }
 
     private void sendSafe(SseEmitter emitter, String eventName, Object data, StreamState state) {
+        sendSafe(emitter, eventName, null, data, state);
+    }
+
+    /**
+     * Write one frame, tagging it with the event's own id where there is one.
+     *
+     * <p>The id is what makes a frame identifiable across a reconnect. This
+     * stream still replays its full history on connect and honours no cursor, so
+     * the client dedupes on these ids today. Setting them also leaves the
+     * standard {@code Last-Event-ID} mechanism available: the browser echoes the
+     * last id it saw, so a future server-side cursor needs no new protocol.
+     *
+     * @param emitter   the open stream
+     * @param eventName the SSE event name the client listens on
+     * @param eventId   the event's id, or null for frames that are not events
+     * @param data      the payload, serialised as JSON
+     * @param state     subscriptions to close if the stream has gone away
+     */
+    private void sendSafe(SseEmitter emitter, String eventName, String eventId,
+                          Object data, StreamState state) {
         try {
             synchronized (emitter) {
-                emitter.send(SseEmitter.event().name(eventName).data(data));
+                SseEmitter.SseEventBuilder frame = SseEmitter.event().name(eventName).data(data);
+                if (eventId != null && !eventId.isBlank()) {
+                    frame = frame.id(eventId);
+                }
+                emitter.send(frame);
             }
         } catch (IOException | IllegalStateException ex) {
             state.closeAll();
