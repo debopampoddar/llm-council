@@ -11,6 +11,7 @@ import { api, ApiError } from "./api.js";
 import { subscribe } from "./sse.js";
 import { el, replace } from "./dom.js";
 import { independenceFor } from "./health.js";
+import { renderTimeline } from "./timeline.js";
 import {
   renderChatList,
   renderComposer,
@@ -38,6 +39,10 @@ const state = {
   health: null,
   independence: null,
   error: null,
+  // Council events accumulate per council session, keyed by the councilSessionId
+  // that arrives on the turn — the only bridge from chat-scope to session-scope.
+  councilEvents: new Map(),
+  expandedStages: new Map(),
 };
 
 let stream = null;
@@ -94,10 +99,25 @@ function renderStream() {
 function renderTurn(turn) {
   const parts = [renderUserMessage(turn.userMessage)];
 
-  if (turn.status === "RUNNING") {
+  const events = state.councilEvents.get(turn.councilSessionId) || [];
+  if (events.length) {
+    // The timeline lives under its own turn rather than in a detached pane, so
+    // the evidence never sits apart from the answer it qualifies.
+    const container = el("div.timeline");
+    renderTimeline(container, events, {
+      expanded: expandedFor(turn.councilSessionId),
+      onToggle: (stageIndex) => {
+        const open = expandedFor(turn.councilSessionId);
+        if (open.has(stageIndex)) open.delete(stageIndex);
+        else open.add(stageIndex);
+        render();
+      },
+    });
+    parts.push(container);
+  } else if (turn.status === "RUNNING") {
     parts.push(el("div.banner.b-info", {}, [
-      el("span.bt", { text: "Council running…" }),
-      el("span.bd", { text: "Stages stream in as they complete." }),
+      el("span.bt", { text: "Council starting…" }),
+      el("span.bd", { text: "Stages appear as they run." }),
     ]));
   }
 
@@ -111,6 +131,11 @@ function renderTurn(turn) {
   }
 
   return el("div.turn", {}, parts);
+}
+
+function expandedFor(sessionId) {
+  if (!state.expandedStages.has(sessionId)) state.expandedStages.set(sessionId, new Set());
+  return state.expandedStages.get(sessionId);
 }
 
 // ── Data
@@ -159,6 +184,12 @@ function openStream(chatId) {
     onSnapshot: (chat) => {
       state.activeChat = chat;
       render();
+    },
+    onCouncilEvent: (event) => {
+      const list = state.councilEvents.get(event.sessionId) || [];
+      list.push(event);
+      state.councilEvents.set(event.sessionId, list);
+      renderStream();
     },
     onChatEvent: () => {
       // Turn transitions arrive as chat events; the snapshot carries the bodies,
