@@ -52,6 +52,12 @@ class StaticResourceTest {
             "/js/api.js",
             "/js/sse.js",
             "/js/dom.js",
+            "/js/markdown.js",
+            "/js/chat.js",
+            "/js/health.js",
+            "/js/timeline.js",
+            "/js/trust.js",
+            "/js/artifacts.js",
             "/css/app.css"
     })
     void servesEveryModuleTheChatViewLoads(String path) throws Exception {
