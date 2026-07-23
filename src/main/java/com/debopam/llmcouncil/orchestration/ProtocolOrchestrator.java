@@ -1,6 +1,7 @@
 package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.EventPublisher;
+import com.debopam.llmcouncil.application.RunRegistry;
 import com.debopam.llmcouncil.config.CouncilCatalog;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.model.CouncilPolicy;
@@ -27,13 +28,16 @@ public class ProtocolOrchestrator {
     private final ProtocolDefinitionRegistry protocolRegistry;
     private final StageExecutorRegistry executorRegistry;
     private final EventPublisher events;
+    private final RunRegistry runRegistry;
 
     public ProtocolOrchestrator(ProtocolDefinitionRegistry protocolRegistry,
                                 StageExecutorRegistry executorRegistry,
-                                EventPublisher events) {
+                                EventPublisher events,
+                                RunRegistry runRegistry) {
         this.protocolRegistry = protocolRegistry;
         this.executorRegistry = executorRegistry;
         this.events = events;
+        this.runRegistry = runRegistry;
     }
 
     /**
@@ -75,39 +79,59 @@ public class ProtocolOrchestrator {
                               "profileId", profile.id(),
                               "stages", protocol.orderedStages().stream().map(StageType::name).toList()));
 
-        List<StageType> stages = protocol.orderedStages();
-        for (int i = 0; i < stages.size(); i++) {
-            StageType stageType = stages.get(i);
+        // Published so a cancellation arriving over HTTP can reach this run.
+        // Removed in the finally below however the run ends.
+        runRegistry.register(session.id(), context);
 
-            if (context.isTerminal()) {
-                // Skip remaining stages after a fatal failure
-                events.publish(session.id(), stageType.name(), "STAGE_SKIPPED", null,
-                               Map.of("reason", "previous stage marked context terminal"));
-                continue;
+        try {
+            List<StageType> stages = protocol.orderedStages();
+            for (int i = 0; i < stages.size(); i++) {
+                StageType stageType = stages.get(i);
+
+                // Cancellation is honoured here and nowhere else. Checking at the
+                // stage boundary means an in-flight model call is never
+                // interrupted: it completes and its result is discarded, leaving
+                // the provider connection in a defined state.
+                if (context.isCancelled()) {
+                    events.publish(session.id(), stageType.name(), "STAGE_SKIPPED", null,
+                                   Map.of("reason", "cancelled by user"));
+                    continue;
+                }
+
+                if (context.isTerminal()) {
+                    // Skip remaining stages after a fatal failure
+                    events.publish(session.id(), stageType.name(), "STAGE_SKIPPED", null,
+                                   Map.of("reason", "previous stage marked context terminal"));
+                    continue;
+                }
+
+                if (!executorRegistry.has(stageType)) {
+                    log.warn("No executor for stage {}; skipping", stageType);
+                    continue;
+                }
+
+                ProtocolStageOptions options = protocol.optionsFor(stageType);
+                events.publish(session.id(), stageType.name(), "STAGE_STARTED", null,
+                               Map.of("stageIndex", i));
+                try {
+                    context = executorRegistry.get(stageType).execute(context, options);
+                    events.publish(session.id(), stageType.name(), "STAGE_COMPLETED", null, Map.of());
+                } catch (Exception ex) {
+                    log.error("Stage {} failed for session {}", stageType, session.id(), ex);
+                    events.publish(session.id(), stageType.name(), "STAGE_FAILED", null,
+                                   Map.of("errorType", ex.getClass().getSimpleName(),
+                                          "message", ex.getMessage() != null ? ex.getMessage() : ""));
+                    context.markFailed(stageType, ex);
+                }
             }
 
-            if (!executorRegistry.has(stageType)) {
-                log.warn("No executor for stage {}; skipping", stageType);
-                continue;
-            }
-
-            ProtocolStageOptions options = protocol.optionsFor(stageType);
-            events.publish(session.id(), stageType.name(), "STAGE_STARTED", null,
-                           Map.of("stageIndex", i));
-            try {
-                context = executorRegistry.get(stageType).execute(context, options);
-                events.publish(session.id(), stageType.name(), "STAGE_COMPLETED", null, Map.of());
-            } catch (Exception ex) {
-                log.error("Stage {} failed for session {}", stageType, session.id(), ex);
-                events.publish(session.id(), stageType.name(), "STAGE_FAILED", null,
-                               Map.of("errorType", ex.getClass().getSimpleName(),
-                                      "message", ex.getMessage() != null ? ex.getMessage() : ""));
-                context.markFailed(stageType, ex);
-            }
+            String terminalEvent = context.isCancelled() ? "PROTOCOL_CANCELLED"
+                                 : context.isTerminal() ? "PROTOCOL_FAILED"
+                                 : "PROTOCOL_COMPLETED";
+            events.publish(session.id(), "PROTOCOL", terminalEvent, null, Map.of());
+            return context;
+        } finally {
+            runRegistry.unregister(session.id());
         }
-
-        String terminalEvent = context.isTerminal() ? "PROTOCOL_FAILED" : "PROTOCOL_COMPLETED";
-        events.publish(session.id(), "PROTOCOL", terminalEvent, null, Map.of());
-        return context;
     }
 }

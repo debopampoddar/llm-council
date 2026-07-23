@@ -6,8 +6,11 @@ import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 
@@ -24,6 +27,8 @@ public class CouncilRunExecutor {
 
     private final CouncilService councilService;
     private final Semaphore runPermits;
+    // Futures of submitted runs, so a queued run can be stopped before it starts.
+    private final Map<String, Future<?>> inFlight = new ConcurrentHashMap<>();
     private final ExecutorService executor;
 
     public CouncilRunExecutor(CouncilService councilService,
@@ -40,7 +45,7 @@ public class CouncilRunExecutor {
                     "Too many council runs are already active. Try again after the current run completes.");
         }
 
-        executor.submit(() -> {
+        Future<?> future = executor.submit(() -> {
             try {
                 CouncilContext context = councilService.runCouncil(sessionId);
                 CouncilSession session = councilService.getSession(sessionId);
@@ -52,11 +57,36 @@ public class CouncilRunExecutor {
                 String failure = session.failureReason() != null ? session.failureReason() : ex.getMessage();
                 onCompletion.accept(new CouncilRunCompletion(sessionId, false, session, null, failure));
             } finally {
+                inFlight.remove(sessionId);
                 runPermits.release();
             }
         });
+        inFlight.put(sessionId, future);
 
         return CouncilRunSubmission.accepted(sessionId);
+    }
+
+    /**
+     * Stop a queued run from starting.
+     *
+     * <p>Only ever called with {@code mayInterruptIfRunning = false}. Interrupting
+     * a virtual thread part-way through an HTTP call to a model provider leaves
+     * that connection in an undefined state, so a run that has already started is
+     * left to notice its own cancellation at the next stage boundary instead.
+     *
+     * <p>This matters more than it looks: {@code max-concurrent-runs} defaults to
+     * 1, so one unwanted run blocks every other run until it drains.
+     *
+     * @param sessionId the council session to stop
+     * @return {@code true} if a submitted run was found
+     */
+    public boolean cancel(String sessionId) {
+        Future<?> future = inFlight.get(sessionId);
+        if (future == null) {
+            return false;
+        }
+        future.cancel(false);
+        return true;
     }
 
     @PreDestroy

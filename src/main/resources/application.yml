@@ -522,8 +522,6 @@ council:
       description: Default council with anonymized review, scoring, synthesis, and Fresh Eyes validation.
       orderedStages: [GENERATE, ANONYMIZE, REVIEW, SCORE, SYNTHESIZE, VALIDATE]
       stageOptions:
-        SCORE:
-          artifact-label: initial
         SYNTHESIZE:
           preserve-dissent: true
     rigorous:
@@ -532,8 +530,6 @@ council:
       # REVIEW_POST_DEBATE (re-review incorporating debate arguments) stages.
       orderedStages: [GENERATE, ANONYMIZE, REVIEW, SCORE, DEBATE, REVISE, REVIEW_POST_DEBATE, SCORE, SYNTHESIZE, VALIDATE, EXPORT]
       stageOptions:
-        SCORE:
-          artifact-label: initial
         DEBATE:
           min-rounds: 2
           max-rounds: 3
