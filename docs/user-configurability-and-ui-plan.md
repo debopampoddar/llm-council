@@ -83,7 +83,7 @@ These were found while surveying the code for this plan. They are not new work i
 | F2 | **Prompts are never length-bounded.** `PromptBuilder` contains no truncation of any kind; `synthesisMessages` concatenates every draft, review, score line, and debate round. Ollama ships `num-ctx: 4096` while local models are configured for 1200–1800 output tokens each, so a 3-member rigorous synthesis prompt exceeds the window and Ollama silently discards context. Gets worse under §2.2, which permits 8-member policies. | `PromptBuilder`; `application.yml` `num-ctx` | Phase 1 (§4.8) |
 | F3 ✅ | **Token counts are captured then discarded.** `OllamaDirectModelClient` parses `prompt_eval_count`/`eval_count` and `SpringAiModelClient` reads usage metadata into `ModelCallResult`, but all 8 executor call sites use only `.text()`. Nothing aggregates, so a `multi-cloud-rigorous` run (30–40 cloud calls) reports no cost signal. | `ModelCallResult`; the 8 `.call(` sites | Phase 2 (§5.6) — **fixed** |
 | F4 | **No run cancellation.** `CouncilRunExecutor.submit` discards the `Future`. With `max-concurrent-runs` defaulting to 1, one long run blocks all others with no way to stop it. | `CouncilRunExecutor` | Phase 2 (§5.7) |
-| F5 | **Unbounded in-memory growth.** No eviction anywhere; events are the highest-cardinality data at dozens per run. | `InMemoryEventPublisher.eventsBySession` | Phase 2A (§7.8) |
+| F5 ✅ | **Unbounded in-memory growth.** No eviction anywhere; events are the highest-cardinality data at dozens per run. | `InMemoryEventPublisher.eventsBySession` | Phase 2A (§6.8) — **fixed for the in-memory stores** |
 
 ---
 
@@ -860,7 +860,7 @@ Keep `EventPublisher` as a thin composite that appends then publishes, so **no e
 
 Event writes are on the hot path of every stage. Append synchronously (they are small, and SQLite handles thousands of inserts per second), but **never let an event-store failure fail a council run**: catch, log at `WARN`, and continue. Losing an observability record is acceptable; losing a 10-minute council run because a disk was full is not.
 
-### 6.8 Retention (fixes F5)
+### 6.8 Retention (fixes F5) ✅ IMPLEMENTED for the in-memory stores
 
 Durability moves unbounded growth from RAM to disk; it does not remove it. Add `RetentionService` as a `@Scheduled` task (hourly) plus a one-shot run at boot:
 
@@ -874,6 +874,17 @@ council:
 ```
 
 Delete sessions exceeding either bound, oldest first, and cascade to their events and artifact directories. **Never delete a session in `RUNNING` or `CREATED` status** regardless of age. The in-memory stores get the same caps so the eviction gap is closed for `type: memory` users too.
+
+**Delivered — the in-memory half.** All four stores evict: `InMemoryEventPublisher`, `InMemoryRunResultStore`, `InMemorySessionStore`, and `InMemoryChatSessionStore`. Note that `InMemoryRunResultStore` is not in the list above, which predates it — it arrived with Phase 2 and holds the largest payload of the four, a full `CouncilRunResponse` per run.
+
+`RetentionPolicy` owns the decision so "oldest first" and "never evict something still in use" are each written once rather than four times. Bounds are carried on `CouncilRuntimeSettings`, not read via `@Value`, for the reason recorded in the runtime-overlay fix: a `@Value` read cannot be overridden by the user overlay, so the overlay's `retention:` section would validate cleanly and then do nothing.
+
+Two deviations from the sketch above:
+
+- **Eviction runs on write, not on an hourly `@Scheduled` sweep.** The store is capped at a few hundred entries, so the sweep costs microseconds beside the model call that produced the entry, and the bound then holds continuously rather than up to an hour late. It also keeps `mvn test` free of a scheduler and of timing-dependent assertions. The durable stores in this phase still want the scheduled sweep — deleting rows and artifact directories is not something to do on the write path.
+- **`CREATED` and `RUNNING` protection is checked where the information lives.** `InMemorySessionStore` reads the status off the session directly, being the only store that holds one; the event and result stores ask `RunRegistry` whether the run is in flight, and the chat store asks the chat whether a turn is running. A `CREATED` session has produced no events and no result, so the other stores have nothing of its to protect.
+
+Still open for Phase 2A: cascading to artifact directories, and the same bounds applied to the durable stores.
 
 ### 6.9 Interrupted-run recovery
 
