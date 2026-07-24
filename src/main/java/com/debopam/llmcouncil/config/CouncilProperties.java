@@ -20,6 +20,7 @@ public class CouncilProperties {
     private Map<String, PolicyProps> policies = new LinkedHashMap<>();
     private Map<String, ProtocolProps> protocols = new LinkedHashMap<>();
     private PersistenceProps persistence = new PersistenceProps();
+    private RuntimeProps runtime = new RuntimeProps();
     private boolean allowMockFallback = false;
 
     // Getters/setters
@@ -33,6 +34,8 @@ public class CouncilProperties {
     public void setProtocols(Map<String, ProtocolProps> p) { this.protocols = p; }
     public PersistenceProps getPersistence() { return persistence; }
     public void setPersistence(PersistenceProps p) { this.persistence = p; }
+    public RuntimeProps getRuntime() { return runtime; }
+    public void setRuntime(RuntimeProps r) { this.runtime = r; }
     public boolean isAllowMockFallback() { return allowMockFallback; }
     public void setAllowMockFallback(boolean allowMockFallback) { this.allowMockFallback = allowMockFallback; }
 
@@ -131,6 +134,22 @@ public class CouncilProperties {
         public String getDescription() { return description; } public void setDescription(String v) { description = v; }
         public List<String> getOrderedStages() { return orderedStages; } public void setOrderedStages(List<String> v) { orderedStages = v; }
         public Map<String, Map<String, Object>> getStageOptions() { return stageOptions; } public void setStageOptions(Map<String, Map<String, Object>> v) { stageOptions = v; }
+    }
+
+    /**
+     * Runtime knobs under {@code council.runtime}.
+     *
+     * <p>These were previously read only through {@code @Value} at the point of
+     * use, which meant they were never bound to this object and so never
+     * validated with the rest of the configuration.
+     */
+    public static class RuntimeProps {
+        private int maxConcurrentRuns = 1;
+        private int chatRecentTurnCount = 4;
+        public int getMaxConcurrentRuns() { return maxConcurrentRuns; }
+        public void setMaxConcurrentRuns(int v) { maxConcurrentRuns = v; }
+        public int getChatRecentTurnCount() { return chatRecentTurnCount; }
+        public void setChatRecentTurnCount(int v) { chatRecentTurnCount = v; }
     }
 
     public static class PersistenceProps {

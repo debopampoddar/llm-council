@@ -4,6 +4,8 @@ import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.CouncilStatus;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.orchestration.CouncilContext;
+import com.debopam.llmcouncil.config.CouncilRuntimeSettings;
+import com.debopam.llmcouncil.config.TestCatalogs;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CountDownLatch;
@@ -17,7 +19,8 @@ class CouncilRunExecutorTest {
     @Test
     void rejectsSecondRunWhenConcurrencyLimitIsReached() throws Exception {
         BlockingCouncilService councilService = new BlockingCouncilService();
-        CouncilRunExecutor executor = new CouncilRunExecutor(councilService, 1);
+        CouncilRunExecutor executor = new CouncilRunExecutor(councilService,
+                TestCatalogs.holder(new CouncilRuntimeSettings(1, 4, "/tmp")));
         try {
             CouncilRunSubmission first = executor.submit("session-1", ignored -> {});
             assertTrue(first.accepted());
