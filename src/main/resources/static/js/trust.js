@@ -150,19 +150,40 @@ export function renderWarnings(result) {
 const DISSENT_HEADING = /^\s*(?:\d+[.)]\s*)?(?:important\s+)?dissent\s*[:\-—]?\s*/i;
 const NEXT_HEADING = /^\s*(?:\d+[.)]\s*)?(?:unresolved\s+risks?|risks?|confidence|caveats?)\s*[:\-—]/i;
 
-function extractDissent(answer) {
-  if (!answer) return null;
+/**
+ * Split the dissent section out of the answer.
+ *
+ * <p>The dissent is rendered as its own block, so it must not also remain in
+ * the prose — a reader seeing the same paragraph twice cannot tell it is the
+ * same paragraph, and reads it as two findings. This returns the answer with
+ * the labelled section removed alongside the section's own text, so the caller
+ * renders each exactly once.
+ *
+ * @param answer the synthesised answer, or null
+ * @returns {{body: string, dissent: (string|null)}}
+ */
+export function splitDissent(answer) {
+  if (!answer) return { body: "", dissent: null };
   const lines = answer.split("\n");
   const start = lines.findIndex((line) => DISSENT_HEADING.test(line));
-  if (start === -1) return null;
+  if (start === -1) return { body: answer, dissent: null };
 
   const collected = [lines[start].replace(DISSENT_HEADING, "").trim()];
-  for (let i = start + 1; i < lines.length; i += 1) {
-    if (NEXT_HEADING.test(lines[i])) break;
-    collected.push(lines[i]);
+  let end = start + 1;
+  while (end < lines.length && !NEXT_HEADING.test(lines[end])) {
+    collected.push(lines[end]);
+    end += 1;
   }
-  const text = collected.join("\n").trim();
-  return text.length ? text : null;
+
+  const remaining = [...lines.slice(0, start), ...lines.slice(end)]
+    // Collapse the blank-line gap the removed section leaves behind, so the
+    // prose does not open with a hole where dissent used to be.
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  const dissent = collected.join("\n").trim();
+  return { body: remaining, dissent: dissent.length ? dissent : null };
 }
 
 /**
@@ -172,12 +193,10 @@ function extractDissent(answer) {
  * present: the three cases — dissent found, preservation disabled, no section
  * produced — are different claims and must not collapse into one another.
  *
- * @param answer           the synthesised answer
+ * @param dissent          the extracted dissent text, or null when none was found
  * @param preserveEnabled  whether the protocol had preserve-dissent on
  */
-export function renderDissent(answer, preserveEnabled) {
-  const dissent = extractDissent(answer);
-
+export function renderDissent(dissent, preserveEnabled) {
   if (preserveEnabled === false) {
     return el("div.dissent.dissent-off", {}, [
       el("div.hd", {}, [el("h4", { text: "Preserved dissent" }), pill("warn", "disabled")]),
