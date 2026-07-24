@@ -255,7 +255,11 @@ public class CouncilConfig {
                 builtInOrigins(profiles.keySet(), policies.keySet(), protocols.keySet()),
                 new CouncilRuntimeSettings(props.getRuntime().getMaxConcurrentRuns(),
                                            props.getRuntime().getChatRecentTurnCount(),
-                                           props.getPersistence().getArtifactBasePath()),
+                                           props.getPersistence().getArtifactBasePath(),
+                                           new RetentionSettings(
+                                                   props.getPersistence().getRetention().getMaxSessions(),
+                                                   props.getPersistence().getRetention().getMaxAgeDays(),
+                                                   props.getPersistence().getRetention().getMaxEventsPerSession())),
                 List.of(),
                 Instant.now(),
                 1L);
