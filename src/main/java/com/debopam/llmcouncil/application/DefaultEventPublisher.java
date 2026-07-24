@@ -46,11 +46,28 @@ public class DefaultEventPublisher implements EventPublisher {
         this(new InMemoryEventStore(), new InMemoryEventBroker());
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>A store failure is logged and swallowed. Events are written on the hot
+     * path of every stage, and a council run takes minutes: losing a
+     * ten-minute run because a disk filled up would be a far worse outcome than
+     * losing the observability record of it. The event is still delivered to
+     * anyone streaming, so a run whose history cannot be written is at least
+     * watchable while it happens.
+     */
     @Override
     public CouncilEvent publish(String sessionId, String stage, String eventType,
                                 String modelId, Map<String, Object> metadata) {
-        CouncilEvent stored =
-                store.append(CouncilEvent.of(sessionId, stage, eventType, modelId, metadata));
+        CouncilEvent event = CouncilEvent.of(sessionId, stage, eventType, modelId, metadata);
+        CouncilEvent stored;
+        try {
+            stored = store.append(event);
+        } catch (RuntimeException ex) {
+            log.warn("Unable to record {}/{} for session {}; the run continues without it: {}",
+                     stage, eventType, sessionId, ex.toString());
+            stored = event;
+        }
         broker.publish(stored);
         log.info("[{}] {}/{} model={} meta={}", sessionId, stage, eventType, modelId, metadata);
         return stored;

@@ -7,6 +7,7 @@ import com.debopam.llmcouncil.domain.CouncilEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -31,8 +32,15 @@ import java.util.concurrent.atomic.AtomicLong;
  * ones. A session whose run is still in flight is never evicted whatever the
  * bounds say — a timeline that loses its earlier stages mid-run does not read as
  * broken, it reads as stages that never happened.
+ *
+ * <p>This is the default store. {@code council.persistence.type=jdbc} replaces
+ * it with {@link com.debopam.llmcouncil.persistence.jdbc.JdbcEventStore}, which
+ * is held to the same contract test. The broker beside it stays in memory
+ * either way.
  */
 @Component
+@ConditionalOnProperty(name = "council.persistence.type", havingValue = "memory",
+                       matchIfMissing = true)
 public class InMemoryEventStore implements EventStore {
 
     private static final Logger log = LoggerFactory.getLogger(InMemoryEventStore.class);

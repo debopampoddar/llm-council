@@ -3,6 +3,9 @@ package com.debopam.llmcouncil.persistence.jdbc;
 import com.debopam.llmcouncil.chat.ChatSession;
 import com.debopam.llmcouncil.chat.ChatSessionStore;
 import com.debopam.llmcouncil.chat.InMemoryChatSessionStore;
+import com.debopam.llmcouncil.application.EventStore;
+import com.debopam.llmcouncil.application.InMemoryEventStore;
+import com.debopam.llmcouncil.domain.CouncilEvent;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.persistence.InMemorySessionStore;
@@ -43,12 +46,17 @@ class JdbcPersistenceBootTest {
     @Autowired
     private ChatSessionStore chatStore;
 
+    @Autowired
+    private EventStore eventStore;
+
     @Test
     void theDurableStoresReplaceTheInMemoryOnesRatherThanJoiningThem() {
         assertInstanceOf(JdbcSessionStore.class, sessionStore);
         assertInstanceOf(JdbcChatSessionStore.class, chatStore);
+        assertInstanceOf(JdbcEventStore.class, eventStore);
         assertEquals(0, context.getBeanNamesForType(InMemorySessionStore.class).length);
         assertEquals(0, context.getBeanNamesForType(InMemoryChatSessionStore.class).length);
+        assertEquals(0, context.getBeanNamesForType(InMemoryEventStore.class).length);
     }
 
     @Test
@@ -65,7 +73,11 @@ class JdbcPersistenceBootTest {
         ChatSession chat = new ChatSession("boot-chat", "mock", DepthMode.QUICK, "summary");
         chatStore.save(chat);
 
+        eventStore.append(CouncilEvent.of("boot-session", "GENERATE", "DRAFT_COMPLETED",
+                                          "mock-model", java.util.Map.of("tokens", 12)));
+
         assertEquals(session, sessionStore.findById("boot-session").orElseThrow());
         assertEquals("summary", chatStore.findById("boot-chat").orElseThrow().summary());
+        assertEquals(1L, eventStore.history("boot-session").getFirst().seq());
     }
 }
