@@ -6,10 +6,10 @@ import com.debopam.llmcouncil.application.CouncilRunExecutor;
 import com.debopam.llmcouncil.application.CouncilRunSubmission;
 import com.debopam.llmcouncil.application.CouncilService;
 import com.debopam.llmcouncil.application.RunResultStore;
+import com.debopam.llmcouncil.config.CouncilCatalogHolder;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.CouncilStatus;
 import com.debopam.llmcouncil.domain.DepthMode;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -36,7 +36,8 @@ public class ChatCouncilService {
                               CouncilRunExecutor runExecutor,
                               ChatEventBroker chatEvents,
                               RunResultStore runResultStore,
-                              @Value("${council.runtime.chat-recent-turn-count:4}") int recentTurnCount) {
+                              CouncilCatalogHolder catalogHolder) {
+        int recentTurnCount = catalogHolder.get().runtime().chatRecentTurnCount();
         this.chatStore = chatStore;
         this.councilService = councilService;
         this.runExecutor = runExecutor;

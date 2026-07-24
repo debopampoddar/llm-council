@@ -3,6 +3,7 @@ package com.debopam.llmcouncil.config.user;
 import com.debopam.llmcouncil.config.ConfigIssue;
 import com.debopam.llmcouncil.config.ConfigOrigin;
 import com.debopam.llmcouncil.config.CouncilCatalog;
+import com.debopam.llmcouncil.config.CouncilRuntimeSettings;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.model.CouncilPolicy;
 import com.debopam.llmcouncil.model.CouncilProfile;
@@ -109,8 +110,16 @@ public class CatalogMerger {
                         existing == null ? ConfigOrigin.USER : ConfigOrigin.USER_OVERRIDE);
         });
 
+        // Runtime knobs merge field by field: mentioning one must not reset the
+        // others to their defaults.
+        CouncilRuntimeSettings runtime = overlay.runtime() == null
+                ? builtIn.runtime()
+                : builtIn.runtime().withOverrides(overlay.runtime().maxConcurrentRuns(),
+                                                  overlay.runtime().chatRecentTurnCount(),
+                                                  overlay.runtime().artifactBasePath());
+
         return new CouncilCatalog(new ModelRegistry(models, clients), profiles, policies, protocols,
-                                  origins, issues, Instant.now(), generation);
+                                  origins, runtime, issues, Instant.now(), generation);
     }
 
     private ModelProfile mergeModel(ModelProfile existing, UserConfigDocument.UserModel user) {

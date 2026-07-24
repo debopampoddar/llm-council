@@ -1,6 +1,6 @@
 package com.debopam.llmcouncil.persistence;
 
-import com.debopam.llmcouncil.config.CouncilProperties;
+import com.debopam.llmcouncil.config.CouncilCatalogHolder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import org.springframework.stereotype.Component;
@@ -20,8 +20,13 @@ public class LocalArtifactStore implements ArtifactStore {
     private final Path basePath;
     private final ObjectMapper objectMapper;
 
-    public LocalArtifactStore(CouncilProperties properties, ObjectMapper objectMapper) {
-        this.basePath = Path.of(properties.getPersistence().getArtifactBasePath());
+    /**
+     * @param catalogHolder supplies the resolved artifact path, so a user
+     *                      overlay's {@code artifactBasePath} takes effect
+     * @param objectMapper  used to serialise JSON artifacts
+     */
+    public LocalArtifactStore(CouncilCatalogHolder catalogHolder, ObjectMapper objectMapper) {
+        this.basePath = Path.of(catalogHolder.get().runtime().artifactBasePath());
         this.objectMapper = objectMapper.copy().enable(SerializationFeature.INDENT_OUTPUT);
     }
 
