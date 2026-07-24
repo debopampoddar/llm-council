@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.persistence.jdbc;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,6 +82,20 @@ public class JdbcPersistenceConfig {
         }
         log.info("Durable persistence enabled: {}", redacted(jdbcUrl));
         return dataSource;
+    }
+
+    /**
+     * The shared Jackson round-trip used by every durable store.
+     *
+     * <p>A bean rather than a {@code @Component} so that it exists only where it
+     * is used: under {@code type=memory} there is nothing for it to map.
+     *
+     * @param objectMapper the application's configured Jackson mapper
+     * @return the document mapper
+     */
+    @Bean
+    public DocumentMapper documentMapper(ObjectMapper objectMapper) {
+        return new DocumentMapper(objectMapper);
     }
 
     /**

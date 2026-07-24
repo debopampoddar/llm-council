@@ -3,6 +3,7 @@ package com.debopam.llmcouncil.persistence.jdbc;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -31,7 +32,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PersistenceSeamTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
-            .withConfiguration(AutoConfigurations.of(JdbcTemplateAutoConfiguration.class))
+            .withConfiguration(AutoConfigurations.of(JacksonAutoConfiguration.class,
+                                                     JdbcTemplateAutoConfiguration.class))
             .withUserConfiguration(JdbcPersistenceConfig.class);
 
     @Test
