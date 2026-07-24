@@ -3,17 +3,29 @@
 // The stream multiplexes three event names: `snapshot` (a ChatResponse sent on
 // connect), `chat` (ChatEvent) and `council` (CouncilEvent).
 //
-// Known server limitation, matching CLAUDE.md: the endpoint replays its full
-// history on every connect and honours no cursor. A reconnect therefore
-// redelivers every event the client has already seen, so deduping is not an
-// optimisation here — without it a reconnect mid-run would double every stage
-// in the timeline. Frames now carry the event's own id, so dedupe keys on that.
+// Frame ids are positions in the chat's own sequence, shared by all three
+// sources, so a single integer locates a point in the whole stream. We send the
+// last one back on reconnect and the server replays only what followed.
 //
-// EventSource reconnects on its own at an interval we do not control. We want
-// backoff, so errors close the stream and schedule the retry ourselves.
+// The cursor goes in the query string, not in Last-Event-ID. The header is only
+// sent by EventSource's own automatic reconnect, and we do not use that: it
+// retries at an interval we cannot control, so errors close the stream and we
+// schedule the retry ourselves with backoff. A freshly constructed EventSource
+// sends no header. The server reads both.
+//
+// Dedupe stays as a backstop rather than the mechanism. A first connection
+// replays full history source by source, which is deliberately not in sequence
+// order — it is the lossless path, and it can include events that never got a
+// position — so the seen set cannot be replaced by a high-water mark. It is
+// bounded instead: on a long run it would otherwise grow one entry per event
+// for as long as the page stayed open.
 
 const INITIAL_RETRY_MS = 1000;
 const MAX_RETRY_MS = 30000;
+
+// Enough to cover a full-history replay of a long chat, and small enough that
+// the set never becomes the page's largest object.
+const MAX_SEEN_IDS = 5000;
 
 /**
  * Subscribe to one chat's event stream.
@@ -24,6 +36,7 @@ const MAX_RETRY_MS = 30000;
  */
 export function subscribe(chatId, handlers) {
   const seen = new Set();
+  let lastSeq = 0;
   let source = null;
   let retryMs = INITIAL_RETRY_MS;
   let retryTimer = null;
@@ -32,13 +45,33 @@ export function subscribe(chatId, handlers) {
   const status = (state, detail) => handlers.onStatus && handlers.onStatus(state, detail);
 
   // Returns false when this event has already been delivered on an earlier
-  // connection. The snapshot has no id and is always processed: it is a full
-  // state replacement, so reprocessing it is correct rather than duplicative.
+  // connection. Frames without an id are always processed: the snapshot is a
+  // full state replacement, and an event the server could not place in the
+  // sequence carries no id rather than a zero — treating that as position 0
+  // would reset the cursor and replay the whole stream on the next reconnect.
   function firstTime(event) {
     if (!event.lastEventId) return true;
     if (seen.has(event.lastEventId)) return false;
-    seen.add(event.lastEventId);
+    remember(event.lastEventId);
     return true;
+  }
+
+  // Keeps the newest ids and drops the oldest half when the set fills. Safe
+  // because the server only ever replays positions above the cursor, so an id
+  // low enough to be dropped is one that cannot arrive again.
+  function remember(id) {
+    seen.add(id);
+    const seq = Number(id);
+    if (Number.isFinite(seq) && seq > lastSeq) lastSeq = seq;
+    if (seen.size > MAX_SEEN_IDS) {
+      const newest = [...seen]
+        .map(Number)
+        .filter(Number.isFinite)
+        .sort((a, b) => b - a)
+        .slice(0, MAX_SEEN_IDS / 2);
+      seen.clear();
+      newest.forEach((value) => seen.add(String(value)));
+    }
   }
 
   function parse(event) {
@@ -51,7 +84,8 @@ export function subscribe(chatId, handlers) {
 
   function connect() {
     if (closed) return;
-    source = new EventSource(`/api/council/chats/${chatId}/events`);
+    const resume = lastSeq > 0 ? `?lastEventId=${lastSeq}` : "";
+    source = new EventSource(`/api/council/chats/${chatId}/events${resume}`);
 
     source.addEventListener("open", () => {
       retryMs = INITIAL_RETRY_MS;

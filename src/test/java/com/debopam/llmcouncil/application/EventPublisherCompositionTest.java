@@ -123,6 +123,11 @@ class EventPublisherCompositionTest {
         public List<CouncilEvent> history(String sessionId) {
             return List.of();
         }
+
+        @Override
+        public List<CouncilEvent> sinceInChat(String chatId, long chatSeq) {
+            return List.of();
+        }
     }
 
     private void closeQuietly(AutoCloseable subscription) {

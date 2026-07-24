@@ -33,6 +33,16 @@ public interface ChatEventStore {
     List<ChatEvent> history(String chatId);
 
     /**
+     * Replay one chat's events from a position onwards.
+     *
+     * @param chatId  the chat
+     * @param chatSeq the last position the client already has; zero for
+     *                everything
+     * @return the chat's events after that position, in position order
+     */
+    List<ChatEvent> since(String chatId, long chatSeq);
+
+    /**
      * Remove a deleted chat's events.
      *
      * <p>Deleting a chat and leaving its event log behind would accumulate rows
