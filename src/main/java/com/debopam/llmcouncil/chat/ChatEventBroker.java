@@ -52,10 +52,16 @@ public class ChatEventBroker {
     /**
      * Record and deliver one chat event.
      *
-     * <p>A store failure is logged and swallowed, matching the council event
-     * path: a turn must not fail because its event log could not be written.
-     * The event still reaches subscribers, and comes back carrying the position
-     * it was allocated whether or not it was stored.
+     * <p>Failures on the way to storage are logged and swallowed, matching the
+     * council event path: a turn must not fail because its event log could not
+     * be written. Allocation is inside that guard as well as the append, because
+     * the durable allocator reaches the database too and would otherwise be the
+     * one line here that could still take a turn down.
+     *
+     * <p>What the subscriber receives is the furthest the event got. A store
+     * that could not write still delivers a sequenced event; an allocator that
+     * could not allocate delivers an unsequenced one, which is honest rather
+     * than a position no cursor can trust.
      *
      * @param chatId  the chat
      * @param type    the event type
@@ -63,16 +69,18 @@ public class ChatEventBroker {
      * @return the published event
      */
     public ChatEvent publish(String chatId, String type, Map<String, Object> payload) {
-        ChatEvent event = ChatEvent.of(chatId, type, payload).withChatSeq(sequences.next(chatId));
+        ChatEvent published = ChatEvent.of(chatId, type, payload);
         try {
-            store.append(event);
+            published = published.withChatSeq(sequences.next(chatId));
+            store.append(published);
         } catch (RuntimeException ex) {
             log.warn("Unable to record chat event {} for chat {}; the turn continues without it: {}",
                      type, chatId, ex.toString());
         }
+        ChatEvent delivered = published;
         subscribersByChat.getOrDefault(chatId, List.of())
-                         .forEach(listener -> listener.accept(event));
-        return event;
+                         .forEach(listener -> listener.accept(delivered));
+        return delivered;
     }
 
     /**
