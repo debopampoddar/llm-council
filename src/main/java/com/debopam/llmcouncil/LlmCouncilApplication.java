@@ -5,6 +5,7 @@ import org.springframework.ai.model.vertexai.autoconfigure.embedding.VertexAiTex
 import org.springframework.ai.model.vertexai.autoconfigure.gemini.VertexAiGeminiChatAutoConfiguration;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 /**
@@ -26,11 +27,23 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
  * accept placeholder keys). The Gemini ChatModel is conditionally created in
  * {@link com.debopam.llmcouncil.config.GeminiConditionalConfig} only when a
  * real {@code GOOGLE_CLOUD_PROJECT} is detected.
+ *
+ * <h3>Persistence</h3>
+ * <p>{@code DataSourceAutoConfiguration} is excluded for a related reason. The
+ * SQLite and H2 drivers are on the classpath so that
+ * {@code council.persistence.type=jdbc} needs no extra install, but with an
+ * embedded driver present and no explicit URL, Boot creates an in-memory H2
+ * database of its own accord. Every {@code memory} user would then be running a
+ * database, migrating a schema, and writing nothing to it. The datasource is
+ * built instead by
+ * {@link com.debopam.llmcouncil.persistence.jdbc.JdbcPersistenceConfig}, which
+ * exists only under {@code type=jdbc}.
  */
 @SpringBootApplication(exclude = {
         VertexAiGeminiChatAutoConfiguration.class,
         VertexAiTextEmbeddingAutoConfiguration.class,
-        VertexAiMultiModalEmbeddingAutoConfiguration.class
+        VertexAiMultiModalEmbeddingAutoConfiguration.class,
+        DataSourceAutoConfiguration.class
 })
 @EnableConfigurationProperties
 public class LlmCouncilApplication {
