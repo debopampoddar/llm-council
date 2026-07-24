@@ -54,6 +54,9 @@ const state = {
   // Council events accumulate per council session, keyed by the councilSessionId
   // that arrives on the turn — the only bridge from chat-scope to session-scope.
   councilEvents: new Map(),
+  // Event ids already folded into councilEvents, per session — so a stream that
+  // replays history on reconnect or re-select does not duplicate them.
+  seenCouncilEvents: new Map(),
   expandedStages: new Map(),
   // CouncilRunResponse per council session — the trust signals, fetched once a
   // turn reaches a terminal state.
@@ -406,6 +409,17 @@ function openStream(chatId) {
       render();
     },
     onCouncilEvent: (event) => {
+      // Idempotent by event id. Re-selecting a chat, or an SSE reconnect, opens
+      // a fresh stream that replays the full council history — and the stream's
+      // own dedup set is per-connection, so it does not catch a replay into an
+      // already-populated list. Without this guard the events double and the
+      // timeline's stage-state fold misreads them (a skipped DEBATE reappears as
+      // "running"). The seen-id set is the authority; the list stays in order.
+      const seen = state.seenCouncilEvents.get(event.sessionId) || new Set();
+      if (event.id && seen.has(event.id)) return;
+      if (event.id) seen.add(event.id);
+      state.seenCouncilEvents.set(event.sessionId, seen);
+
       const list = state.councilEvents.get(event.sessionId) || [];
       list.push(event);
       state.councilEvents.set(event.sessionId, list);
