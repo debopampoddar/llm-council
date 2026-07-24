@@ -69,8 +69,9 @@ public class JdbcEventStore implements EventStore {
     public CouncilEvent append(CouncilEvent event) {
         CouncilEvent sequenced = event.withSeq(nextSeq(event.sessionId()));
         jdbc.update("INSERT INTO council_event "
-                    + "(id, session_id, occurred_at, seq, stage, type, model_id, document) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    + "(id, session_id, occurred_at, seq, stage, type, model_id, "
+                    + "chat_id, chat_seq, document) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     sequenced.id(),
                     sequenced.sessionId(),
                     DocumentMapper.toEpochMillis(sequenced.occurredAt()),
@@ -78,6 +79,11 @@ public class JdbcEventStore implements EventStore {
                     sequenced.stage(),
                     sequenced.type(),
                     sequenced.modelId(),
+                    sequenced.chatId(),
+                    // Null rather than zero for an event no chat owns, so the
+                    // cursor's `chat_seq > ?` cannot match a direct run's events
+                    // by accident.
+                    sequenced.chatId() == null ? null : sequenced.chatSeq(),
                     documents.toDocument(sequenced));
         return sequenced;
     }

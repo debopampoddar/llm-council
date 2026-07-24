@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
@@ -28,22 +29,26 @@ public class DefaultEventPublisher implements EventPublisher {
 
     private final EventStore store;
     private final EventBroker broker;
+    private final ChatAttribution chats;
 
     /**
      * @param store  where events are kept and replayed from
      * @param broker live fan-out to open streams
+     * @param chats  says whether this session belongs to a chat, and where its
+     *               next event falls in that chat's sequence
      */
-    public DefaultEventPublisher(EventStore store, EventBroker broker) {
+    public DefaultEventPublisher(EventStore store, EventBroker broker, ChatAttribution chats) {
         this.store = store;
         this.broker = broker;
+        this.chats = chats;
     }
 
     /**
-     * Direct construction over in-memory halves, for tests that only need a
-     * working publisher.
+     * Direct construction over in-memory halves and no chat, for tests that only
+     * need a working publisher.
      */
     public DefaultEventPublisher() {
-        this(new InMemoryEventStore(), new InMemoryEventBroker());
+        this(new InMemoryEventStore(), new InMemoryEventBroker(), ChatAttribution.NONE);
     }
 
     /**
@@ -54,19 +59,23 @@ public class DefaultEventPublisher implements EventPublisher {
      * ten-minute run because a disk filled up would be a far worse outcome than
      * losing the observability record of it. The event is still delivered to
      * anyone streaming, so a run whose history cannot be written is at least
-     * watchable while it happens.
+     * watchable while it happens. Chat attribution sits inside that guard too,
+     * because on the durable path it reaches the database.
      */
     @Override
     public CouncilEvent publish(String sessionId, String stage, String eventType,
                                 String modelId, Map<String, Object> metadata) {
         CouncilEvent event = CouncilEvent.of(sessionId, stage, eventType, modelId, metadata);
-        CouncilEvent stored;
+        CouncilEvent stored = event;
         try {
-            stored = store.append(event);
+            Optional<ChatPosition> position = chats.nextPositionFor(sessionId);
+            if (position.isPresent()) {
+                stored = event.withChatPosition(position.get().chatId(), position.get().chatSeq());
+            }
+            stored = store.append(stored);
         } catch (RuntimeException ex) {
             log.warn("Unable to record {}/{} for session {}; the run continues without it: {}",
                      stage, eventType, sessionId, ex.toString());
-            stored = event;
         }
         broker.publish(stored);
         log.info("[{}] {}/{} model={} meta={}", sessionId, stage, eventType, modelId, metadata);

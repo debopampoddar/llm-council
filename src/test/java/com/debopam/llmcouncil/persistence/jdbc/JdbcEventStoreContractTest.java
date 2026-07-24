@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * The JDBC event store, held to the same contract as the in-memory one, on a
@@ -62,6 +63,38 @@ abstract class JdbcEventStoreContractTest extends EventStoreContractTest {
                      afterRestart.history("s1").stream().map(CouncilEvent::type).toList());
         assertEquals(List.of(1L, 2L, 3L),
                      afterRestart.history("s1").stream().map(CouncilEvent::seq).toList());
+    }
+
+    @Test
+    void chatAttributionIsStoredAsColumnsAndIsNullForADirectRun() {
+        // The cursor's query is `WHERE chat_id = ? AND chat_seq > ?`. Storing 0
+        // rather than NULL for an event no chat owns would make every direct
+        // run's events match that predicate for chat_seq > -1, and more to the
+        // point would put them in some chat's result set the moment a chat id
+        // collided. Reading the columns directly, because the document round
+        // trip would hide a column that was never written.
+        Path directory = newDirectory();
+        DataSource dataSource = JdbcTestDatabase.migrated(engine(), directory);
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        EventStore store = new JdbcEventStore(jdbc, new DocumentMapper(
+                new ObjectMapper().registerModule(new JavaTimeModule())));
+
+        store.append(CouncilEvent.of("in-chat", "GENERATE", "E", null, Map.of())
+                                 .withChatPosition("c1", 7L));
+        store.append(CouncilEvent.of("direct", "GENERATE", "E", null, Map.of()));
+
+        assertEquals("c1", jdbc.queryForObject(
+                "SELECT chat_id FROM council_event WHERE session_id = 'in-chat'", String.class));
+        assertEquals(7L, jdbc.queryForObject(
+                "SELECT chat_seq FROM council_event WHERE session_id = 'in-chat'", Long.class));
+        assertNull(jdbc.queryForObject(
+                "SELECT chat_id FROM council_event WHERE session_id = 'direct'", String.class));
+        assertNull(jdbc.queryForObject(
+                "SELECT chat_seq FROM council_event WHERE session_id = 'direct'", Long.class),
+                   "an event no chat owns has no position in any chat's sequence");
+        // And the attribution survives the document round trip as well.
+        assertEquals("c1", store.history("in-chat").getFirst().chatId());
+        assertEquals(7L, store.history("in-chat").getFirst().chatSeq());
     }
 
     /**

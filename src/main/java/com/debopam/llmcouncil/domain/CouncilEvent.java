@@ -15,6 +15,10 @@ import java.util.UUID;
  * @param modelId    the model involved, or null for stage-level events
  * @param payload    structured detail
  * @param seq        this event's position in its session, counting from 1
+ * @param chatId     the chat whose stream this event also belongs to, or null
+ *                   for a session created directly rather than by a chat turn
+ * @param chatSeq    this event's position in that chat's sequence, or
+ *                   {@link #UNASSIGNED_SEQ} when no chat owns it
  */
 public record CouncilEvent(
         String id,
@@ -24,7 +28,9 @@ public record CouncilEvent(
         String type,
         String modelId,
         Map<String, Object> payload,
-        long seq
+        long seq,
+        String chatId,
+        long chatSeq
 ) {
 
     /** The sequence of an event that has not been stored yet. */
@@ -47,7 +53,8 @@ public record CouncilEvent(
     public static CouncilEvent of(String sessionId, String stage, String type,
                                   String modelId, Map<String, Object> payload) {
         return new CouncilEvent(UUID.randomUUID().toString(), sessionId, Instant.now(),
-                                stage, type, modelId, Map.copyOf(payload), UNASSIGNED_SEQ);
+                                stage, type, modelId, Map.copyOf(payload), UNASSIGNED_SEQ,
+                                null, UNASSIGNED_SEQ);
     }
 
     /**
@@ -58,6 +65,23 @@ public record CouncilEvent(
      */
     public CouncilEvent withSeq(long assignedSeq) {
         return new CouncilEvent(id, sessionId, occurredAt, stage, type, modelId, payload,
-                                assignedSeq);
+                                assignedSeq, chatId, chatSeq);
+    }
+
+    /**
+     * Return a copy attributed to the chat whose turn produced it.
+     *
+     * <p>The chat sequence is separate from {@link #seq()} and spans more: it
+     * numbers this council event alongside the chat's own events and the events
+     * of every other turn in that chat, which is what lets one cursor cover a
+     * stream multiplexing all of them.
+     *
+     * @param owningChatId    the chat that owns this event's session
+     * @param positionInChat  its position in that chat's sequence
+     * @return the attributed event
+     */
+    public CouncilEvent withChatPosition(String owningChatId, long positionInChat) {
+        return new CouncilEvent(id, sessionId, occurredAt, stage, type, modelId, payload,
+                                seq, owningChatId, positionInChat);
     }
 }
