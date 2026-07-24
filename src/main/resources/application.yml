@@ -93,6 +93,14 @@ council:
 
   persistence:
     artifactBasePath: ${LLM_COUNCIL_ARTIFACT_PATH:${user.home}/.llm-council/runs}
+    # Bounds on in-memory history. Every store previously grew for the life of
+    # the process, so a long-running instance ended in an OutOfMemoryError
+    # rather than in degraded service. Sessions and chats still running are
+    # never evicted, whatever these say.
+    retention:
+      max-sessions: ${LLM_COUNCIL_MAX_SESSIONS:500}
+      max-age-days: ${LLM_COUNCIL_MAX_AGE_DAYS:90}
+      max-events-per-session: ${LLM_COUNCIL_MAX_EVENTS_PER_SESSION:2000}
 
   health:
     provider-timeout-seconds: ${LLM_COUNCIL_PROVIDER_HEALTH_TIMEOUT_SECONDS:5}

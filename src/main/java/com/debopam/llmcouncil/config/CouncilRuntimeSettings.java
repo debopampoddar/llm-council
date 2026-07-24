@@ -17,11 +17,13 @@ package com.debopam.llmcouncil.config;
  * @param maxConcurrentRuns   how many council runs may be active at once
  * @param chatRecentTurnCount how many prior turns are folded into a chat's context
  * @param artifactBasePath    directory beneath which run artifacts are written
+ * @param retention           bounds on how much history the in-memory stores keep
  */
 public record CouncilRuntimeSettings(
         int maxConcurrentRuns,
         int chatRecentTurnCount,
-        String artifactBasePath
+        String artifactBasePath,
+        RetentionSettings retention
 ) {
 
     /** Lower bound enforced on every path, so a bad value degrades rather than deadlocks. */
@@ -40,6 +42,23 @@ public record CouncilRuntimeSettings(
     public CouncilRuntimeSettings {
         maxConcurrentRuns = Math.max(MIN_CONCURRENT_RUNS, maxConcurrentRuns);
         chatRecentTurnCount = Math.max(MIN_RECENT_TURNS, chatRecentTurnCount);
+        retention = retention == null ? RetentionSettings.DEFAULTS : retention;
+    }
+
+    /**
+     * Settings with the shipped retention bounds.
+     *
+     * <p>For callers that predate retention and have no opinion on it. Defaulting
+     * rather than requiring the argument keeps unbounded growth impossible to
+     * reintroduce by omission.
+     *
+     * @param maxConcurrentRuns   how many council runs may be active at once
+     * @param chatRecentTurnCount how many prior turns feed a chat's context
+     * @param artifactBasePath    where run artifacts are written
+     */
+    public CouncilRuntimeSettings(int maxConcurrentRuns, int chatRecentTurnCount,
+                                  String artifactBasePath) {
+        this(maxConcurrentRuns, chatRecentTurnCount, artifactBasePath, RetentionSettings.DEFAULTS);
     }
 
     /**
@@ -52,16 +71,19 @@ public record CouncilRuntimeSettings(
      * @param maxConcurrentRuns   override, or null to keep the current value
      * @param chatRecentTurnCount override, or null to keep the current value
      * @param artifactBasePath    override, or null/blank to keep the current value
+     * @param retention           overridden retention bounds, or null to keep the current ones
      * @return the merged settings
      */
     public CouncilRuntimeSettings withOverrides(Integer maxConcurrentRuns,
                                                 Integer chatRecentTurnCount,
-                                                String artifactBasePath) {
+                                                String artifactBasePath,
+                                                RetentionSettings retention) {
         return new CouncilRuntimeSettings(
                 maxConcurrentRuns != null ? maxConcurrentRuns : this.maxConcurrentRuns,
                 chatRecentTurnCount != null ? chatRecentTurnCount : this.chatRecentTurnCount,
                 artifactBasePath != null && !artifactBasePath.isBlank()
                 ? artifactBasePath
-                : this.artifactBasePath);
+                : this.artifactBasePath,
+                retention != null ? retention : this.retention);
     }
 }

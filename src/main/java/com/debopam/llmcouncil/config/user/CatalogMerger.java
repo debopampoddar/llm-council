@@ -4,6 +4,7 @@ import com.debopam.llmcouncil.config.ConfigIssue;
 import com.debopam.llmcouncil.config.ConfigOrigin;
 import com.debopam.llmcouncil.config.CouncilCatalog;
 import com.debopam.llmcouncil.config.CouncilRuntimeSettings;
+import com.debopam.llmcouncil.config.RetentionSettings;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.model.CouncilPolicy;
 import com.debopam.llmcouncil.model.CouncilProfile;
@@ -116,10 +117,28 @@ public class CatalogMerger {
                 ? builtIn.runtime()
                 : builtIn.runtime().withOverrides(overlay.runtime().maxConcurrentRuns(),
                                                   overlay.runtime().chatRecentTurnCount(),
-                                                  overlay.runtime().artifactBasePath());
+                                                  overlay.runtime().artifactBasePath(),
+                                                  mergeRetention(builtIn.runtime().retention(),
+                                                                 overlay.runtime().retention()));
 
         return new CouncilCatalog(new ModelRegistry(models, clients), profiles, policies, protocols,
                                   origins, runtime, issues, Instant.now(), generation);
+    }
+
+    /**
+     * Merge retention field by field, like the runtime knobs around it.
+     *
+     * @param existing the built-in bounds
+     * @param user     the overlay's bounds, or null when it mentioned none
+     * @return the merged bounds, or null to keep the built-in ones unchanged
+     */
+    private RetentionSettings mergeRetention(RetentionSettings existing,
+                                             UserConfigDocument.UserRetention user) {
+        if (user == null) {
+            return null;
+        }
+        return existing.withOverrides(user.maxSessions(), user.maxAgeDays(),
+                                      user.maxEventsPerSession());
     }
 
     private ModelProfile mergeModel(ModelProfile existing, UserConfigDocument.UserModel user) {
