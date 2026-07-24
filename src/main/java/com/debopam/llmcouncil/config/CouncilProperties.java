@@ -169,8 +169,18 @@ public class CouncilProperties {
     }
 
     public static class PersistenceProps {
+        /**
+         * Which store implementations to wire: {@code memory} or {@code jdbc}.
+         *
+         * <p>Defaults to {@code memory} so tests, the mock profile, and existing
+         * installations are untouched by the arrival of the durable stores.
+         * Nothing is written to a database, and no datasource is even created,
+         * until someone asks for one.
+         */
+        private String type = "memory";
         private String artifactBasePath = System.getProperty("user.home") + "/.llm-council/artifacts";
         private RetentionProps retention = new RetentionProps();
+        public String getType() { return type; } public void setType(String v) { type = v; }
         public String getArtifactBasePath() { return artifactBasePath; } public void setArtifactBasePath(String v) { artifactBasePath = v; }
         public RetentionProps getRetention() { return retention; }
         public void setRetention(RetentionProps r) { this.retention = r; }

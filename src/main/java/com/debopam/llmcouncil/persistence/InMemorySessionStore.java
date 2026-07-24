@@ -8,6 +8,7 @@ import com.debopam.llmcouncil.domain.CouncilStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -31,8 +32,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * because it is the only one of the four that holds the status itself. A
  * {@code CREATED} session has produced no events and no result, so the other
  * stores have nothing of its to protect.
+ *
+ * <p>This is the default store. {@code council.persistence.type=jdbc} replaces
+ * it with {@link com.debopam.llmcouncil.persistence.jdbc.JdbcSessionStore},
+ * which is held to the same contract test.
  */
 @Component
+@ConditionalOnProperty(name = "council.persistence.type", havingValue = "memory",
+                       matchIfMissing = true)
 public class InMemorySessionStore implements SessionStore {
 
     private static final Logger log = LoggerFactory.getLogger(InMemorySessionStore.class);
