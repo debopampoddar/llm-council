@@ -68,5 +68,6 @@ class GenerationStageExecutorTest {
         @Override public void writeText(String sessionId, String relativePath, String text) {}
         @Override public void writeJson(String sessionId, String relativePath, Object value) {}
         @Override public List<String> listArtifacts(String sessionId) { return List.of(); }
+        @Override public boolean deleteSession(String sessionId) { return false; }
     }
 }
