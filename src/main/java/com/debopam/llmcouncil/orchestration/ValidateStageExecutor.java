@@ -64,6 +64,7 @@ public class ValidateStageExecutor implements StageExecutor {
                                                                       ctx.synthesisResult().get()),
                                      validator.defaultOutputTokens(), validator.temperature(), true,
                                      validator.defaultTimeout()));
+        ctx.recordUsage(validator.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
         artifactStore.writeText(ctx.session().id(), "raw/validation-" + validatorId + ".json", result.text());
 
         StructuredOutputParser.ValidationEnvelope parsed = parser.parseValidation(result.text());

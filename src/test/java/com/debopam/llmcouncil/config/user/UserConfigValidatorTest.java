@@ -122,10 +122,56 @@ class UserConfigValidatorTest {
                      field + "=" + value + (shouldReject ? " should be rejected" : " should be accepted"));
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            // Token prices. The upper bound catches a per-million figure pasted
+            // into a per-thousand field, which would inflate every reported cost
+            // a thousandfold and make the spend signal worse than absent.
+            "costPer1kInputTokens,  -0.001,   true",
+            "costPer1kInputTokens,  0.0,      false",
+            "costPer1kInputTokens,  0.003,    false",
+            "costPer1kInputTokens,  1000.0,   false",
+            "costPer1kInputTokens,  1000.001, true",
+            "costPer1kOutputTokens, -0.001,   true",
+            "costPer1kOutputTokens, 0.0,      false",
+            "costPer1kOutputTokens, 0.015,    false",
+            "costPer1kOutputTokens, 1000.0,   false",
+            "costPer1kOutputTokens, 1000.001, true"
+    })
+    void enforcesCostClampsAtTheirBoundaries(String field, double value, boolean shouldReject) {
+        UserConfigDocument.UserModel base = model("my-model", "ollama", "qwen2.5:14b");
+        UserConfigDocument.UserModel candidate = field.equals("costPer1kInputTokens")
+                                                 ? withInputCost(base, value)
+                                                 : withOutputCost(base, value);
+
+        UserConfigValidator.ValidationReport report =
+                validator.validate(doc(List.of(candidate), Map.of(), Map.of(), Map.of()), builtIn());
+
+        assertEquals(shouldReject, hasError(report, field),
+                     field + "=" + value + (shouldReject ? " should be rejected" : " should be accepted"));
+    }
+
+    @Test
+    void aRejectedPriceDropsTheWholeModelRatherThanSilentlyZeroingThePrice() {
+        // A model kept with its price quietly reset to zero would report as
+        // unpriced, which reads as "no price configured" rather than "the price
+        // you wrote was refused" — the user would never find out.
+        UserConfigDocument.UserModel overpriced =
+                withInputCost(model("pricey", "openai", "gpt-4o"), 5000.0);
+
+        UserConfigValidator.ValidationReport report =
+                validator.validate(doc(List.of(overpriced), Map.of(), Map.of(), Map.of()), builtIn());
+
+        assertTrue(hasError(report, "costPer1kInputTokens"));
+        assertTrue(report.sanitised().models().isEmpty(),
+                   "A model whose price was refused must not survive validation");
+    }
+
     @Test
     void rejectsTemperatureOutsideTheUsableRange() {
         UserConfigDocument.UserModel hot = new UserConfigDocument.UserModel(
-                "hot", "ollama", "m", 1000, 2.5, 60, null, "MEMBER", "PROPOSER", "llama", null, null);
+                "hot", "ollama", "m", 1000, 2.5, 60, null, "MEMBER", "PROPOSER", "llama", null, null,
+                null, null);
 
         assertTrue(hasError(validator.validate(doc(List.of(hot), Map.of(), Map.of(), Map.of()), builtIn()),
                             "temperature"));
@@ -134,7 +180,8 @@ class UserConfigValidatorTest {
     @Test
     void warnsButAcceptsAModelWithNoFamilyTag() {
         UserConfigDocument.UserModel untagged = new UserConfigDocument.UserModel(
-                "untagged", "ollama", "m", 1000, 0.3, 60, null, "MEMBER", "PROPOSER", null, null, null);
+                "untagged", "ollama", "m", 1000, 0.3, 60, null, "MEMBER", "PROPOSER", null, null, null,
+                null, null);
 
         UserConfigValidator.ValidationReport report =
                 validator.validate(doc(List.of(untagged), Map.of(), Map.of(), Map.of()), builtIn());
@@ -449,31 +496,50 @@ class UserConfigValidatorTest {
 
     private UserConfigDocument.UserModel model(String id, String provider, String providerModelId) {
         return new UserConfigDocument.UserModel(id, provider, providerModelId, 1200, 0.3, 120,
-                                                null, "MEMBER", "PROPOSER", "qwen", null, null);
+                                                null, "MEMBER", "PROPOSER", "qwen", null, null,
+                                                null, null);
     }
 
     private UserConfigDocument.UserModel withOutputTokens(UserConfigDocument.UserModel m, int v) {
         return new UserConfigDocument.UserModel(m.id(), m.provider(), m.providerModelId(), v,
                 m.temperature(), m.timeoutSeconds(), m.contextWindowTokens(), m.role(),
-                m.councilRole(), m.modelFamily(), m.retryMaxAttempts(), m.retryBaseDelayMs());
+                m.councilRole(), m.modelFamily(), m.retryMaxAttempts(), m.retryBaseDelayMs(),
+                m.costPer1kInputTokens(), m.costPer1kOutputTokens());
     }
 
     private UserConfigDocument.UserModel withTimeout(UserConfigDocument.UserModel m, int v) {
         return new UserConfigDocument.UserModel(m.id(), m.provider(), m.providerModelId(),
                 m.defaultOutputTokens(), m.temperature(), v, m.contextWindowTokens(), m.role(),
-                m.councilRole(), m.modelFamily(), m.retryMaxAttempts(), m.retryBaseDelayMs());
+                m.councilRole(), m.modelFamily(), m.retryMaxAttempts(), m.retryBaseDelayMs(),
+                m.costPer1kInputTokens(), m.costPer1kOutputTokens());
     }
 
     private UserConfigDocument.UserModel withContextWindow(UserConfigDocument.UserModel m, int v) {
         return new UserConfigDocument.UserModel(m.id(), m.provider(), m.providerModelId(),
                 m.defaultOutputTokens(), m.temperature(), m.timeoutSeconds(), v, m.role(),
-                m.councilRole(), m.modelFamily(), m.retryMaxAttempts(), m.retryBaseDelayMs());
+                m.councilRole(), m.modelFamily(), m.retryMaxAttempts(), m.retryBaseDelayMs(),
+                m.costPer1kInputTokens(), m.costPer1kOutputTokens());
     }
 
     private UserConfigDocument.UserModel withRetryAttempts(UserConfigDocument.UserModel m, int v) {
         return new UserConfigDocument.UserModel(m.id(), m.provider(), m.providerModelId(),
                 m.defaultOutputTokens(), m.temperature(), m.timeoutSeconds(), m.contextWindowTokens(),
-                m.role(), m.councilRole(), m.modelFamily(), v, m.retryBaseDelayMs());
+                m.role(), m.councilRole(), m.modelFamily(), v, m.retryBaseDelayMs(),
+                m.costPer1kInputTokens(), m.costPer1kOutputTokens());
+    }
+
+    private UserConfigDocument.UserModel withInputCost(UserConfigDocument.UserModel m, double v) {
+        return new UserConfigDocument.UserModel(m.id(), m.provider(), m.providerModelId(),
+                m.defaultOutputTokens(), m.temperature(), m.timeoutSeconds(), m.contextWindowTokens(),
+                m.role(), m.councilRole(), m.modelFamily(), m.retryMaxAttempts(), m.retryBaseDelayMs(),
+                v, m.costPer1kOutputTokens());
+    }
+
+    private UserConfigDocument.UserModel withOutputCost(UserConfigDocument.UserModel m, double v) {
+        return new UserConfigDocument.UserModel(m.id(), m.provider(), m.providerModelId(),
+                m.defaultOutputTokens(), m.temperature(), m.timeoutSeconds(), m.contextWindowTokens(),
+                m.role(), m.councilRole(), m.modelFamily(), m.retryMaxAttempts(), m.retryBaseDelayMs(),
+                m.costPer1kInputTokens(), v);
     }
 
     private UserConfigDocument.UserPolicy policy(String protocolId, List<String> members,

@@ -136,7 +136,11 @@ public class CatalogMerger {
                 enumOr(user.councilRole(), CouncilRole.class,
                        existing == null ? CouncilRole.PROPOSER : existing.councilRole()),
                 or(user.modelFamily(), existing == null ? null : existing.modelFamily()),
-                or(user.contextWindowTokens(), existing == null ? 0 : existing.contextWindowTokens()));
+                or(user.contextWindowTokens(), existing == null ? 0 : existing.contextWindowTokens()),
+                or(user.costPer1kInputTokens(),
+                   existing == null ? 0.0 : existing.costPer1kInputTokens()),
+                or(user.costPer1kOutputTokens(),
+                   existing == null ? 0.0 : existing.costPer1kOutputTokens()));
     }
 
     private CouncilPolicy mergePolicy(String id, CouncilPolicy existing,

@@ -66,6 +66,16 @@ public class UserConfigValidator {
     private static final long MAX_RETRY_DELAY_MS = 30_000L;
 
     /**
+     * Upper bound on a per-1,000-token price, in USD.
+     *
+     * <p>No provider charges anywhere near this. The bound exists to catch a
+     * misplaced decimal point or a per-million figure pasted into a per-thousand
+     * field, either of which would inflate every reported cost by three orders
+     * of magnitude and make the spend signal actively misleading.
+     */
+    private static final double MAX_COST_PER_1K_TOKENS = 1000.0;
+
+    /**
      * Validate an overlay against the built-in catalog.
      *
      * @param document the overlay as loaded
@@ -142,6 +152,10 @@ public class UserConfigValidator {
             checkRange(modelIssues, key, "contextWindowTokens", model.contextWindowTokens(),
                        MIN_CONTEXT_TOKENS, MAX_CONTEXT_TOKENS);
             checkRange(modelIssues, key, "retryMaxAttempts", model.retryMaxAttempts(), 0, MAX_RETRY_ATTEMPTS);
+            checkRange(modelIssues, key, "costPer1kInputTokens", model.costPer1kInputTokens(),
+                       0.0, MAX_COST_PER_1K_TOKENS);
+            checkRange(modelIssues, key, "costPer1kOutputTokens", model.costPer1kOutputTokens(),
+                       0.0, MAX_COST_PER_1K_TOKENS);
             if (model.temperature() != null && (model.temperature() < 0.0 || model.temperature() > 2.0)) {
                 modelIssues.add(error(key, "temperature",
                         "temperature must be between 0.0 and 2.0, was " + model.temperature() + ".", null));
@@ -713,6 +727,22 @@ public class UserConfigValidator {
 
     private void checkRange(List<ConfigIssue> issues, String key, String field,
                             Integer value, int min, int max) {
+        if (value != null && (value < min || value > max)) {
+            issues.add(error(key, field,
+                    field + " must be between " + min + " and " + max + ", was " + value + ".", null));
+        }
+    }
+
+    /**
+     * Range check for a fractional field.
+     *
+     * <p>Separate from the {@code Integer} overload rather than widening it,
+     * because the message has to print the bounds the user actually wrote:
+     * "between 0 and 1000" reads wrong on a field whose useful values are all
+     * below one.
+     */
+    private void checkRange(List<ConfigIssue> issues, String key, String field,
+                            Double value, double min, double max) {
         if (value != null && (value < min || value > max)) {
             issues.add(error(key, field,
                     field + " must be between " + min + " and " + max + ", was " + value + ".", null));

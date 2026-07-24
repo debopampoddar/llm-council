@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -63,7 +64,8 @@ class CatalogMergerTest {
         // Changing temperature alone should not reset the model's tokens, role,
         // or provider binding to defaults.
         UserConfigDocument.UserModel patch = new UserConfigDocument.UserModel(
-                "built-in-chair", null, null, null, 0.9, null, null, null, null, null, null, null);
+                "built-in-chair", null, null, null, 0.9, null, null, null, null, null, null, null,
+                null, null);
 
         CouncilCatalog merged = merger.merge(builtIn(),
                 overlay(List.of(patch), Map.of(), Map.of(), Map.of()), List.of(), 2);
@@ -73,7 +75,45 @@ class CatalogMergerTest {
         assertEquals("ollama", chair.provider(), "and everything else should be preserved");
         assertEquals(1200, chair.defaultOutputTokens());
         assertEquals(ModelRole.CHAIR, chair.role());
+        assertEquals(0.002, chair.costPer1kInputTokens(), 1e-9,
+                     "an unmentioned price must survive the override, or the run silently "
+                     + "becomes unpriced and reports no cost at all");
+        assertEquals(0.004, chair.costPer1kOutputTokens(), 1e-9);
         assertEquals(ConfigOrigin.USER_OVERRIDE, merged.originOf("model", "built-in-chair"));
+    }
+
+    @Test
+    void aUserSuppliedPriceReachesTheCatalog() {
+        // The failure this guards against is a field that binds and validates
+        // cleanly and is then dropped on the floor by the merger: the user sets
+        // a price, sees no error, and every run still reports "unpriced".
+        UserConfigDocument.UserModel patch = new UserConfigDocument.UserModel(
+                "built-in-chair", null, null, null, null, null, null, null, null, null, null, null,
+                0.01, 0.03);
+
+        CouncilCatalog merged = merger.merge(builtIn(),
+                overlay(List.of(patch), Map.of(), Map.of(), Map.of()), List.of(), 2);
+
+        ModelProfile chair = merged.modelRegistry().model("built-in-chair");
+        assertEquals(0.01, chair.costPer1kInputTokens(), 1e-9);
+        assertEquals(0.03, chair.costPer1kOutputTokens(), 1e-9);
+        assertTrue(chair.priced(), "a model with a price must report itself as priced");
+    }
+
+    @Test
+    void aModelLeftAtZeroIsUnpricedRatherThanFree() {
+        // Positive control for the assertion above: `priced()` has to be capable
+        // of returning false, or the guard proves nothing.
+        UserConfigDocument.UserModel patch = new UserConfigDocument.UserModel(
+                "new-model", "ollama", "qwen2.5:14b", null, null, null, null, null, null, "qwen",
+                null, null, null, null);
+
+        CouncilCatalog merged = merger.merge(builtIn(),
+                overlay(List.of(patch), Map.of(), Map.of(), Map.of()), List.of(), 2);
+
+        assertFalse(merged.modelRegistry().model("new-model").priced(),
+                    "an unset price is unpriced; treating it as a price of zero would report "
+                    + "a cloud model as free");
     }
 
     @Test
@@ -165,7 +205,8 @@ class CatalogMergerTest {
 
     private UserConfigDocument.UserModel model(String id) {
         return new UserConfigDocument.UserModel(id, "ollama", "qwen2.5:14b", 1600, 0.3, 120,
-                                                8192, "MEMBER", "CRITIC", "qwen", null, null);
+                                                8192, "MEMBER", "CRITIC", "qwen", null, null,
+                                                null, null);
     }
 
     private CouncilCatalog builtIn() {
@@ -202,6 +243,6 @@ class CatalogMergerTest {
 
     private ModelProfile profile(String id, ModelRole role) {
         return new ModelProfile(id, "ollama", id + "-model", 1200, 0.3, Duration.ofSeconds(60),
-                                role, CouncilRole.PROPOSER, "llama", 4096);
+                                role, CouncilRole.PROPOSER, "llama", 4096, 0.002, 0.004);
     }
 }
