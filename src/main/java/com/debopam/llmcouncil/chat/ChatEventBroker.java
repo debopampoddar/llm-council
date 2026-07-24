@@ -2,6 +2,7 @@ package com.debopam.llmcouncil.chat;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -37,6 +38,7 @@ public class ChatEventBroker {
      * @param store     where chat events are kept and replayed from
      * @param sequences allocates each event's position in its chat
      */
+    @Autowired
     public ChatEventBroker(ChatEventStore store, ChatSequenceAllocator sequences) {
         this.store = store;
         this.sequences = sequences;
@@ -44,6 +46,11 @@ public class ChatEventBroker {
 
     /**
      * Direct construction over in-memory halves, for tests.
+     *
+     * <p>The constructor above is annotated because this one exists — Spring
+     * picks the no-argument constructor when several are offered and none is
+     * marked, which would leave the container's broker writing into a private
+     * store nothing else can read.
      */
     public ChatEventBroker() {
         this(new InMemoryChatEventStore(), new InMemoryChatSequenceAllocator());
