@@ -1040,12 +1040,21 @@ Do not attempt sub-stage resume. If `GENERATE` fanned out to five models and die
 
 ---
 
-## 8. Phase 3 — Configuration UI (writes the overlay, restart to apply)
+## 8. Phase 3 — Configuration write path and UI (restart to apply)
 
-**Goal:** edit the Phase 1 overlay through forms instead of a text editor.
+**Goal:** edit the Phase 1 overlay through something other than a text editor.
 **Depends on:** Phases 1, 2.
 
-### 8.1 New endpoints (`api/ConfigController.java`, `/api/council/config`)
+> **Split into 3A and 3B.** This phase bundles two deliverables that turned out to have very different value once Phase 5 was priced in:
+>
+> - **3A — the write path** (§8.1): `ConfigController`, validation, preview, atomic write, `/schema`. This is **infrastructure for saving any validated overlay, whatever produced it**, and Phase 5's wizard confirms through it (§10.5 ends in `PUT /api/council/config/draft`). It is therefore a **hard prerequisite of the Advisor**, not an alternative to it.
+> - **3B — the manual four-tab editor** (§8.2): hand-editing models, policies, profiles, and protocols field by field.
+>
+> **3B is deferred indefinitely.** If the Advisor synthesises a validated council from a plain-language description, hand-editing individual timeouts is a power-user need — and power users already have the YAML escape hatch from Phase 1. The Advisor is *describe-and-regenerate*, not a field-level editor; that trade-off is deliberate and must be documented in the UI rather than papered over. Build 3B only if real users ask to tweak single fields in-app.
+>
+> The **Providers panel** (§8.2, last bullet) is **not** part of 3B — it is read-only, implements D2, and ships with 3A or Phase 5's environment step.
+
+### 8.1 Phase 3A — New endpoints (`api/ConfigController.java`, `/api/council/config`)
 
 | Method | Path | Body → Response | Notes |
 |---|---|---|---|
@@ -1059,7 +1068,7 @@ Do not attempt sub-stage resume. If `GENERATE` fanned out to five models and die
 
 The `/schema` endpoint matters: it keeps the clamp table in exactly one place. If the UI hard-codes ranges, they will drift from the validator within one release.
 
-### 8.2 UI (`config.html`)
+### 8.2 Phase 3B — Manual editor UI (`config.html`) — DEFERRED
 
 Four tabs: **Models**, **Policies**, **Profiles**, **Protocols**, plus a **Providers** panel.
 
@@ -1108,7 +1117,9 @@ Four tabs: **Models**, **Policies**, **Profiles**, **Protocols**, plus a **Provi
 ## 10. Phase 5 — Requirement Advisor (wizard + CLI)
 
 **Goal:** a non-technical user describes what they want in plain language and gets a validated configuration.
-**Depends on:** Phases 1, 3. Phase 4 optional but makes it feel instant.
+**Depends on:** Phases 1, **3A** (the write path — the wizard's confirm step calls `PUT /api/council/config/draft`). Not 3B. Phase 4 optional but makes it feel instant.
+
+> With 3B deferred, this phase is the **primary** configuration surface rather than an alternative to a manual editor. Its own review steps carry that weight: step 2 makes the extracted `CouncilRequirement` editable, and step 4 shows the synthesised config with per-decision rationale and a `/preview` diff before anything is written. A user approves what the Advisor produced; they do not tweak arbitrary single fields in-app.
 
 ### 10.1 The core architectural rule
 
@@ -1199,19 +1210,25 @@ Interactive prompts, same synthesizer, prints the YAML, asks before writing, exi
 | 2 | Chat + timeline UI, cost accounting (F3), cancellation (F4) | ~1200 LOC JS/CSS/HTML, ~400 LOC Java | Low — read-only against existing APIs |
 | 2A | Durable persistence (SQLite/H2), retention (F5), interrupted-run sweep | ~700 LOC, 8 new classes | Medium — contract tests carry it |
 | 2B | Resume and re-run | ~600 LOC | Medium-high — the stage-index detail in §7.4.1 is the trap |
-| 3 | Config UI + write endpoints | ~700 LOC | Medium — atomic write, schema generation |
+| 3A | Config **write path** — `ConfigController`, validate/preview/schema, atomic write | ~400 LOC | Medium — atomic write, schema generation |
+| 3B | Manual four-tab editor UI | ~300 LOC | Low — **deferred indefinitely**, see §8 |
 | 4 | Hot reload | ~400 LOC, touches 10 classes | **High** — concurrency; do not start before Phase 2 is proven |
 | 5 | Requirement Advisor | ~800 LOC | Medium — synthesizer is pure and testable; LLM part is optional by design |
 
-Recommended order: **0 → 1 → 2 → 2A → 2B**, then 3 → 4 → 5.
+**Adopted order: 0 → 1 → 2 → 2A → 3A → 5 → 2B.** Phases 0, 1, and 2 are complete. 3B and 4 are held back and built only if demand appears.
 
-Phases 0→1→2 are independently shippable and deliver most of the practical value. 2A and 2B are independent of the catalog refactor and can proceed in parallel with 3–4 if there is a second implementer. Phase 4 carries the only serious concurrency risk and is deliberately last among the config phases.
+This supersedes the original `2A → 2B, then 3 → 4 → 5`. Two reasons for the change:
+
+1. **The Advisor is the product's configuration story, so it outranks resume/re-run.** Splitting Phase 3 (§8) makes that affordable: only 3A is required to reach it, and 3B — the manual editor the Advisor makes largely redundant — drops out.
+2. **2B goes last because it is the highest-risk phase in the plan** (§7.4.1's stage-index trap), and it benefits from durable sessions being proven in production use first.
+
+2A stays first: durable sessions and chat history make everything after it feel less demo-grade, and 2B depends on it outright.
 
 Dependency graph:
 
 ```
-0 ──┬── 1 ──┬── 3 ── 4
-    │       └── 5      (5 also needs 1)
+0 ──┬── 1 ──┬── 3A ──┬── 5
+    │       │        └── (3B, 4)   deferred
     └── 2 ── 2A ── 2B
 ```
 
@@ -1221,7 +1238,7 @@ Verify each before declaring any phase done:
 
 1. `mvn test` green, Java 25, no downgrade of `maven.compiler.release`.
 2. `council.allowMockFallback` remains `false` and is not user-settable. `UnavailableModelClient` still produces actionable messages.
-3. The public API still never accepts a raw `protocolId`. Callers pick `profileId` + `depthMode`; Phase 3 lets a user *define* a profile, not bypass one.
+3. The public API still never accepts a raw `protocolId`. Callers pick `profileId` + `depthMode`; Phase 3A and the Phase 5 Advisor let a user *define* a profile, not bypass one. The Advisor is bound by this too — §10.4 keeps the LLM away from ids, providers, and stage names structurally, not by prompt.
 4. No credential is ever written to the overlay file, an artifact, an export, a log line, or an API response.
 5. Built-in config errors remain fail-fast `IllegalStateException`; only the user layer is fail-soft.
 6. `ANONYMIZE` and `REVIEW` are present in every protocol a user can select. Anti-sycophancy signals (sycophancy warnings, preserved dissent, `integrityReduced`) are surfaced, never hidden.
