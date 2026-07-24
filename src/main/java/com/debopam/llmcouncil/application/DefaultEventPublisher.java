@@ -3,6 +3,7 @@ package com.debopam.llmcouncil.application;
 import com.debopam.llmcouncil.domain.CouncilEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -37,6 +38,7 @@ public class DefaultEventPublisher implements EventPublisher {
      * @param chats  says whether this session belongs to a chat, and where its
      *               next event falls in that chat's sequence
      */
+    @Autowired
     public DefaultEventPublisher(EventStore store, EventBroker broker, ChatAttribution chats) {
         this.store = store;
         this.broker = broker;
@@ -46,6 +48,13 @@ public class DefaultEventPublisher implements EventPublisher {
     /**
      * Direct construction over in-memory halves and no chat, for tests that only
      * need a working publisher.
+     *
+     * <p>The constructor above is annotated because this one exists. Spring
+     * picks the no-argument constructor when a class offers several and none is
+     * marked, which here would give the container a publisher wired to a private
+     * event store of its own: every council event would be written somewhere
+     * nothing else can read, and under {@code type=jdbc} nothing would reach the
+     * database at all. The application would look entirely healthy.
      */
     public DefaultEventPublisher() {
         this(new InMemoryEventStore(), new InMemoryEventBroker(), ChatAttribution.NONE);
