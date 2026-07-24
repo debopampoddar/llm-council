@@ -129,6 +129,13 @@ public class InMemoryEventStore implements EventStore {
                               .toList();
     }
 
+    @Override
+    public void deleteSession(String sessionId) {
+        eventsBySession.remove(sessionId);
+        lastActivity.remove(sessionId);
+        sequences.remove(sessionId);
+    }
+
     /** @return how many sessions currently have retained history */
     public int retainedSessionCount() {
         return eventsBySession.size();
