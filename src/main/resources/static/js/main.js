@@ -493,6 +493,10 @@ document.getElementById("sidebar-toggle").addEventListener("click", () => {
   sidebar.dataset.open = sidebar.dataset.open === "true" ? "false" : "true";
 });
 
+// Keep the copyright year current without anyone having to edit the markup.
+const yearSlot = document.getElementById("copyright-year");
+if (yearSlot) yearSlot.textContent = String(new Date().getFullYear());
+
 (async function boot() {
   try {
     state.catalog = await api.catalog("profiles,policies,protocols");
