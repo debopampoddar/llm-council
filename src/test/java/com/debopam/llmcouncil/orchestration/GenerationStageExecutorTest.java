@@ -1,7 +1,7 @@
 package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.api.dto.CouncilRunResponse;
-import com.debopam.llmcouncil.application.InMemoryEventPublisher;
+import com.debopam.llmcouncil.application.DefaultEventPublisher;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.model.CouncilPolicy;
@@ -31,7 +31,7 @@ class GenerationStageExecutorTest {
                 Map.of("missing", new UnavailableModelClient("missing", "test unavailable")));
 
         GenerationStageExecutor executor = new GenerationStageExecutor(
-                registry, new PromptBuilder(), new InMemoryEventPublisher(), new NoopArtifactStore());
+                registry, new PromptBuilder(), new DefaultEventPublisher(), new NoopArtifactStore());
 
         CouncilContext context = contextWithPolicy(new CouncilPolicy(
                 "test-policy", "quick", List.of("missing"), "missing", null,

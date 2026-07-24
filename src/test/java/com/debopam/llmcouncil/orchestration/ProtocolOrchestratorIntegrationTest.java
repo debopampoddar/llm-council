@@ -1,6 +1,6 @@
 package com.debopam.llmcouncil.orchestration;
 
-import com.debopam.llmcouncil.application.InMemoryEventPublisher;
+import com.debopam.llmcouncil.application.DefaultEventPublisher;
 import com.debopam.llmcouncil.application.RunRegistry;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.DepthMode;
@@ -33,7 +33,7 @@ class ProtocolOrchestratorIntegrationTest {
     void quickProtocolRunsEndToEndWithMocks() {
         // Build registry with mock clients
         ModelRegistry registry = buildMockRegistry();
-        InMemoryEventPublisher events = new InMemoryEventPublisher();
+        DefaultEventPublisher events = new DefaultEventPublisher();
         ArtifactStore artifacts = new NoopArtifactStore();
         PromptBuilder promptBuilder = new PromptBuilder();
         StructuredOutputParser parser = new StructuredOutputParser(
@@ -84,7 +84,7 @@ class ProtocolOrchestratorIntegrationTest {
     @Test
     void rigorousProtocolRunsReviseAndPostDebateReview() {
         ModelRegistry registry = buildMockRegistry();
-        InMemoryEventPublisher events = new InMemoryEventPublisher();
+        DefaultEventPublisher events = new DefaultEventPublisher();
         ArtifactStore artifacts = new NoopArtifactStore();
         PromptBuilder promptBuilder = new PromptBuilder();
         StructuredOutputParser parser = new StructuredOutputParser(
@@ -152,7 +152,7 @@ class ProtocolOrchestratorIntegrationTest {
     @Test
     void orchestratorHandlesMissingExecutorGracefully() {
         ModelRegistry registry = buildMockRegistry();
-        InMemoryEventPublisher events = new InMemoryEventPublisher();
+        DefaultEventPublisher events = new DefaultEventPublisher();
         ArtifactStore artifacts = new NoopArtifactStore();
         PromptBuilder promptBuilder = new PromptBuilder();
 
