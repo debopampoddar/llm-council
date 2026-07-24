@@ -35,6 +35,14 @@ models:
     role: MEMBER                   # MEMBER | CHAIR | VALIDATOR
     councilRole: CRITIC            # PROPOSER | CRITIC | SYNTHESIZER
     modelFamily: qwen              # used for diversity and validator independence
+    # Token prices, in USD per 1,000 tokens, from your provider's pricing page.
+    # 0 – 1000; omitted means UNPRICED, not free. An unpriced model contributes
+    # tokens to a run's report but no cost, and the run says so — so a cloud
+    # model you forgot to price is never reported as having cost nothing.
+    # A rigorous council is 30–40 calls per question, so this is worth setting
+    # on anything you pay for.
+    costPer1kInputTokens: 0.0
+    costPer1kOutputTokens: 0.0
 
 # ── Policies ─────────────────────────────────────────────────────────────────
 # A policy decides who sits on the council and what quorum it needs. You may

@@ -72,6 +72,7 @@ public class GenerationStageExecutor implements StageExecutor {
                                          promptBuilder.generationMessagesForRole(ctx.session().question(),
                                                                                   ctx.session().context(), model.councilRole()),
                                          model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()));
+            ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
             artifactStore.writeText(ctx.session().id(), "raw/generate-" + modelId + ".txt", result.text());
             events.publish(ctx.session().id(), stage().name(), "MODEL_CALL_COMPLETED", modelId,
                            Map.of("chars", result.text().length(),

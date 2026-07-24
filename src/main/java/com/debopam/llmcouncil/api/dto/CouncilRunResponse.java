@@ -22,6 +22,10 @@ import java.util.stream.Collectors;
  * {@code warnings} carries anything that degraded the run — a truncated
  * synthesis prompt, an excluded model. A run that hid those would look
  * identical to one that earned its confidence.
+ *
+ * <p>{@code usage} answers the other question a reader has: what it cost. See
+ * {@link UsageSummary} for why an unpriced model reports no cost rather than a
+ * cost of zero.
  */
 public record CouncilRunResponse(
         String sessionId,
@@ -43,7 +47,8 @@ public record CouncilRunResponse(
         ValidationIndependence validationIndependence,
         String failureReason,
         String failureCategory,
-        List<ModelFailureResponse> modelFailures
+        List<ModelFailureResponse> modelFailures,
+        UsageSummary usage
 ) {
     public static CouncilRunResponse from(String sessionId, CouncilContext ctx) {
         return new CouncilRunResponse(
@@ -66,7 +71,10 @@ public record CouncilRunResponse(
                 failureCategory(ctx),
                 ctx.modelFailures().stream()
                         .map(ModelFailureResponse::from)
-                        .collect(Collectors.toList())
+                        .collect(Collectors.toList()),
+                // Reported even for a failed run: the calls that ran before the
+                // failure were still billed.
+                UsageSummary.from(ctx)
         );
     }
 
@@ -99,7 +107,10 @@ public record CouncilRunResponse(
                 null, null, null,
                 failureReason,
                 ModelFailureCategory.UNKNOWN.name(),
-                List.of());
+                List.of(),
+                // No context means no record of what ran, so there is nothing
+                // honest to report here — not even zero.
+                null);
     }
 
     /**

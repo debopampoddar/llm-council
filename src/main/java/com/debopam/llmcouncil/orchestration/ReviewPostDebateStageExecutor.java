@@ -74,6 +74,7 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
                                              model.providerModelId(), messages,
                                              model.defaultOutputTokens(), model.temperature(),
                                              false, model.defaultTimeout()));
+                ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
 
                 artifactStore.writeText(ctx.session().id(),
                         "raw/review-post-debate-" + modelId + ".json", result.text());

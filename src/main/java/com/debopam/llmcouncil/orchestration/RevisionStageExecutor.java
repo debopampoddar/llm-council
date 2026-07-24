@@ -136,6 +136,7 @@ public class RevisionStageExecutor implements StageExecutor {
                                          model.providerModelId(), messages,
                                          model.defaultOutputTokens(), model.temperature(),
                                          false, model.defaultTimeout()));
+            ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
 
             events.publish(ctx.session().id(), stage().name(), "REVISION_COMPLETED", modelId,
                            Map.of("chars", result.text().length(),

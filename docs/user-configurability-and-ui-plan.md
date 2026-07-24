@@ -81,7 +81,7 @@ These were found while surveying the code for this plan. They are not new work i
 |---|---|---|---|
 | F1 | **"Fresh Eyes" validation is not independent in 5 of 7 shipped profiles.** `local-balanced`, `local-rigorous`, `gemini-balanced`, `gemini-rigorous` set `validatorModelId == chairModelId` (identical model id). `oci-*` and `hybrid-*` use two ids that both default to `${OCA_LLM_MODEL:gpt-5.4}`. Only `multi-cloud-*` is genuinely independent. `CouncilConfigurationValidator` checks *member* diversity but never compares chair to validator. | `application.yml` policies; `CouncilConfigurationValidator.warnLowDiversity` | Phase 0 (§3.9) + Phase 1 (§4.7) |
 | F2 | **Prompts are never length-bounded.** `PromptBuilder` contains no truncation of any kind; `synthesisMessages` concatenates every draft, review, score line, and debate round. Ollama ships `num-ctx: 4096` while local models are configured for 1200–1800 output tokens each, so a 3-member rigorous synthesis prompt exceeds the window and Ollama silently discards context. Gets worse under §2.2, which permits 8-member policies. | `PromptBuilder`; `application.yml` `num-ctx` | Phase 1 (§4.8) |
-| F3 | **Token counts are captured then discarded.** `OllamaDirectModelClient` parses `prompt_eval_count`/`eval_count` and `SpringAiModelClient` reads usage metadata into `ModelCallResult`, but all 8 executor call sites use only `.text()`. Nothing aggregates, so a `multi-cloud-rigorous` run (30–40 cloud calls) reports no cost signal. | `ModelCallResult`; the 8 `.call(` sites | Phase 2 (§5.6) |
+| F3 ✅ | **Token counts are captured then discarded.** `OllamaDirectModelClient` parses `prompt_eval_count`/`eval_count` and `SpringAiModelClient` reads usage metadata into `ModelCallResult`, but all 8 executor call sites use only `.text()`. Nothing aggregates, so a `multi-cloud-rigorous` run (30–40 cloud calls) reports no cost signal. | `ModelCallResult`; the 8 `.call(` sites | Phase 2 (§5.6) — **fixed** |
 | F4 | **No run cancellation.** `CouncilRunExecutor.submit` discards the `Future`. With `max-concurrent-runs` defaulting to 1, one long run blocks all others with no way to stop it. | `CouncilRunExecutor` | Phase 2 (§5.7) |
 | F5 | **Unbounded in-memory growth.** No eviction anywhere; events are the highest-cardinality data at dozens per run. | `InMemoryEventPublisher.eventsBySession` | Phase 2A (§7.8) |
 
@@ -683,7 +683,7 @@ Two product rules for this view: **sycophancy warnings and preserved dissent are
 
 `ChatController.events` currently replays full history on connect and has no cursor. For Phase 2, handle it client-side: track the highest-seen event sequence per stream and drop duplicates on reconnect. Reconnect with exponential backoff capped at 30s. A server-side `Last-Event-ID` cursor is deferred; note it in the code as a known limitation matching `CLAUDE.md`.
 
-### 5.6 Token and cost accounting (fixes F3)
+### 5.6 Token and cost accounting (fixes F3) ✅ IMPLEMENTED
 
 The UI is what makes this urgent: once a send button sits in front of `multi-cloud-rigorous` (30–40 cloud calls per question), invisible spend becomes a real problem.
 
@@ -692,6 +692,13 @@ The UI is what makes this urgent: once a send button sits in front of `multi-clo
 - Add `costPer1kInputTokens` / `costPer1kOutputTokens` to `ModelProps` (editable per §2.1, default `0.0`, clamp 0 – 1000). Zero means "unpriced", not "free" — render it as "—", never as "$0.00", so an unpriced cloud model is never mistaken for a free one.
 - Add `UsageSummary` to `CouncilRunResponse`: total tokens, per-model and per-stage breakdown, estimated cost, and `estimated` when any provider omitted usage data.
 - UI: a running token/cost counter in the timeline, and a **pre-send estimate** next to the health badge derived from the policy's member count, protocol stages, and `defaultOutputTokens`. Order-of-magnitude accuracy is enough; the goal is preventing surprise, not billing.
+
+**Delivered.** `CouncilContext.recordUsage` is called at all eight `.call(` sites — verify with `grep -rn "recordUsage" src/main/java/.../orchestration/`, which now returns nine hits (eight sites plus the method). `UsageSummary` hangs off `CouncilRunResponse` with per-model and per-stage rows, and renders above the prose in `usage.js`.
+
+Two deviations from the sketch above, both to avoid reporting a number the run did not earn:
+
+- **Cost is `null`, not `0.0`, when nothing that ran carried a price.** A zero would serialise and render as `$0.00`, which is exactly the confusion the "unpriced is not free" rule exists to prevent. `partiallyPriced` covers the mixed case, where the cost is real but covers only part of the run.
+- **The pre-send estimate is not built.** It needs a token model for a prompt that has not been assembled yet, and an estimate that is wrong in the reassuring direction is worse than none. The post-run figure ships; the pre-send one is still open.
 
 ### 5.7 Run cancellation (fixes F4)
 
