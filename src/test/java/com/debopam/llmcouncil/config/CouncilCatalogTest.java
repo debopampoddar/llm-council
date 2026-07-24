@@ -30,7 +30,7 @@ class CouncilCatalogTest {
         List<ConfigIssue> issues = new ArrayList<>();
 
         CouncilCatalog catalog = new CouncilCatalog(emptyRegistry(), profiles, policies,
-                                                   Map.of(), origins, issues, Instant.now(), 1L);
+                                                   Map.of(), origins, TestCatalogs.DEFAULT_RUNTIME, issues, Instant.now(), 1L);
 
         profiles.put("sneaked-in", profile("sneaked-in"));
         policies.clear();
@@ -47,7 +47,8 @@ class CouncilCatalogTest {
     @Test
     void returnedCollectionsAreImmutable() {
         CouncilCatalog catalog = new CouncilCatalog(emptyRegistry(), Map.of("local", profile("local")),
-                                                    Map.of(), Map.of(), Map.of(), List.of(),
+                                                    Map.of(), Map.of(), Map.of(),
+                                                    TestCatalogs.DEFAULT_RUNTIME, List.of(),
                                                     Instant.now(), 1L);
 
         assertThrows(UnsupportedOperationException.class,
@@ -57,7 +58,8 @@ class CouncilCatalogTest {
     @Test
     void unknownEntityDefaultsToBuiltInOrigin() {
         CouncilCatalog catalog = new CouncilCatalog(emptyRegistry(), Map.of(), Map.of(), Map.of(),
-                                                    Map.of(), List.of(), Instant.now(), 1L);
+                                                    Map.of(), TestCatalogs.DEFAULT_RUNTIME,
+                                                   List.of(), Instant.now(), 1L);
 
         assertEquals(ConfigOrigin.BUILT_IN, catalog.originOf("model", "never-registered"));
     }
@@ -73,7 +75,8 @@ class CouncilCatalogTest {
     @Test
     void holderRejectsAccidentalReplacement() {
         CouncilCatalog first = new CouncilCatalog(emptyRegistry(), Map.of(), Map.of(), Map.of(),
-                                                  Map.of(), List.of(), Instant.now(), 1L);
+                                                  Map.of(), TestCatalogs.DEFAULT_RUNTIME,
+                                                  List.of(), Instant.now(), 1L);
         CouncilCatalogHolder holder = new CouncilCatalogHolder();
         holder.initialise(first);
 

@@ -583,7 +583,7 @@ Cost is KV cache, roughly 2 GiB per resident 8B-class model at 16384 versus 0.5 
 3. **Ids may not end in a hyphen.** `^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$`. Ids become map keys and URL path segments; a trailing separator is a nuisance rather than a choice. Found by a boundary test.
 4. **`SecretScanner` patterns are anchored at key position** rather than matching substrings, because `defaultOutputTokens` and `contextWindowTokens` contain "token" and a loose pattern would reject ordinary configuration.
 5. **The prompt-budget validation hook stayed in `CouncilConfigurationValidator`.** It applies to the merged catalog, so user policies are covered by the existing check without duplicating it in `UserConfigValidator`.
-6. **`CouncilProperties` runtime/health binding was not added.** Those keys are still read via `@Value`; the overlay's `runtime` section is validated but not yet applied, since applying it means rebuilding beans that read those values at construction. Deferred to Phase 4, where the reload path handles exactly that.
+6. ~~**`CouncilProperties` runtime/health binding was not added.**~~ **Closed.** `council.runtime.*` is now bound via `RuntimeProps`, resolved into `CouncilRuntimeSettings` on the catalog, and read from there by `CouncilRunExecutor`, `ChatCouncilService`, and `LocalArtifactStore`. The overlay's `runtime` section applies at boot. Live re-sizing of the executor's semaphore remains Phase 4 work; boot-time application is what Phase 1 promised ("restart to apply").
 
 ### 4.9 Tests
 
@@ -823,6 +823,18 @@ static ChatSession fromSnapshot(ChatSessionSnapshot snapshot) { ... }
 **Do not add Jackson annotations to `ChatSession` itself.** Its synchronization is load-bearing — `handleCompletion` in `ChatCouncilService` mutates turns from virtual threads while SSE readers call `turns()`. `fromSnapshot` needs a constructor that accepts `createdAt`/`updatedAt` rather than calling `Instant.now()`, so add a private full constructor.
 
 ### 6.6 Split `EventPublisher` into store and broker
+
+**Constraint discovered during Phase 2, which shapes the cursor design:** the chat
+SSE stream multiplexes three independently-ordered sources — the chat snapshot,
+the chat event log, and one council event log per turn. `Last-Event-ID` carries a
+single id, which locates a position in whichever source sent last and says
+nothing about the others; resuming from it would skip events on every source but
+one. So `since(sessionId, seq)` alone is not enough. Either the cursor is
+composite (one position per source, encoded into the frame id), or all three
+sources share one monotonic sequence. **Prefer the shared sequence** — a single
+`seq` allocated per stream connection across all sources makes the cursor a
+single integer and keeps the client's dedupe as a backstop rather than the
+mechanism. Decide this before implementing `since(...)`, not after.
 
 `EventPublisher` currently conflates two jobs: `publish`/`history` are persistence, `subscribe` is live pub/sub for SSE. A durable implementation still needs the in-memory subscriber fan-out — you cannot serve an SSE stream from a table.
 

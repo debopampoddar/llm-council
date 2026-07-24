@@ -1,0 +1,6 @@
+# Fixture for UserConfigRuntimeTest: exercises the runtime section on its own,
+# with no models or policies, so the assertion isolates runtime application.
+version: 1
+runtime:
+  maxConcurrentRuns: 3
+  chatRecentTurnCount: 9

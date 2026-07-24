@@ -252,6 +252,9 @@ public class CouncilConfig {
                 policies,
                 protocols,
                 builtInOrigins(profiles.keySet(), policies.keySet(), protocols.keySet()),
+                new CouncilRuntimeSettings(props.getRuntime().getMaxConcurrentRuns(),
+                                           props.getRuntime().getChatRecentTurnCount(),
+                                           props.getPersistence().getArtifactBasePath()),
                 List.of(),
                 Instant.now(),
                 1L);

@@ -154,10 +154,18 @@ public class ChatController {
      * Write one frame, tagging it with the event's own id where there is one.
      *
      * <p>The id is what makes a frame identifiable across a reconnect. This
-     * stream still replays its full history on connect and honours no cursor, so
-     * the client dedupes on these ids today. Setting them also leaves the
-     * standard {@code Last-Event-ID} mechanism available: the browser echoes the
-     * last id it saw, so a future server-side cursor needs no new protocol.
+     * stream replays its full history on connect and honours no cursor, so the
+     * client dedupes on these ids.
+     *
+     * <p><b>A server-side cursor is not simply a matter of reading
+     * {@code Last-Event-ID}.</b> One stream multiplexes three sources — the chat
+     * snapshot, the chat event log, and one council event log per turn — that are
+     * interleaved but independently ordered. The browser echoes a single id, and
+     * that id identifies a position in whichever source happened to send last;
+     * it says nothing about how far the others got. Resuming from it would skip
+     * events on every source except one. A real cursor needs either a composite
+     * position across all three, or a single ordering shared by them, which is
+     * what a durable event store's monotonic sequence would provide.
      *
      * @param emitter   the open stream
      * @param eventName the SSE event name the client listens on
