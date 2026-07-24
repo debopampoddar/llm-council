@@ -20,6 +20,7 @@ import {
   renderSycophancy,
   renderTrustStrip,
   renderWarnings,
+  splitDissent,
 } from "./trust.js";
 import { artifactsForStage, renderArtifact } from "./artifacts.js";
 import {
@@ -205,6 +206,11 @@ function renderAnswer(turn) {
 
   const preserveDissent = preserveDissentFor(result.protocolId);
 
+  // The dissent is pulled out of the prose and rendered as its own block, so
+  // the body is the answer with that section removed — otherwise the same
+  // paragraph appears twice and reads as two separate findings.
+  const { body, dissent } = splitDissent(turn.assistantAnswer);
+
   return el("div.answer", {}, [
     renderTrustStrip(result, {
       debateRan,
@@ -214,8 +220,8 @@ function renderAnswer(turn) {
       renderSycophancy(result),
       renderExclusions(result),
       ...(renderWarnings(result) || []),
-      el("div.prose", {}, [renderMarkdown(turn.assistantAnswer)]),
-      renderDissent(turn.assistantAnswer, preserveDissent),
+      el("div.prose", {}, [renderMarkdown(body)]),
+      renderDissent(dissent, preserveDissent),
       renderAbsentSignals(skipped),
     ]),
   ]);
