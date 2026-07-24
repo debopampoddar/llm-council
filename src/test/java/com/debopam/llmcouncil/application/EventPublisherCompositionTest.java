@@ -25,7 +25,7 @@ class EventPublisherCompositionTest {
     @Test
     void anEventIsInHistoryBeforeAnySubscriberHearsAboutIt() {
         InMemoryEventStore store = new InMemoryEventStore();
-        EventPublisher publisher = new DefaultEventPublisher(store, new InMemoryEventBroker());
+        EventPublisher publisher = new DefaultEventPublisher(store, new InMemoryEventBroker(), ChatAttribution.NONE);
         List<Boolean> historyHadItAtDeliveryTime = new ArrayList<>();
         publisher.subscribe("s1", event ->
                 historyHadItAtDeliveryTime.add(store.history("s1").contains(event)));
@@ -87,7 +87,7 @@ class EventPublisherCompositionTest {
         // warning. The event still reaches anyone watching: a run whose history
         // cannot be written is at least watchable while it happens.
         EventPublisher publisher = new DefaultEventPublisher(
-                new UnwritableEventStore(), new InMemoryEventBroker());
+                new UnwritableEventStore(), new InMemoryEventBroker(), ChatAttribution.NONE);
         List<CouncilEvent> heard = new ArrayList<>();
         publisher.subscribe("s1", heard::add);
 
