@@ -84,6 +84,13 @@ public class InMemoryChatEventStore implements ChatEventStore {
     }
 
     @Override
+    public List<ChatEvent> since(String chatId, long chatSeq) {
+        return history(chatId).stream()
+                              .filter(event -> event.chatSeq() > chatSeq)
+                              .toList();
+    }
+
+    @Override
     public void deleteChat(String chatId) {
         eventsByChat.remove(chatId);
         lastActivity.remove(chatId);

@@ -95,6 +95,14 @@ public class JdbcEventStore implements EventStore {
                           sessionId);
     }
 
+    @Override
+    public List<CouncilEvent> sinceInChat(String chatId, long chatSeq) {
+        return jdbc.query("SELECT document FROM council_event "
+                          + "WHERE chat_id = ? AND chat_seq > ? ORDER BY chat_seq",
+                          documents.documentRowMapper(CouncilEvent.class),
+                          chatId, chatSeq);
+    }
+
     /**
      * Allocate the next position in a session's sequence.
      *
