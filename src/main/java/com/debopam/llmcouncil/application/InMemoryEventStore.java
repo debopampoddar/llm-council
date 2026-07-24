@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * In-memory event history.
@@ -40,6 +41,11 @@ public class InMemoryEventStore implements EventStore {
     // Last event time per session, so eviction can order by recency without
     // walking every session's event list on every append.
     private final Map<String, Instant> lastActivity = new ConcurrentHashMap<>();
+    // Per-session counters. Held separately from the event lists because the
+    // per-session cap drops the oldest events: deriving seq from list size
+    // would reissue numbers already used, and a cursor would then replay events
+    // the client had seen and skip ones it had not.
+    private final Map<String, AtomicLong> sequences = new ConcurrentHashMap<>();
 
     private final RetentionPolicy retention;
     private final RunRegistry runs;
@@ -78,13 +84,16 @@ public class InMemoryEventStore implements EventStore {
 
     @Override
     public CouncilEvent append(CouncilEvent event) {
+        CouncilEvent sequenced = event.withSeq(
+                sequences.computeIfAbsent(event.sessionId(), ignored -> new AtomicLong())
+                         .incrementAndGet());
         List<CouncilEvent> events = eventsBySession.computeIfAbsent(
                 event.sessionId(), ignored -> new CopyOnWriteArrayList<>());
-        events.add(event);
+        events.add(sequenced);
         lastActivity.put(event.sessionId(), event.occurredAt());
         trim(events);
         evictOldSessions();
-        return event;
+        return sequenced;
     }
 
     @Override
@@ -131,6 +140,7 @@ public class InMemoryEventStore implements EventStore {
         for (String sessionId : retention.selectEvictions(candidates, Instant.now())) {
             eventsBySession.remove(sessionId);
             lastActivity.remove(sessionId);
+            sequences.remove(sessionId);
             log.debug("Evicted event history for session {} under retention bounds", sessionId);
         }
     }
