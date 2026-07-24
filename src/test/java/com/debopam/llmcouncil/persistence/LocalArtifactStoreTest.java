@@ -1,6 +1,7 @@
 package com.debopam.llmcouncil.persistence;
 
-import com.debopam.llmcouncil.config.CouncilProperties;
+import com.debopam.llmcouncil.config.CouncilRuntimeSettings;
+import com.debopam.llmcouncil.config.TestCatalogs;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,9 +23,9 @@ class LocalArtifactStoreTest {
 
     @BeforeEach
     void setUp() {
-        CouncilProperties properties = new CouncilProperties();
-        properties.getPersistence().setArtifactBasePath(tempDir.toString());
-        store = new LocalArtifactStore(properties, new ObjectMapper());
+        store = new LocalArtifactStore(
+                TestCatalogs.holder(new CouncilRuntimeSettings(1, 4, tempDir.toString())),
+                new ObjectMapper());
     }
 
     @Test

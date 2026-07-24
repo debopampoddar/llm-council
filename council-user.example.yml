@@ -85,6 +85,7 @@ profiles:
   #     BALANCED: my-balanced
 
 # ── Runtime ──────────────────────────────────────────────────────────────────
+# Applied at startup, so a change here needs a restart.
 # runtime:
 #   maxConcurrentRuns: 2           # 1 – 8
 #   chatRecentTurnCount: 4         # 1 – 20

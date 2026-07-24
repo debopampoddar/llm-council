@@ -1,9 +1,9 @@
 package com.debopam.llmcouncil.application;
 
+import com.debopam.llmcouncil.config.CouncilCatalogHolder;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.orchestration.CouncilContext;
 import jakarta.annotation.PreDestroy;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
@@ -31,8 +31,14 @@ public class CouncilRunExecutor {
     private final Map<String, Future<?>> inFlight = new ConcurrentHashMap<>();
     private final ExecutorService executor;
 
+    /**
+     * @param councilService runs the protocol for a submitted session
+     * @param catalogHolder  supplies the resolved runtime settings, so a user
+     *                       overlay's {@code maxConcurrentRuns} takes effect
+     */
     public CouncilRunExecutor(CouncilService councilService,
-                              @Value("${council.runtime.max-concurrent-runs:1}") int maxConcurrentRuns) {
+                              CouncilCatalogHolder catalogHolder) {
+        int maxConcurrentRuns = catalogHolder.get().runtime().maxConcurrentRuns();
         this.councilService = councilService;
         this.runPermits = new Semaphore(Math.max(1, maxConcurrentRuns));
         this.executor = Executors.newVirtualThreadPerTaskExecutor();

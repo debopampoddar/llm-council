@@ -30,6 +30,7 @@ import java.util.Objects;
  * @param policies      policy id to policy
  * @param protocols     protocol id to definition
  * @param origins       entity key ({@code type:id}) to provenance; see {@link ConfigOrigin}
+ * @param runtime       runtime knobs resolved for this snapshot
  * @param issues        problems found while building this catalog; empty when
  *                      only built-in configuration is present
  * @param builtAt       when this snapshot was constructed
@@ -41,6 +42,7 @@ public record CouncilCatalog(
         Map<String, CouncilPolicy> policies,
         Map<String, ProtocolDefinition> protocols,
         Map<String, ConfigOrigin> origins,
+        CouncilRuntimeSettings runtime,
         List<ConfigIssue> issues,
         Instant builtAt,
         long generation
@@ -57,6 +59,7 @@ public record CouncilCatalog(
         protocols = Map.copyOf(protocols);
         origins = Map.copyOf(origins);
         issues = List.copyOf(issues);
+        Objects.requireNonNull(runtime, "runtime");
         builtAt = builtAt == null ? Instant.now() : builtAt;
     }
 
