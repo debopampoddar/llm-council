@@ -416,6 +416,29 @@ select {
 .conf-unit.tier-mute .v, .conf-unit.conf-none .v { background: var(--surface-3); color: var(--ink-2); }
 .conf-unit.tier-mute .q, .conf-unit.conf-none .q { background: var(--line-strong); color: var(--surface); }
 
+/* ── Usage strip.
+ * Directly under the trust strip, above the prose, for the same reason: cost is
+ * a fact about the answer, and a reader who has already accepted the answer will
+ * not go looking for it. Unpriced renders as an em dash — never as $0.00, which
+ * would make an unpriced cloud model indistinguishable from a free local one. */
+.usage {
+  display: flex; flex-wrap: wrap; gap: 7px; align-items: center;
+  padding: 8px 14px; border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.usage .lead { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.usage-unit { display: inline-flex; align-items: stretch; border-radius: 100px; overflow: hidden; border: 1px solid var(--line-strong); }
+.usage-unit .v { font-family: var(--mono); font-size: 11.4px; font-weight: 640; padding: 2.5px 9px; font-variant-numeric: tabular-nums; background: var(--surface-3); color: var(--ink-2); }
+.usage-unit .q { font-family: var(--mono); font-size: 9.6px; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 9px; display: flex; align-items: center; font-weight: 560; background: var(--line-strong); color: var(--surface); }
+
+.usage-detail { flex-basis: 100%; margin-top: 2px; }
+.usage-detail summary { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); cursor: pointer; }
+.usage-group { margin-top: 7px; }
+.usage-hd { font-family: var(--mono); font-size: 9.6px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 3px; }
+.usage-row { display: flex; gap: 12px; font-family: var(--mono); font-size: 11.2px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.usage-row .n { flex: 1; overflow-wrap: anywhere; }
+.usage-row .t, .usage-row .c { text-align: right; min-width: 72px; }
+
 /* ── Sycophancy: never collapsed */
 .syc { border: 1px solid color-mix(in srgb, var(--crit) 32%, transparent); border-radius: 7px; background: var(--crit-soft); padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; }
 .syc .hd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

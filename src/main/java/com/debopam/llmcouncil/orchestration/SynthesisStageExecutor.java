@@ -55,6 +55,7 @@ public class SynthesisStageExecutor implements StageExecutor {
                 new ModelCallRequest(ctx.session().id(), stage(), chair.id(),
                                      chair.providerModelId(), messages,
                                      chair.defaultOutputTokens(), chair.temperature(), false, chair.defaultTimeout()));
+        ctx.recordUsage(chair.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
 
         ctx.setSynthesisResult(result.text());
         artifactStore.writeText(ctx.session().id(), "final/answer.md", result.text());

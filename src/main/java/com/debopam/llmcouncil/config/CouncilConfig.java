@@ -183,7 +183,8 @@ public class CouncilConfig {
                     mp.getDefaultOutputTokens(), mp.getTemperature(),
                     Duration.ofSeconds(mp.getTimeoutSeconds()), mp.getRole(),
                     mp.getCouncilRole(), mp.getModelFamily(),
-                    contextWindowTokensFor(mp));
+                    contextWindowTokensFor(mp),
+                    mp.getCostPer1kInputTokens(), mp.getCostPer1kOutputTokens());
             profiles.put(mp.getId(), profile);
 
             // Build the client and optionally wrap with retry logic.
@@ -352,6 +353,8 @@ public class CouncilConfig {
         props.setCouncilRole(profile.councilRole());
         props.setModelFamily(profile.modelFamily());
         props.setContextWindowTokens(profile.contextWindowTokens());
+        props.setCostPer1kInputTokens(profile.costPer1kInputTokens());
+        props.setCostPer1kOutputTokens(profile.costPer1kOutputTokens());
         return buildClient(props);
     }
 

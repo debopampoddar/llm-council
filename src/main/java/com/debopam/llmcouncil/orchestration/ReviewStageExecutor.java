@@ -52,6 +52,7 @@ public class ReviewStageExecutor implements StageExecutor {
                         new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                                              model.providerModelId(), messages,
                                              model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()));
+                ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
                 artifactStore.writeText(ctx.session().id(), "raw/review-" + modelId + ".json", result.text());
                 List<ReviewArtifact> parsed = parser.parseReviews(result.text()).reviews().stream()
                         .filter(review -> validDraftIds.contains(review.draftId()))

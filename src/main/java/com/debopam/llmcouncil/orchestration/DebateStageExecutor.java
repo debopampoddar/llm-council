@@ -171,6 +171,7 @@ public class DebateStageExecutor implements StageExecutor {
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                                          model.providerModelId(), messages,
                                          model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()));
+            ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
 
             // Attempt to parse confidence; mark as -1 if unparseable
             // so that DebateRound.confidenceScores() can exclude the value from

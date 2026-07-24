@@ -8,6 +8,7 @@ import com.debopam.llmcouncil.model.ModelCallException;
 import com.debopam.llmcouncil.model.ModelProfile;
 import com.debopam.llmcouncil.model.ModelRegistry;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -55,6 +56,8 @@ public class CouncilContext {
     private final List<String> warnings = new CopyOnWriteArrayList<>();
     // Sycophancy warnings flagged during debate rounds.
     private final List<String> sycophancyWarnings = new CopyOnWriteArrayList<>();
+    // One entry per model call, written from the calling virtual thread.
+    private final List<UsageRecord> usage = new CopyOnWriteArrayList<>();
 
     private volatile String synthesisResult;
     private volatile ScoreSummary scoreSummary;
@@ -235,6 +238,34 @@ public class CouncilContext {
 
     /** @return Sycophancy warnings detected during debate rounds.*/
     public List<String> sycophancyWarnings() { return List.copyOf(sycophancyWarnings); }
+
+    // ── Usage
+
+    /**
+     * Record what one model call consumed.
+     *
+     * <p>Called at every {@code .call(} site, including sites whose result is
+     * later discarded — a draft that fails to parse still cost tokens, and a run
+     * that under-reports spend is worse than one that reports none, because the
+     * number looks authoritative.
+     *
+     * <p>Token arguments are nullable by the {@code ModelCallResult} contract.
+     * A null is kept as a null rather than coerced to zero so the aggregate can
+     * say the total is an estimate; see {@link UsageRecord}.
+     *
+     * @param modelId          the logical model id that was called
+     * @param stage            the stage the call belonged to
+     * @param promptTokens     input tokens reported by the provider, or null
+     * @param completionTokens output tokens reported by the provider, or null
+     * @param latency          wall-clock duration of the call, or null
+     */
+    public void recordUsage(String modelId, StageType stage,
+                            Long promptTokens, Long completionTokens, Duration latency) {
+        usage.add(new UsageRecord(modelId, stage, promptTokens, completionTokens, latency));
+    }
+
+    /** @return Snapshot of every model call recorded so far, in completion order. */
+    public List<UsageRecord> usage() { return List.copyOf(usage); }
 
     // ── Terminal state 
 
