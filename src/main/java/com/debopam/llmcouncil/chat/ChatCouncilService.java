@@ -124,6 +124,7 @@ public class ChatCouncilService {
                     "Chat " + chatId + " has a running turn and cannot be deleted until it finishes.");
         }
         chatStore.delete(chatId);
+        chatEvents.forgetChat(chatId);
     }
 
     private void handleCompletion(String chatId, String turnId, CouncilRunCompletion completion) {
