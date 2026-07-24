@@ -77,6 +77,10 @@ public record UserConfigDocument(
      * @param modelFamily         architecture family tag for diversity checks
      * @param retryMaxAttempts    retry attempts for transient failures
      * @param retryBaseDelayMs    base backoff delay
+     * @param costPer1kInputTokens  USD per 1,000 prompt tokens; zero or absent
+     *                              means unpriced, which is reported as no cost
+     *                              rather than as a cost of zero
+     * @param costPer1kOutputTokens USD per 1,000 completion tokens
      */
     @JsonIgnoreProperties(ignoreUnknown = false)
     public record UserModel(
@@ -91,7 +95,9 @@ public record UserConfigDocument(
             String councilRole,
             String modelFamily,
             Integer retryMaxAttempts,
-            Long retryBaseDelayMs
+            Long retryBaseDelayMs,
+            Double costPer1kInputTokens,
+            Double costPer1kOutputTokens
     ) {}
 
     /**

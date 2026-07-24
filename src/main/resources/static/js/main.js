@@ -22,6 +22,7 @@ import {
   renderWarnings,
   splitDissent,
 } from "./trust.js";
+import { renderUsage } from "./usage.js";
 import { artifactsForStage, renderArtifact } from "./artifacts.js";
 import {
   isTestOnly,
@@ -216,6 +217,7 @@ function renderAnswer(turn) {
       debateRan,
       testOnly: isTestOnly(state.catalog, result.profileId),
     }),
+    renderUsage(result.usage),
     el("div.ans-body", {}, [
       renderSycophancy(result),
       renderExclusions(result),

@@ -71,6 +71,18 @@ public class CouncilProperties {
          */
         private int contextWindowTokens = 0;
 
+        /**
+         * Price in USD per 1,000 prompt tokens.
+         *
+         * <p>Zero is <b>unpriced</b>, not free. A cloud model left at zero is
+         * reported with no cost at all rather than with a cost of nothing, so an
+         * unconfigured price cannot be mistaken for a free model.
+         */
+        private double costPer1kInputTokens = 0.0;
+
+        /** Price in USD per 1,000 completion tokens. Zero means unpriced. */
+        private double costPer1kOutputTokens = 0.0;
+
         public String getId() { return id; } public void setId(String v) { id = v; }
         public String getProvider() { return provider; } public void setProvider(String v) { provider = v; }
         public String getProviderModelId() { return providerModelId; } public void setProviderModelId(String v) { providerModelId = v; }
@@ -85,6 +97,10 @@ public class CouncilProperties {
         public String getModelFamily() { return modelFamily; } public void setModelFamily(String v) { modelFamily = v; }
         public int getContextWindowTokens() { return contextWindowTokens; }
         public void setContextWindowTokens(int v) { contextWindowTokens = v; }
+        public double getCostPer1kInputTokens() { return costPer1kInputTokens; }
+        public void setCostPer1kInputTokens(double v) { costPer1kInputTokens = v; }
+        public double getCostPer1kOutputTokens() { return costPer1kOutputTokens; }
+        public void setCostPer1kOutputTokens(double v) { costPer1kOutputTokens = v; }
     }
 
     public static class ProfileProps {

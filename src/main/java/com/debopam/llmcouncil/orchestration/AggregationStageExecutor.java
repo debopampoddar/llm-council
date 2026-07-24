@@ -63,6 +63,7 @@ public class AggregationStageExecutor implements StageExecutor {
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                                          model.providerModelId(), messages,
                                          model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()));
+            ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
             events.publish(ctx.session().id(), stage().name(), "AGGREGATE_COMPLETED", modelId, Map.of());
             return new Draft(modelId + "_agg", modelId, result.text());
         } catch (ModelCallException ex) {
