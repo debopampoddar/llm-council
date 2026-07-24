@@ -37,6 +37,11 @@
     <!-- Durable persistence is JdbcTemplate over a JSON document column, never
          JPA: the domain types are records, and a JPA entity cannot be one. -->
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-jdbc</artifactId></dependency>
+    <!-- Flyway versions the schema from the first release that has one. With a
+         JSON document column the schema changes almost never, so this is close
+         to zero maintenance — and far cheaper than retrofitting versioning onto
+         databases that already hold somebody's chat history. -->
+    <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>
     <!-- SQLite is the recommended engine for personal use — one file, no daemon,
          no port. H2 file mode is the fallback for anyone who would rather not
          take a native dependency. They are not two stores: they are one
