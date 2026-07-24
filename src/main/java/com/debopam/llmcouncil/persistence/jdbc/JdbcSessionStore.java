@@ -1,6 +1,7 @@
 package com.debopam.llmcouncil.persistence.jdbc;
 
 import com.debopam.llmcouncil.domain.CouncilSession;
+import com.debopam.llmcouncil.domain.CouncilStatus;
 import com.debopam.llmcouncil.persistence.SessionStore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -64,5 +65,32 @@ public class JdbcSessionStore implements SessionStore {
                 documents.documentRowMapper(CouncilSession.class),
                 sessionId);
         return found.isEmpty() ? Optional.empty() : Optional.of(found.getFirst());
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The {@code id} tiebreaker is not cosmetic — {@code updated_at} is
+     * stored in milliseconds, so sessions written inside the same millisecond
+     * compare equal and would otherwise come back in a different order on each
+     * read.
+     */
+    @Override
+    public List<CouncilSession> findAll() {
+        return jdbc.query("SELECT document FROM council_session ORDER BY updated_at DESC, id DESC",
+                          documents.documentRowMapper(CouncilSession.class));
+    }
+
+    @Override
+    public List<CouncilSession> findByStatus(CouncilStatus status) {
+        return jdbc.query("SELECT document FROM council_session WHERE status = ? "
+                          + "ORDER BY updated_at DESC, id DESC",
+                          documents.documentRowMapper(CouncilSession.class),
+                          status.name());
+    }
+
+    @Override
+    public boolean delete(String sessionId) {
+        return jdbc.update("DELETE FROM council_session WHERE id = ?", sessionId) > 0;
     }
 }
