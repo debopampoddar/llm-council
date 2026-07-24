@@ -6,6 +6,7 @@ import com.debopam.llmcouncil.config.RetentionSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -18,8 +19,10 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Process-local chat store.
  *
- * <p>Chats do not survive a restart. Durable storage is a separate, planned
- * implementation of {@link ChatSessionStore}.
+ * <p>Chats do not survive a restart. This is the default store;
+ * {@code council.persistence.type=jdbc} replaces it with
+ * {@link com.debopam.llmcouncil.persistence.jdbc.JdbcChatSessionStore}, which is
+ * held to the same contract test.
  *
  * <p>Chats are evicted oldest-first past the size or age bound, except one with
  * a turn still running. A chat is what the user sees in the sidebar, so this is
@@ -27,6 +30,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * writing into would make that run's answer arrive with nowhere to land.
  */
 @Component
+@ConditionalOnProperty(name = "council.persistence.type", havingValue = "memory",
+                       matchIfMissing = true)
 public class InMemoryChatSessionStore implements ChatSessionStore {
 
     private static final Logger log = LoggerFactory.getLogger(InMemoryChatSessionStore.class);
@@ -68,10 +73,21 @@ public class InMemoryChatSessionStore implements ChatSessionStore {
         return Optional.ofNullable(sessions.get(chatId));
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The {@code id} tiebreaker matches the durable store, which orders by a
+     * millisecond-resolution column and so sees ties the map's full-precision
+     * instants would not. Without it the two implementations would disagree
+     * about chats touched in the same millisecond, and the sidebar would reorder
+     * between reads for no reason the user could see.
+     */
     @Override
     public List<ChatSession> findAll() {
         return sessions.values().stream()
-                       .sorted(Comparator.comparing(ChatSession::updatedAt).reversed())
+                       .sorted(Comparator.comparing(ChatSession::updatedAt)
+                                         .thenComparing(ChatSession::id)
+                                         .reversed())
                        .toList();
     }
 

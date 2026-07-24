@@ -48,6 +48,11 @@ spring:
             options:
               model: ${COUNCIL_GEMINI_MODEL:gemini-2.5-flash}
               temperature: 0.3
+  # Read only when council.persistence.type=jdbc. SQLite needs no daemon, no
+  # port, and nothing installed; swap the URL for jdbc:h2:file:... to use H2
+  # instead. The same store code runs on either.
+  datasource:
+    url: ${LLM_COUNCIL_JDBC_URL:jdbc:sqlite:${user.home}/.llm-council/council.db}
 server:
   port: 8080
   # Bind to loopback by default. This is the only real access control the app
@@ -92,6 +97,12 @@ council:
   # Ollama is always available (local, no credentials required).
 
   persistence:
+    # memory | jdbc. memory is the default and creates no datasource at all:
+    # nothing is written to a database, and no schema is migrated, until
+    # somebody asks for durability. Set LLM_COUNCIL_PERSISTENCE=jdbc and point
+    # LLM_COUNCIL_JDBC_URL at a file to have sessions and chats survive a
+    # restart. Artifacts are unaffected either way — they stay on the filesystem.
+    type: ${LLM_COUNCIL_PERSISTENCE:memory}
     artifactBasePath: ${LLM_COUNCIL_ARTIFACT_PATH:${user.home}/.llm-council/runs}
     # Bounds on in-memory history. Every store previously grew for the life of
     # the process, so a long-running instance ended in an OutOfMemoryError
