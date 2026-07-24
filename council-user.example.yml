@@ -98,3 +98,12 @@ profiles:
 #   maxConcurrentRuns: 2           # 1 – 8
 #   chatRecentTurnCount: 4         # 1 – 20
 #   artifactBasePath: /absolute/path/to/runs
+#
+#   # How much history stays in memory. Sessions and chats that are still
+#   # running are never evicted, whatever you put here. There is no value
+#   # meaning "keep everything": unbounded growth ends in an OutOfMemoryError,
+#   # so the bounds can be widened but not switched off.
+#   retention:
+#     maxSessions: 500             # 10 – 100000, per store
+#     maxAgeDays: 90               # 1 – 3650
+#     maxEventsPerSession: 2000    # 100 – 1000000

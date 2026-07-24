@@ -165,11 +165,32 @@ public record UserConfigDocument(
      * @param maxConcurrentRuns   how many council runs may be active at once
      * @param chatRecentTurnCount how many prior turns feed a chat's context
      * @param artifactBasePath    where run artifacts are written
+     * @param retention           bounds on retained history, or null to keep the defaults
      */
     @JsonIgnoreProperties(ignoreUnknown = false)
     public record UserRuntime(
             Integer maxConcurrentRuns,
             Integer chatRecentTurnCount,
-            String artifactBasePath
+            String artifactBasePath,
+            UserRetention retention
+    ) {}
+
+    /**
+     * How much history to keep in memory.
+     *
+     * <p>Editable because the right answer depends on the machine: a laptop
+     * running a handful of councils a week wants different bounds from a shared
+     * box. What is <em>not</em> editable is switching eviction off — there is no
+     * value meaning "unbounded", because that is the defect this replaced.
+     *
+     * @param maxSessions         entries kept per store before the oldest go
+     * @param maxAgeDays          how long an untouched entry survives
+     * @param maxEventsPerSession events kept for one session
+     */
+    @JsonIgnoreProperties(ignoreUnknown = false)
+    public record UserRetention(
+            Integer maxSessions,
+            Integer maxAgeDays,
+            Integer maxEventsPerSession
     ) {}
 }

@@ -431,15 +431,75 @@ class UserConfigValidatorTest {
     @CsvSource({"0, true", "1, false", "8, false", "9, true"})
     void clampsMaxConcurrentRuns(int value, boolean shouldReject) {
         UserConfigDocument document = new UserConfigDocument(1, List.of(), Map.of(), Map.of(), Map.of(),
-                new UserConfigDocument.UserRuntime(value, null, null));
+                new UserConfigDocument.UserRuntime(value, null, null, null));
 
         assertEquals(shouldReject, hasError(validator.validate(document, builtIn()), "maxConcurrentRuns"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            // Lower bounds stop eviction becoming deletion; upper bounds stop a
+            // number so large that eviction never fires, which is the unbounded
+            // growth this feature exists to end.
+            "maxSessions,         9,        true",
+            "maxSessions,         10,       false",
+            "maxSessions,         100000,   false",
+            "maxSessions,         100001,   true",
+            "maxAgeDays,          0,        true",
+            "maxAgeDays,          1,        false",
+            "maxAgeDays,          3650,     false",
+            "maxAgeDays,          3651,     true",
+            "maxEventsPerSession, 99,       true",
+            "maxEventsPerSession, 100,      false",
+            "maxEventsPerSession, 1000000,  false",
+            "maxEventsPerSession, 1000001,  true"
+    })
+    void clampsRetentionBoundsAtTheirBoundaries(String field, int value, boolean shouldReject) {
+        UserConfigDocument.UserRetention retention = switch (field) {
+            case "maxSessions" -> new UserConfigDocument.UserRetention(value, null, null);
+            case "maxAgeDays" -> new UserConfigDocument.UserRetention(null, value, null);
+            default -> new UserConfigDocument.UserRetention(null, null, value);
+        };
+        UserConfigDocument document = new UserConfigDocument(1, List.of(), Map.of(), Map.of(), Map.of(),
+                new UserConfigDocument.UserRuntime(null, null, null, retention));
+
+        assertEquals(shouldReject, hasError(validator.validate(document, builtIn()), "retention." + field),
+                     field + "=" + value + (shouldReject ? " should be rejected" : " should be accepted"));
+    }
+
+    @Test
+    void aRejectedRetentionBoundDropsTheWholeRuntimeSection() {
+        // Half-applying the runtime section would be the worst outcome: the
+        // user's maxConcurrentRuns takes effect, their retention silently does
+        // not, and nothing distinguishes that from both having applied.
+        UserConfigDocument document = new UserConfigDocument(1, List.of(), Map.of(), Map.of(), Map.of(),
+                new UserConfigDocument.UserRuntime(4, null, null,
+                        new UserConfigDocument.UserRetention(0, null, null)));
+
+        UserConfigValidator.ValidationReport report = validator.validate(document, builtIn());
+
+        assertTrue(hasError(report, "retention.maxSessions"));
+        assertEquals(null, report.sanitised().runtime(),
+                     "one bad bound refuses the whole section rather than applying part of it");
+    }
+
+    @Test
+    void aRuntimeSectionWithNoRetentionIsStillAccepted() {
+        // Positive control: retention is optional, so its absence must not be
+        // read as a rejection of the section around it.
+        UserConfigDocument document = new UserConfigDocument(1, List.of(), Map.of(), Map.of(), Map.of(),
+                new UserConfigDocument.UserRuntime(4, null, null, null));
+
+        UserConfigValidator.ValidationReport report = validator.validate(document, builtIn());
+
+        assertTrue(report.errors().isEmpty(), () -> "unexpected errors: " + report.errors());
+        assertEquals(4, report.sanitised().runtime().maxConcurrentRuns());
     }
 
     @Test
     void rejectsARelativeArtifactPath() {
         UserConfigDocument document = new UserConfigDocument(1, List.of(), Map.of(), Map.of(), Map.of(),
-                new UserConfigDocument.UserRuntime(null, null, "runs/here"));
+                new UserConfigDocument.UserRuntime(null, null, "runs/here", null));
 
         assertTrue(hasError(validator.validate(document, builtIn()), "artifactBasePath"));
     }

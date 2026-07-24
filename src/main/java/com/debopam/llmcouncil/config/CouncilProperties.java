@@ -170,6 +170,27 @@ public class CouncilProperties {
 
     public static class PersistenceProps {
         private String artifactBasePath = System.getProperty("user.home") + "/.llm-council/artifacts";
+        private RetentionProps retention = new RetentionProps();
         public String getArtifactBasePath() { return artifactBasePath; } public void setArtifactBasePath(String v) { artifactBasePath = v; }
+        public RetentionProps getRetention() { return retention; }
+        public void setRetention(RetentionProps r) { this.retention = r; }
+    }
+
+    /**
+     * Bounds on in-memory history under {@code council.persistence.retention}.
+     *
+     * <p>Defaults match {@link RetentionSettings#DEFAULTS}. Without these every
+     * store grew for the life of the process.
+     */
+    public static class RetentionProps {
+        private int maxSessions = 500;
+        private int maxAgeDays = 90;
+        private int maxEventsPerSession = 2000;
+        public int getMaxSessions() { return maxSessions; }
+        public void setMaxSessions(int v) { maxSessions = v; }
+        public int getMaxAgeDays() { return maxAgeDays; }
+        public void setMaxAgeDays(int v) { maxAgeDays = v; }
+        public int getMaxEventsPerSession() { return maxEventsPerSession; }
+        public void setMaxEventsPerSession(int v) { maxEventsPerSession = v; }
     }
 }

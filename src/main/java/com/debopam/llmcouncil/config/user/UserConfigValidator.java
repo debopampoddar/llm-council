@@ -62,6 +62,18 @@ public class UserConfigValidator {
     private static final int MIN_RECENT_TURNS = 1;
     private static final int MAX_RECENT_TURNS = 20;
     private static final int MAX_RETRY_ATTEMPTS = 5;
+
+    // Retention bounds. The lower bounds are what stop a user turning eviction
+    // into deletion: a maxSessions of 0 would evict every entry the instant it
+    // was written, so a finished run would lose its own result. The upper bounds
+    // are what stop a user turning eviction off by writing a number so large it
+    // never fires — which is the unbounded growth this feature exists to end.
+    private static final int MIN_MAX_SESSIONS = 10;
+    private static final int MAX_MAX_SESSIONS = 100_000;
+    private static final int MIN_MAX_AGE_DAYS = 1;
+    private static final int MAX_MAX_AGE_DAYS = 3_650;
+    private static final int MIN_MAX_EVENTS_PER_SESSION = 100;
+    private static final int MAX_MAX_EVENTS_PER_SESSION = 1_000_000;
     private static final long MIN_RETRY_DELAY_MS = 100L;
     private static final long MAX_RETRY_DELAY_MS = 30_000L;
 
@@ -647,11 +659,34 @@ public class UserConfigValidator {
             }
         }
 
+        validateRetention(runtime.retention(), runtimeIssues);
+
         if (!runtimeIssues.isEmpty()) {
             issues.addAll(runtimeIssues);
             return null;
         }
         return runtime;
+    }
+
+    /**
+     * Check the retention bounds.
+     *
+     * <p>Rejecting the whole {@code runtime} section on a bad retention value is
+     * deliberate and matches the other knobs here: a partially-applied runtime
+     * section, where {@code maxConcurrentRuns} took effect and {@code retention}
+     * silently did not, is the failure mode this validator exists to prevent.
+     */
+    private void validateRetention(UserConfigDocument.UserRetention retention,
+                                   List<ConfigIssue> issues) {
+        if (retention == null) {
+            return;
+        }
+        checkRange(issues, "runtime", "retention.maxSessions", retention.maxSessions(),
+                   MIN_MAX_SESSIONS, MAX_MAX_SESSIONS);
+        checkRange(issues, "runtime", "retention.maxAgeDays", retention.maxAgeDays(),
+                   MIN_MAX_AGE_DAYS, MAX_MAX_AGE_DAYS);
+        checkRange(issues, "runtime", "retention.maxEventsPerSession", retention.maxEventsPerSession(),
+                   MIN_MAX_EVENTS_PER_SESSION, MAX_MAX_EVENTS_PER_SESSION);
     }
 
     // ── Cascade ─────────────────────────────────────────────────────────

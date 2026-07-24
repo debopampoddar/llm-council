@@ -4,3 +4,8 @@ version: 1
 runtime:
   maxConcurrentRuns: 3
   chatRecentTurnCount: 9
+  # Only two of the three retention bounds, deliberately: the third proves an
+  # unmentioned bound keeps its shipped value rather than being reset.
+  retention:
+    maxSessions: 25
+    maxEventsPerSession: 750
