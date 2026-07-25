@@ -4,8 +4,8 @@ import com.debopam.llmcouncil.api.dto.CatalogResponse;
 import com.debopam.llmcouncil.config.CouncilCatalog;
 import com.debopam.llmcouncil.config.CouncilCatalogHolder;
 import com.debopam.llmcouncil.domain.DepthMode;
+import com.debopam.llmcouncil.model.ClientAvailability;
 import com.debopam.llmcouncil.model.CouncilPolicy;
-import com.debopam.llmcouncil.model.MockModelClient;
 import com.debopam.llmcouncil.model.ModelClient;
 import com.debopam.llmcouncil.model.ModelProfile;
 import com.debopam.llmcouncil.model.ModelRegistry;
@@ -38,11 +38,6 @@ public class CatalogService {
     /** Sections a caller may request. */
     public static final Set<String> VALID_SECTIONS =
             new LinkedHashSet<>(List.of("profiles", "policies", "models", "protocols", "providers", "issues"));
-
-    /** Client class names mapped to the coarse availability answer a caller needs. */
-    private static final String CLIENT_LIVE = "LIVE";
-    private static final String CLIENT_UNAVAILABLE = "UNAVAILABLE";
-    private static final String CLIENT_MOCK = "MOCK";
 
     // Which environment variable activates each provider. Used only to tell a
     // user what to set — the values themselves are never read or reported here.
@@ -251,7 +246,7 @@ public class CatalogService {
             ModelProfile model = registry.model(id);
             String provider = model.provider().toLowerCase(Locale.ROOT);
             ModelClient client = registry.clientForModel(id);
-            boolean live = CLIENT_LIVE.equals(clientKind(client));
+            boolean live = ClientAvailability.of(client).callable();
 
             activeByProvider.merge(provider, live, (existing, added) -> existing || added);
             if (!live && client instanceof UnavailableModelClient unavailable) {
@@ -273,13 +268,14 @@ public class CatalogService {
         return result;
     }
 
+    /**
+     * The availability string reported for a model.
+     *
+     * <p>Delegates rather than repeating the {@code instanceof} ladder, because
+     * the requirement advisor needs the same answer and two ladders would drift
+     * the moment a client type is added.
+     */
     private String clientKind(ModelClient client) {
-        if (client instanceof MockModelClient) {
-            return CLIENT_MOCK;
-        }
-        if (client instanceof UnavailableModelClient) {
-            return CLIENT_UNAVAILABLE;
-        }
-        return CLIENT_LIVE;
+        return ClientAvailability.of(client).name();
     }
 }
