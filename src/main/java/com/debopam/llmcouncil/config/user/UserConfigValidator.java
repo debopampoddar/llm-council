@@ -4,6 +4,7 @@ import com.debopam.llmcouncil.config.ConfigIssue;
 import com.debopam.llmcouncil.config.CouncilCatalog;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.model.CouncilRole;
+import com.debopam.llmcouncil.model.ModelProfile;
 import com.debopam.llmcouncil.model.ModelRole;
 import com.debopam.llmcouncil.orchestration.StageType;
 import org.springframework.stereotype.Component;
@@ -494,14 +495,21 @@ public class UserConfigValidator {
         }
     }
 
+    /**
+     * Resolve a model's family tag in canonical form.
+     *
+     * <p>Normalised because the overlay is raw text: a user who writes
+     * {@code Claude} for the chair and {@code claude} for the validator has
+     * configured one family, and the correlation warning below must say so.
+     */
     private String familyOf(String modelId, CouncilCatalog builtIn,
                             Map<String, UserConfigDocument.UserModel> userModels) {
         UserConfigDocument.UserModel userModel = userModels.get(modelId);
         if (userModel != null) {
-            return userModel.modelFamily();
+            return ModelProfile.normaliseFamily(userModel.modelFamily());
         }
         return builtIn.modelRegistry().findModel(modelId)
-                      .map(model -> model.modelFamily())
+                      .map(model -> ModelProfile.normaliseFamily(model.modelFamily()))
                       .orElse(null);
     }
 

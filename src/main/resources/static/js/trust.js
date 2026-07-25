@@ -77,20 +77,65 @@ export function renderTrustStrip(result, context = {}) {
 
   if (excluded.length) pills.push(pill("crit", `${excluded.length} excluded`));
 
-  // The three-way distinction that matters most on this strip.
+  // The four-way distinction that matters most on this strip. "Found nothing"
+  // and "could not have found anything" are different claims, and the fourth
+  // case is the one that looks most like a pass: detection ran, at a threshold
+  // set so high that agreement passes unflagged.
   if (sycophancy.length) {
     pills.push(pill("crit", `${sycophancy.length} sycophancy flag${sycophancy.length === 1 ? "" : "s"}`));
+  } else if (context.debateRan && sycophancySuppressed(result)) {
+    pills.push(pill("warn", "sycophancy barely checked"));
   } else if (context.debateRan) {
     pills.push(pill("ok", "no sycophancy"));
   } else {
     pills.push(pill("warn", "sycophancy not measured"));
   }
 
+  if (result.integrity?.reduced) pills.push(pill("qual", "integrity reduced"));
+
   if (warnings.length) pills.push(pill("warn", `${warnings.length} warning${warnings.length === 1 ? "" : "s"}`));
   if (result.status !== "COMPLETED") pills.push(pill("crit", result.status));
   if (context.testOnly) pills.push(pill("warn", "synthetic output"));
 
   return el("div.trust", {}, [el("span.lead", { text: "Trust" }), ...pills]);
+}
+
+/**
+ * Whether this run's sycophancy threshold was set high enough to suppress the
+ * signal rather than measure it.
+ *
+ * The run reports the threshold it actually used, so this cannot drift from the
+ * configuration the way a client-side catalog lookup would: the catalog can be
+ * edited between a run finishing and someone reading it.
+ */
+function sycophancySuppressed(result) {
+  const notes = result.integrity?.notes || [];
+  return notes.some((note) => note.startsWith("Sycophancy detection ran at a threshold"));
+}
+
+/**
+ * Guarantees this run gave up, and what each one costs the reader.
+ *
+ * Rendered above the answer rather than beside it. These are not settings — they
+ * change what the other signals mean, so a reader has to have them before they
+ * read a confidence figure, not after.
+ */
+export function renderIntegrity(result) {
+  const notes = result.integrity?.notes || [];
+  if (!notes.length) return null;
+
+  return el("div.emptysig.integrity", {}, [
+    el("div.hd", {}, [
+      el("h4", { text: "Weakened checks" }),
+      pill("qual", "configured, not failed"),
+    ]),
+    ...notes.map((note) => el("p", { text: note })),
+    el("p.note", {
+      text: "These were configuration choices, not failures. They are shown because a run made "
+          + "under them is not the same as one made without them, and nothing else on this page "
+          + "would tell them apart.",
+    }),
+  ]);
 }
 
 /** Sycophancy findings. Never collapsed — this is the failure the product exists to detect. */

@@ -17,6 +17,7 @@ import {
   renderAbsentSignals,
   renderDissent,
   renderExclusions,
+  renderIntegrity,
   renderSycophancy,
   renderTrustStrip,
   renderWarnings,
@@ -213,7 +214,11 @@ function renderAnswer(turn) {
     ]);
   }
 
-  const preserveDissent = preserveDissentFor(result.protocolId);
+  // Read from the run, not from the catalog. The protocol behind a finished run
+  // can be edited afterwards — the config write path makes that a two-click
+  // operation — and looking it up now would relabel old answers with settings
+  // they never ran under.
+  const preserveDissent = result.integrity?.preserveDissent ?? null;
 
   // The dissent is pulled out of the prose and rendered as its own block, so
   // the body is the answer with that section removed — otherwise the same
@@ -227,6 +232,7 @@ function renderAnswer(turn) {
     }),
     renderUsage(result.usage),
     el("div.ans-body", {}, [
+      renderIntegrity(result),
       renderSycophancy(result),
       renderExclusions(result),
       ...(renderWarnings(result) || []),
@@ -235,15 +241,6 @@ function renderAnswer(turn) {
       renderAbsentSignals(skipped),
     ]),
   ]);
-}
-
-/** Whether the protocol behind a run had dissent preservation switched on. */
-function preserveDissentFor(protocolId) {
-  const protocol = (state.catalog?.protocols || []).find((p) => p.id === protocolId);
-  if (!protocol) return null;
-  const options = protocol.stageOptions?.SYNTHESIZE;
-  if (!options || options["preserve-dissent"] === undefined) return null;
-  return Boolean(options["preserve-dissent"]);
 }
 
 /** Fetch the trust signals for any finished turn that does not have them yet. */

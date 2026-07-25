@@ -45,6 +45,39 @@ public record ModelProfile(
         double costPer1kOutputTokens
 ) {
     /**
+     * Canonicalises {@code modelFamily} so two spellings of one family cannot
+     * read as two families.
+     *
+     * <p>This is a trust signal, not a label. {@code modelFamily} is what
+     * {@link ValidationIndependence} compares to decide whether a validator can
+     * catch the chair's mistakes, and what the diversity check compares to
+     * decide whether a council can disagree with itself. Compared literally,
+     * {@code Claude} and {@code claude} are different families — so a chair and
+     * validator running the same weights would be reported as
+     * {@link ValidationIndependence#INDEPENDENT}, which is a "validated" badge
+     * for a check that never happened. Normalising here rather than at each
+     * comparison means every construction path is covered: shipped
+     * configuration, the user overlay, and the merge of the two.
+     */
+    public ModelProfile {
+        modelFamily = normaliseFamily(modelFamily);
+    }
+
+    /**
+     * Reduce a family tag to its canonical form.
+     *
+     * <p>Exposed because the user-configuration validator compares family tags
+     * before any {@link ModelProfile} exists, and must reach the same answer this
+     * type will.
+     *
+     * @param family the tag as written, may be null
+     * @return the tag trimmed and lowercased, or null when it was null
+     */
+    public static String normaliseFamily(String family) {
+        return family == null ? null : family.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /**
      * Whether this model carries a price at all.
      *
      * <p>The distinction matters more than it looks. A cloud model left at the
