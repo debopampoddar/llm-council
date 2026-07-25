@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.api.dto;
 
+import com.debopam.llmcouncil.config.user.IntegrityAssessment;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.orchestration.CouncilContext;
 import com.debopam.llmcouncil.orchestration.ScoreSummary;
@@ -26,6 +27,12 @@ import java.util.stream.Collectors;
  * <p>{@code usage} answers the other question a reader has: what it cost. See
  * {@link UsageSummary} for why an unpriced model reports no cost rather than a
  * cost of zero.
+ *
+ * <p>{@code integrity} closes the gap the signals above leave open: they report
+ * what was <em>found</em>, and say nothing about how hard anyone looked. A
+ * council whose sycophancy threshold was raised to 0.92 reports no sycophancy
+ * warnings and looks, on every other field here, exactly like one that was
+ * checked properly and came back clean. See {@link IntegrityAssessment}.
  */
 public record CouncilRunResponse(
         String sessionId,
@@ -48,7 +55,8 @@ public record CouncilRunResponse(
         String failureReason,
         String failureCategory,
         List<ModelFailureResponse> modelFailures,
-        UsageSummary usage
+        UsageSummary usage,
+        IntegrityAssessment integrity
 ) {
     public static CouncilRunResponse from(String sessionId, CouncilContext ctx) {
         return new CouncilRunResponse(
@@ -74,7 +82,12 @@ public record CouncilRunResponse(
                         .collect(Collectors.toList()),
                 // Reported even for a failed run: the calls that ran before the
                 // failure were still billed.
-                UsageSummary.from(ctx)
+                UsageSummary.from(ctx),
+                // Read from the protocol pinned on this run's context, never
+                // looked up afterwards. Configuration can change between a run
+                // finishing and someone reading it, and a run is evidence: its
+                // trust signals must describe what it actually executed.
+                IntegrityAssessment.of(ctx.protocol())
         );
     }
 
@@ -110,6 +123,10 @@ public record CouncilRunResponse(
                 List.of(),
                 // No context means no record of what ran, so there is nothing
                 // honest to report here — not even zero.
+                null,
+                // Likewise for integrity: the run died without a protocol, so
+                // nothing is known about what it gave up. Reporting "nothing was
+                // weakened" would be a claim this result cannot support.
                 null);
     }
 

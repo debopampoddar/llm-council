@@ -82,7 +82,19 @@ public enum ValidationIndependence {
         return this == CORRELATED || this == SELF_VALIDATION;
     }
 
+    /**
+     * Compare two tags, treating a blank as "unknown" rather than as a match.
+     *
+     * <p>Family tags are compared in canonical form. {@link ModelProfile} already
+     * normalises what it stores, but this method is also reached with raw
+     * configuration values, and the two paths must not disagree — a difference in
+     * capitalisation deciding whether validation counts as independent is exactly
+     * the kind of accident this classification exists to rule out.
+     */
     private static boolean equalsIgnoringBlank(String left, String right) {
-        return left != null && !left.isBlank() && left.equals(right);
+        String canonicalLeft = ModelProfile.normaliseFamily(left);
+        String canonicalRight = ModelProfile.normaliseFamily(right);
+        return canonicalLeft != null && !canonicalLeft.isBlank()
+               && canonicalLeft.equals(canonicalRight);
     }
 }
