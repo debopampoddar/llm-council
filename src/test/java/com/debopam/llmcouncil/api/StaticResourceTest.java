@@ -46,6 +46,19 @@ class StaticResourceTest {
                .andExpect(content().string(containsString("<title>LLM Council</title>")));
     }
 
+    @Test
+    void servesTheSetupWizardAsHtml() throws Exception {
+        mockMvc.perform(get("/setup.html"))
+               .andExpect(status().isOk())
+               .andExpect(content().contentTypeCompatibleWith("text/html"))
+               // Asserted on the element the module renders into rather than on
+               // the title: the title carries an em dash, and what that survives
+               // as through MockMvc's default charset is not what this test is
+               // about.
+               .andExpect(content().string(containsString("id=\"wizard-steps\"")))
+               .andExpect(content().string(containsString("/js/setup.js")));
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "/js/main.js",
@@ -59,11 +72,27 @@ class StaticResourceTest {
             "/js/trust.js",
             "/js/artifacts.js",
             "/js/providers.js",
+            "/js/proposal.js",
+            "/js/advisor-api.js",
             "/css/app.css"
     })
     void servesEveryModuleTheChatViewLoads(String path) throws Exception {
         // index.html imports these directly; a 404 on any one of them is a blank
         // page with an error only in the browser console.
+        mockMvc.perform(get(path)).andExpect(status().isOk());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/js/setup.js",
+            "/js/advisor-api.js",
+            "/js/requirement-form.js",
+            "/js/dom.js",
+            "/css/app.css"
+    })
+    void servesEveryModuleTheSetupWizardLoads(String path) throws Exception {
+        // Same failure mode, one page over: the wizard is the primary
+        // configuration surface, and a missing module leaves it blank.
         mockMvc.perform(get(path)).andExpect(status().isOk());
     }
 }
