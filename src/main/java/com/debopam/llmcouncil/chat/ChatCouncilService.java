@@ -29,6 +29,7 @@ public class ChatCouncilService {
     private final CouncilRunExecutor runExecutor;
     private final ChatEventBroker chatEvents;
     private final RunResultStore runResultStore;
+    private final ChatTurnAttribution attribution;
     private final int recentTurnCount;
 
     public ChatCouncilService(ChatSessionStore chatStore,
@@ -36,6 +37,7 @@ public class ChatCouncilService {
                               CouncilRunExecutor runExecutor,
                               ChatEventBroker chatEvents,
                               RunResultStore runResultStore,
+                              ChatTurnAttribution attribution,
                               CouncilCatalogHolder catalogHolder) {
         int recentTurnCount = catalogHolder.get().runtime().chatRecentTurnCount();
         this.chatStore = chatStore;
@@ -43,6 +45,7 @@ public class ChatCouncilService {
         this.runExecutor = runExecutor;
         this.chatEvents = chatEvents;
         this.runResultStore = runResultStore;
+        this.attribution = attribution;
         this.recentTurnCount = Math.max(1, recentTurnCount);
     }
 
@@ -72,6 +75,11 @@ public class ChatCouncilService {
                 chat.depthMode(),
                 chat.profileId());
         councilService.createSession(councilSession);
+        // Before the run starts, so the first event it publishes is already
+        // numbered in this chat's sequence. An event published before the link
+        // exists would fall outside the chat stream's ordering and be invisible
+        // to a cursor.
+        attribution.link(sessionId, chatId);
 
         ChatTurn runningTurn = ChatTurn.running(turnId, userMessage, sessionId);
         chat.addTurn(runningTurn);
@@ -83,6 +91,9 @@ public class ChatCouncilService {
                 completion -> handleCompletion(chatId, turnId, completion));
 
         if (!submission.accepted()) {
+            // No run will execute, so nothing further will be published for this
+            // session and the link would otherwise sit there until evicted.
+            attribution.unlink(sessionId);
             councilService.failSession(sessionId, submission.message());
             ChatTurn rejected = runningTurn.rejected(submission.message());
             chat.replaceTurn(rejected);
@@ -124,9 +135,11 @@ public class ChatCouncilService {
                     "Chat " + chatId + " has a running turn and cannot be deleted until it finishes.");
         }
         chatStore.delete(chatId);
+        chatEvents.forgetChat(chatId);
     }
 
     private void handleCompletion(String chatId, String turnId, CouncilRunCompletion completion) {
+        attribution.unlink(completion.sessionId());
         ChatSession chat = chatStore.findById(chatId).orElse(null);
         if (chat == null) {
             return;

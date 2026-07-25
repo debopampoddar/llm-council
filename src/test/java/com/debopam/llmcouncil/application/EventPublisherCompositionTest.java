@@ -25,7 +25,7 @@ class EventPublisherCompositionTest {
     @Test
     void anEventIsInHistoryBeforeAnySubscriberHearsAboutIt() {
         InMemoryEventStore store = new InMemoryEventStore();
-        EventPublisher publisher = new DefaultEventPublisher(store, new InMemoryEventBroker());
+        EventPublisher publisher = new DefaultEventPublisher(store, new InMemoryEventBroker(), ChatAttribution.NONE);
         List<Boolean> historyHadItAtDeliveryTime = new ArrayList<>();
         publisher.subscribe("s1", event ->
                 historyHadItAtDeliveryTime.add(store.history("s1").contains(event)));
@@ -77,6 +77,61 @@ class EventPublisherCompositionTest {
         assertEquals(List.of("FIRST", "SECOND"),
                      publisher.history("s1").stream().map(CouncilEvent::type).toList());
         assertTrue(publisher.history("unknown-session").isEmpty());
+    }
+
+    @Test
+    void aStoreThatCannotWriteDoesNotTakeTheRunDownWithIt() {
+        // Events are written on the hot path of every stage and a run takes
+        // minutes. Losing a ten-minute council because a disk filled up would
+        // be far worse than losing the record of it, so the failure is a
+        // warning. The event still reaches anyone watching: a run whose history
+        // cannot be written is at least watchable while it happens.
+        EventPublisher publisher = new DefaultEventPublisher(
+                new UnwritableEventStore(), new InMemoryEventBroker(), ChatAttribution.NONE);
+        List<CouncilEvent> heard = new ArrayList<>();
+        publisher.subscribe("s1", heard::add);
+
+        CouncilEvent returned =
+                publisher.publish("s1", "GENERATE", "DRAFT_COMPLETED", "model-a", Map.of());
+
+        assertEquals(1, heard.size(), "the live stream still got it");
+        assertEquals("DRAFT_COMPLETED", returned.type());
+        assertEquals(CouncilEvent.UNASSIGNED_SEQ, returned.seq(),
+                     "and it is honest about never having been stored");
+    }
+
+    @Test
+    void aWorkingStoreStillAssignsASequence() {
+        // Positive control for the test above: publish is capable of coming back
+        // with a stored, sequenced event, so the unassigned sequence there is
+        // the failure path and not the normal one.
+        EventPublisher publisher = new DefaultEventPublisher();
+
+        assertEquals(1L, publisher.publish("s1", "GENERATE", "DRAFT_COMPLETED", null, Map.of())
+                                  .seq());
+    }
+
+    /** An event store that always fails, standing in for a full disk. */
+    private static final class UnwritableEventStore implements EventStore {
+
+        @Override
+        public CouncilEvent append(CouncilEvent event) {
+            throw new IllegalStateException("disk full");
+        }
+
+        @Override
+        public List<CouncilEvent> history(String sessionId) {
+            return List.of();
+        }
+
+        @Override
+        public List<CouncilEvent> sinceInChat(String chatId, long chatSeq) {
+            return List.of();
+        }
+
+        @Override
+        public void deleteSession(String sessionId) {
+        }
     }
 
     private void closeQuietly(AutoCloseable subscription) {

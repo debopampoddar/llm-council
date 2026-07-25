@@ -12,6 +12,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -79,6 +80,25 @@ public class InMemorySessionStore implements SessionStore {
     @Override
     public Optional<CouncilSession> findById(String id) {
         return Optional.ofNullable(store.get(id));
+    }
+
+    @Override
+    public List<CouncilSession> findAll() {
+        return store.values().stream()
+                    .sorted(Comparator.comparing(CouncilSession::updatedAt)
+                                      .thenComparing(CouncilSession::id)
+                                      .reversed())
+                    .toList();
+    }
+
+    @Override
+    public List<CouncilSession> findByStatus(CouncilStatus status) {
+        return findAll().stream().filter(session -> session.status() == status).toList();
+    }
+
+    @Override
+    public boolean delete(String sessionId) {
+        return store.remove(sessionId) != null;
     }
 
     /** @return how many sessions are currently retained */
