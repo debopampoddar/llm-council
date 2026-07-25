@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.application;
 
+import com.debopam.llmcouncil.config.TestModels;
 import com.debopam.llmcouncil.api.dto.CouncilRunResponse;
 import com.debopam.llmcouncil.chat.ChatSession;
 import com.debopam.llmcouncil.chat.ChatTurn;
@@ -282,8 +283,9 @@ class StoreEvictionTest {
     private CouncilContext inFlightContext() {
         return new CouncilContext(
                 CouncilSession.create("live", "q", null, DepthMode.QUICK, "mock"),
-                new CouncilProfile("mock", "Mock", true, DepthMode.QUICK, Map.of()),
-                new CouncilPolicy("p", "proto", List.of("m"), "m", null, 1, 0, false, true),
+                TestModels.profile("mock").displayName("Mock").testOnly(true)
+                          .defaultDepth(DepthMode.QUICK).build(),
+                TestModels.policy("p").protocol("proto").members("m").chair("m").build(),
                 new ProtocolDefinition("proto", "proto", List.of(StageType.GENERATE), Map.of()));
     }
 }

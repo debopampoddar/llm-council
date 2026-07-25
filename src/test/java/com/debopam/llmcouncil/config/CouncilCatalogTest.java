@@ -87,14 +87,15 @@ class CouncilCatalogTest {
     }
 
     private ModelRegistry emptyRegistry() {
-        return new ModelRegistry(Map.of(), Map.of());
+        return TestModels.registry();
     }
 
     private CouncilProfile profile(String id) {
-        return new CouncilProfile(id, id, false, DepthMode.QUICK, Map.of(DepthMode.QUICK, "local-quick"));
+        return TestModels.profile(id).defaultDepth(DepthMode.QUICK)
+                         .depth(DepthMode.QUICK, "local-quick").build();
     }
 
     private CouncilPolicy policy(String id) {
-        return new CouncilPolicy(id, "quick", List.of("member"), "chair", null, 1, 0, false, true);
+        return TestModels.policy(id).protocol("quick").build();
     }
 }

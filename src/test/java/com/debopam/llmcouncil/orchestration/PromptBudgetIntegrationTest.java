@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.orchestration;
 
+import com.debopam.llmcouncil.config.TestModels;
 import com.debopam.llmcouncil.model.CouncilRole;
 import com.debopam.llmcouncil.model.ModelProfile;
 import com.debopam.llmcouncil.model.ModelRole;
@@ -96,8 +97,10 @@ class PromptBudgetIntegrationTest {
     }
 
     private ModelProfile chair(int contextWindowTokens, int outputTokens) {
-        return new ModelProfile("local-chair", "ollama", "llama3.1:8b", outputTokens, 0.2,
-                                Duration.ofSeconds(240), ModelRole.CHAIR,
-                                CouncilRole.SYNTHESIZER, "llama", contextWindowTokens);
+        return TestModels.model("local-chair").providerModelId("llama3.1:8b")
+                         .outputTokens(outputTokens).temperature(0.2)
+                         .timeout(Duration.ofSeconds(240)).role(ModelRole.CHAIR)
+                         .councilRole(CouncilRole.SYNTHESIZER).family("llama")
+                         .contextWindow(contextWindowTokens).build();
     }
 }

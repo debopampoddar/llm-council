@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.orchestration;
 
+import com.debopam.llmcouncil.config.TestModels;
 import com.debopam.llmcouncil.api.dto.CouncilRunResponse;
 import com.debopam.llmcouncil.application.DefaultEventPublisher;
 import com.debopam.llmcouncil.domain.CouncilSession;
@@ -25,17 +26,16 @@ class GenerationStageExecutorTest {
 
     @Test
     void marksContextFailedWhenDraftQuorumIsNotMet() {
-        ModelRegistry registry = new ModelRegistry(
-                Map.of("missing", new ModelProfile("missing", "openai", "missing-model",
-                                                    100, 0.2, Duration.ofSeconds(1), ModelRole.MEMBER)),
+        ModelRegistry registry = TestModels.registry(
+                List.of(TestModels.model("missing").provider("openai").outputTokens(100)
+                                  .temperature(0.2).timeout(Duration.ofSeconds(1)).build()),
                 Map.of("missing", new UnavailableModelClient("missing", "test unavailable")));
 
         GenerationStageExecutor executor = new GenerationStageExecutor(
                 registry, new PromptBuilder(), new DefaultEventPublisher(), new NoopArtifactStore());
 
-        CouncilContext context = contextWithPolicy(new CouncilPolicy(
-                "test-policy", "quick", List.of("missing"), "missing", null,
-                1, 0, false, true));
+        CouncilContext context = contextWithPolicy(TestModels.policy("test-policy")
+                .protocol("quick").members("missing").chair("missing").build());
 
         executor.execute(context, ProtocolStageOptions.empty());
 
@@ -52,8 +52,8 @@ class GenerationStageExecutorTest {
     private CouncilContext contextWithPolicy(CouncilPolicy policy) {
         CouncilSession session = CouncilSession.create("session-1", "question", null,
                                                        DepthMode.QUICK, "mock");
-        CouncilProfile profile = new CouncilProfile("mock", "Mock", true, DepthMode.QUICK,
-                                                    Map.of(DepthMode.QUICK, policy.id()));
+        CouncilProfile profile = TestModels.profile("mock").displayName("Mock").testOnly(true)
+                .defaultDepth(DepthMode.QUICK).depth(DepthMode.QUICK, policy.id()).build();
         ProtocolDefinition protocol = new ProtocolDefinition("quick", "quick",
                                                              List.of(StageType.GENERATE), Map.of());
         return new CouncilContext(session, profile, policy, protocol);

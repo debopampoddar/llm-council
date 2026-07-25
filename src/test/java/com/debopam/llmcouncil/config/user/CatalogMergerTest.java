@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.config.user;
 
+import com.debopam.llmcouncil.config.TestModels;
 import com.debopam.llmcouncil.config.ConfigOrigin;
 import com.debopam.llmcouncil.config.CouncilCatalog;
 import com.debopam.llmcouncil.config.TestCatalogs;
@@ -218,17 +219,14 @@ class CatalogMergerTest {
                 "built-in-chair", new MockModelClient("built-in-chair"));
 
         Map<String, CouncilPolicy> policies = Map.of(
-                "built-in-policy", new CouncilPolicy("built-in-policy", "balanced",
-                        List.of("built-in-member", "built-in-chair"), "built-in-chair", null,
-                        1, 0, false, true),
-                "built-in-policy-2", new CouncilPolicy("built-in-policy-2", "balanced",
-                        List.of("built-in-member"), "built-in-chair", null, 1, 0, false, true));
+                "built-in-policy", TestModels.policy("built-in-policy")
+                        .members("built-in-member", "built-in-chair").chair("built-in-chair").build(),
+                "built-in-policy-2", TestModels.policy("built-in-policy-2")
+                        .members("built-in-member").chair("built-in-chair").build());
 
         Map<String, CouncilProfile> profiles = Map.of("default",
-                new CouncilProfile("default", "Default", false, DepthMode.BALANCED,
-                        Map.of(DepthMode.QUICK, "built-in-policy",
-                               DepthMode.BALANCED, "built-in-policy",
-                               DepthMode.RIGOROUS, "built-in-policy")));
+                TestModels.profile("default").displayName("Default")
+                          .allDepths("built-in-policy").build());
 
         Map<String, ProtocolDefinition> protocols = Map.of(
                 "balanced", new ProtocolDefinition("balanced", "Balanced",
@@ -238,11 +236,12 @@ class CatalogMergerTest {
                         Map.of(StageType.DEBATE, new ProtocolStageOptions(
                                 Map.of("max-rounds", 3, "ks-convergence-threshold", 0.1)))));
 
-        return TestCatalogs.catalog(new ModelRegistry(models, clients), profiles, policies, protocols);
+        return TestCatalogs.catalog(TestModels.registry(List.copyOf(models.values()), clients),
+                                    profiles, policies, protocols);
     }
 
     private ModelProfile profile(String id, ModelRole role) {
-        return new ModelProfile(id, "ollama", id + "-model", 1200, 0.3, Duration.ofSeconds(60),
-                                role, CouncilRole.PROPOSER, "llama", 4096, 0.002, 0.004);
+        return TestModels.model(id).role(role).family("llama").contextWindow(4096)
+                         .priced(0.002, 0.004).build();
     }
 }
