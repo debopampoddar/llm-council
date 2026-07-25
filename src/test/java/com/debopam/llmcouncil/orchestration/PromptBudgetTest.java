@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.orchestration;
 
+import com.debopam.llmcouncil.config.TestModels;
 import com.debopam.llmcouncil.model.CouncilRole;
 import com.debopam.llmcouncil.model.ModelProfile;
 import com.debopam.llmcouncil.model.ModelRole;
@@ -128,8 +129,8 @@ class PromptBudgetTest {
     }
 
     private ModelProfile model(int contextWindowTokens, int outputTokens) {
-        return new ModelProfile("test-model", "ollama", "llama3.1:8b", outputTokens, 0.3,
-                                Duration.ofSeconds(60), ModelRole.MEMBER,
-                                CouncilRole.PROPOSER, "llama", contextWindowTokens);
+        return TestModels.model("test-model").providerModelId("llama3.1:8b")
+                         .outputTokens(outputTokens).family("llama")
+                         .contextWindow(contextWindowTokens).build();
     }
 }

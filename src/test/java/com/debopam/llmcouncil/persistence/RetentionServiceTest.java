@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.persistence;
 
+import com.debopam.llmcouncil.config.TestModels;
 import com.debopam.llmcouncil.application.EventStore;
 import com.debopam.llmcouncil.application.InMemoryEventStore;
 import com.debopam.llmcouncil.application.RunRegistry;
@@ -216,8 +217,9 @@ class RetentionServiceTest {
     private CouncilContext inFlightContext() {
         return new CouncilContext(
                 CouncilSession.create("in-flight", "q", null, DepthMode.QUICK, "mock"),
-                new CouncilProfile("mock", "Mock", true, DepthMode.QUICK, Map.of()),
-                new CouncilPolicy("p", "proto", List.of("m"), "m", null, 1, 0, false, true),
+                TestModels.profile("mock").displayName("Mock").testOnly(true)
+                          .defaultDepth(DepthMode.QUICK).build(),
+                TestModels.policy("p").protocol("proto").members("m").chair("m").build(),
                 new ProtocolDefinition("proto", "proto", List.of(StageType.GENERATE), Map.of()));
     }
 

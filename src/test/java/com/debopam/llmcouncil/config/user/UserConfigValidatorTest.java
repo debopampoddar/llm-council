@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.config.user;
 
+import com.debopam.llmcouncil.config.TestModels;
 import com.debopam.llmcouncil.config.ConfigIssue;
 import com.debopam.llmcouncil.config.CouncilCatalog;
 import com.debopam.llmcouncil.config.TestCatalogs;
@@ -620,13 +621,14 @@ class UserConfigValidatorTest {
                 "mock-only", new MockModelClient("mock-only"));
 
         Map<String, CouncilPolicy> policies = Map.of("built-in-policy",
-                new CouncilPolicy("built-in-policy", "balanced", List.of("built-in-member"),
-                                  "built-in-chair", null, 1, 0, false, true));
+                TestModels.policy("built-in-policy").members("built-in-member")
+                          .chair("built-in-chair").build());
         Map<String, CouncilProfile> profiles = Map.of(
-                "default", new CouncilProfile("default", "Default", false, DepthMode.BALANCED,
-                                              Map.of(DepthMode.BALANCED, "built-in-policy")),
-                "mock", new CouncilProfile("mock", "Mock", true, DepthMode.QUICK,
-                                           Map.of(DepthMode.QUICK, "built-in-policy")));
+                "default", TestModels.profile("default").displayName("Default")
+                                     .depth(DepthMode.BALANCED, "built-in-policy").build(),
+                "mock", TestModels.profile("mock").displayName("Mock").testOnly(true)
+                                  .defaultDepth(DepthMode.QUICK)
+                                  .depth(DepthMode.QUICK, "built-in-policy").build());
         Map<String, ProtocolDefinition> protocols = Map.of(
                 "balanced", new ProtocolDefinition("balanced", "Balanced",
                         List.of(StageType.GENERATE, StageType.SYNTHESIZE), Map.of()),
@@ -634,11 +636,12 @@ class UserConfigValidatorTest {
                         List.of(StageType.GENERATE, StageType.DEBATE, StageType.SYNTHESIZE),
                         Map.of(StageType.DEBATE, new ProtocolStageOptions(Map.of("max-rounds", 3)))));
 
-        return TestCatalogs.catalog(new ModelRegistry(models, clients), profiles, policies, protocols);
+        return TestCatalogs.catalog(TestModels.registry(List.copyOf(models.values()), clients),
+                                    profiles, policies, protocols);
     }
 
     private ModelProfile profile(String id, String provider, ModelRole role, String family) {
-        return new ModelProfile(id, provider, id + "-model", 1200, 0.3, Duration.ofSeconds(60),
-                                role, CouncilRole.PROPOSER, family, 4096);
+        return TestModels.model(id).provider(provider).role(role).family(family)
+                         .contextWindow(4096).build();
     }
 }
