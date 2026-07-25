@@ -247,7 +247,7 @@ public class CouncilConfig {
 
         Map<String, CouncilProfile> profiles = buildProfiles();
         Map<String, CouncilPolicy> policies = buildPolicies();
-        CouncilCatalog catalog = new CouncilCatalog(
+        CouncilCatalog builtIn = new CouncilCatalog(
                 modelRegistry,
                 profiles,
                 policies,
@@ -264,13 +264,17 @@ public class CouncilConfig {
                 Instant.now(),
                 1L);
 
-        catalog = applyUserOverlay(catalog, userConfigLoader, userConfigValidator);
+        CouncilCatalog active = applyUserOverlay(builtIn, userConfigLoader, userConfigValidator);
 
         log.info("CouncilConfig: catalog generation {} built with {} models, {} profiles, "
                  + "{} policies, {} protocols",
-                 catalog.generation(), catalog.modelRegistry().size(), catalog.profiles().size(),
-                 catalog.policies().size(), catalog.protocols().size());
-        return new CouncilCatalogHolder(catalog);
+                 active.generation(), active.modelRegistry().size(), active.profiles().size(),
+                 active.policies().size(), active.protocols().size());
+
+        // Both snapshots are retained: runs read the active one, while the
+        // configuration write path validates proposed overlays against the
+        // built-in one. See CouncilCatalogHolder for why the distinction matters.
+        return new CouncilCatalogHolder(builtIn, active);
     }
 
     /**
