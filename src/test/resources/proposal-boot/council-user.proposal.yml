@@ -1,0 +1,28 @@
+# LLM Council saved proposal — NOT active configuration.
+#
+# A saved proposal sitting where FileProposalStore puts one, next to an overlay
+# that does not exist. Nothing at startup may read this.
+kind: llm-council-proposal
+savedAt: "2026-07-24T09:00:00Z"
+requirement:
+  privacy: LOCAL_ONLY
+  latency: MODERATE
+  cost: FREE_ONLY
+  rigor: BALANCED
+  councilSize: 2
+  domains: [GENERAL]
+  adversarialEmphasis: false
+rationale:
+  - "Saved without applying."
+document:
+  version: 1
+  models:
+    - id: proposal-canary-model
+      provider: ollama
+      providerModelId: canary:1b
+      defaultOutputTokens: 1200
+      temperature: 0.3
+      timeoutSeconds: 240
+      role: MEMBER
+      councilRole: PROPOSER
+      modelFamily: canary

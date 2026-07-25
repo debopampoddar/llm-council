@@ -82,8 +82,16 @@ public class StructuredOutputParser {
      * ({@code ```json ... ```}) or emit preamble/postamble prose.
      * This method strips fences first, then locates the first {@code \{}
      * and last {@code \}} to isolate the JSON payload.
+     *
+     * <p>Public and static because the requirement advisor parses model output
+     * too, and a second copy of this tolerance would drift: the two would end up
+     * accepting different shapes of the same sloppy reply.
+     *
+     * @param text raw model output, possibly fenced or wrapped in prose
+     * @return the outermost JSON object
+     * @throws IllegalArgumentException when the output contains no JSON object
      */
-    private String extractJson(String text) {
+    public static String extractJson(String text) {
         String trimmed = text == null ? "" : text.trim();
         // Strip markdown code fences that LLMs often wrap JSON in.
         trimmed = stripMarkdownFences(trimmed);
@@ -101,7 +109,7 @@ public class StructuredOutputParser {
      * <p>Handles both fenced blocks with a language tag ({@code ```json})
      * and plain fences ({@code ```}).
      */
-    private String stripMarkdownFences(String text) {
+    private static String stripMarkdownFences(String text) {
         // Match opening fence with optional language tag and closing fence.
         // Pattern: ```json?\n ... \n```  or ```\n ... \n```
         if (text.startsWith("```")) {
