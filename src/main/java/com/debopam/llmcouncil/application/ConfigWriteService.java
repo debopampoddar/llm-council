@@ -6,16 +6,13 @@ import com.debopam.llmcouncil.config.ConfigIssue;
 import com.debopam.llmcouncil.config.user.UserConfigCodec;
 import com.debopam.llmcouncil.config.user.UserConfigDocument;
 import com.debopam.llmcouncil.config.user.UserConfigLoader;
+import com.debopam.llmcouncil.persistence.AtomicFileWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -52,24 +49,25 @@ public class ConfigWriteService {
 
     private static final Logger log = LoggerFactory.getLogger(ConfigWriteService.class);
 
-    /** Suffix for the single retained previous version. */
-    static final String BACKUP_SUFFIX = ".bak";
-
     private final ConfigDraftService draftService;
     private final UserConfigLoader loader;
     private final UserConfigCodec codec;
+    private final AtomicFileWriter fileWriter;
 
     /**
      * @param draftService validates the submitted configuration
      * @param loader       resolves where the overlay lives
      * @param codec        renders the document as the YAML to be written
+     * @param fileWriter   puts content in place without leaving a partial file
      */
     public ConfigWriteService(ConfigDraftService draftService,
                               UserConfigLoader loader,
-                              UserConfigCodec codec) {
+                              UserConfigCodec codec,
+                              AtomicFileWriter fileWriter) {
         this.draftService = draftService;
         this.loader = loader;
         this.codec = codec;
+        this.fileWriter = fileWriter;
     }
 
     /**
@@ -100,7 +98,10 @@ public class ConfigWriteService {
         String yaml = codec.writeYaml(document);
 
         try {
-            Path backup = writeAtomically(path, yaml);
+            // Keeps one previous version: the overlay may have been hand-written,
+            // and a UI that overwrote it with no way back would be a bad trade
+            // for the convenience.
+            Path backup = fileWriter.write(path, yaml, true);
             log.info("User configuration saved to {} ({} warnings). A restart is required to apply it.",
                      path, validation.warningCount());
             return ConfigSaveResponse.written(display(path), display(backup), validation);
@@ -126,48 +127,6 @@ public class ConfigWriteService {
      */
     public String export() {
         return codec.writeYaml(draftService.draft());
-    }
-
-    /**
-     * Write content into place without ever leaving a partial file there.
-     *
-     * @param path    the destination
-     * @param content what to write
-     * @return the backup that was kept, or null when there was no previous file
-     * @throws IOException when the directory or the file cannot be written
-     */
-    private Path writeAtomically(Path path, String content) throws IOException {
-        Path directory = path.toAbsolutePath().getParent();
-        Files.createDirectories(directory);
-
-        // Same directory as the destination: ATOMIC_MOVE is only guaranteed
-        // within one filesystem, and the system temp directory is often another.
-        Path temporary = Files.createTempFile(directory, path.getFileName().toString(), ".tmp");
-        Path backup = null;
-        try {
-            Files.writeString(temporary, content, StandardCharsets.UTF_8);
-
-            if (Files.exists(path)) {
-                // Copied before the move, so the backup holds the version being
-                // replaced rather than the one replacing it.
-                backup = path.resolveSibling(path.getFileName() + BACKUP_SUFFIX);
-                Files.copy(path, backup, StandardCopyOption.REPLACE_EXISTING);
-            }
-
-            try {
-                Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE,
-                           StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException ex) {
-                // Some filesystems cannot promise it. Say so rather than
-                // pretending the guarantee held.
-                log.warn("Atomic move is not supported at {}; the overlay was replaced without it. "
-                         + "The previous version is at {}.", directory, backup);
-                Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
-            }
-            return backup;
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
     }
 
     private ValidationReportResponse withIssue(ValidationReportResponse report, ConfigIssue issue) {
