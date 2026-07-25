@@ -1121,12 +1121,28 @@ Recorded so the next phase does not rediscover them.
 
 1. **`CouncilCatalogHolder` now keeps two snapshots.** `get()` is the running catalog; `builtIn()` is the shipped one before the overlay was merged. Validation and preview resolve against `builtIn()`. Against the running catalog, a draft that dropped one of its own models would still resolve every policy referencing it — the model is present because the *current* overlay put it there — and the break would surface at the next restart rather than in the form. Phase 4's `swap` must replace the active reference only and leave `builtIn()` alone.
 2. **Bounds moved to `config/user/ConfigLimits.java`.** They were private to `UserConfigValidator`; the schema has to read the same numbers. Only constraints the validator actually enforces were moved, so the schema cannot advertise a rule the API does not apply. Two §2 constraints are therefore *not* in the schema because Phase 1 never implemented them: `providerModelId` ≤ 200 chars and `modelFamily` ≤ 40 chars. Add the checks and the schema entries together, or not at all.
-3. **Whether a value reduces integrity is now `StageOptionSpec.weakensIntegrity(value)`.** The 0.85 sycophancy suppression threshold lives there, so the warning shown while editing and the flag a run carries cannot disagree. §2.4's requirement (c) — `integrityReduced: true` on every run using such an option — is still **not implemented**; the API reports it about a *configuration*, not about a run. That remains Phase 4/5 work and the hook now exists for it.
+3. **Whether a value reduces integrity is now `StageOptionSpec.weakensIntegrity(value)`.** The 0.85 sycophancy suppression threshold lives there, so the warning shown while editing and the flag a run carries cannot disagree. §2.4's requirement (c) — `integrityReduced: true` on every run using such an option — shipped separately as 3A-1 (see below).
 4. **`PUT /draft` returns 200 even when it refuses to write.** `written: false` plus the issue list, which is the same verdict `POST /validate` gives for the same document. A refused save is a considered answer to a well-formed question; returning an HTTP error would make a caller handle two body shapes for one outcome. Only a body that cannot be read at all — malformed, or carrying a credential — is a 400.
 5. **`POST /import` returns the parsed document alongside the report**, not the report alone. Otherwise every client needs a YAML parser to complete a round trip the server has already done: import takes YAML, and the confirm step takes JSON.
 6. **`UserConfigDocument.isEmpty()` needed `@JsonIgnore`.** Jackson was serialising it as a field named `empty`, which strict binding then rejected on the way back in — a configuration saved through the API failed to load and read as an empty one. Any future derived accessor on an overlay record needs the same treatment.
 7. **The preview builds a catalog with placeholder clients.** Constructing real ones is where credential detection and connection setup happen, and nothing in the diff depends on whether a model would be callable. Provider availability stays a separate question with a separate answer.
 8. **The providers panel special-cases `mock`.** The catalog reports it `active: false` because its client is not a live one, which the panel would otherwise render as "not configured" — sending a user to look for the credential that would fix it. It shows as test-only instead.
+
+#### 3A-1 — Trust-signal integrity ✅ IMPLEMENTED
+
+Shipped after 3A, as the follow-up its deviation 2 and 3 pointed at. Two defects, one theme: a signal that overstates how much checking happened.
+
+**Model family identity.** `ValidationIndependence` compared family tags with exact string equality, so a chair tagged `Claude` and a validator tagged `claude` were reported `INDEPENDENT` — a validated badge for a check that could not have happened. Reachable from the configuration UI, since the overlay is hand-written text.
+
+Fixed by canonicalising the tag in `ModelProfile`'s compact constructor, which covers shipped configuration, the overlay, and the merge of the two, plus a case-insensitive comparison for callers that pass raw configuration values. §2.1's stated rule — reject a non-slug `modelFamily` — was **deliberately not** implemented: rejection cascades in the fail-soft layer, so an upgrading user with `Claude` in their file would lose the model, then the policy referencing it, then the profile. Normalising fixes the trust signal for everyone and breaks nobody. The `≤ 40 chars` cap remains unimplemented and is not worth adding.
+
+**Run-level integrity, §2.4(c).** Now on `CouncilRunResponse.integrity` as an `IntegrityAssessment`: `reduced`, the effective `preserveDissent` and `sycophancyThreshold`, and a note per weakened guarantee. Three things about it are load-bearing:
+
+- It is read from `ctx.protocol()` — the protocol pinned on the run — never looked up afterwards. The UI previously derived dissent preservation from the *live* catalog, so editing a protocol relabelled every past answer with settings it never ran under. That is the more serious half of this fix.
+- Effective values resolve against `orderedStages`, not just `stageOptions`. A protocol with no `DEBATE` stage reports **no** threshold rather than the 0.70 default, because reporting a default implies a measurement that never happens.
+- The trust strip's sycophancy pill is now four-way. "Detection ran and found nothing" and "detection ran at a threshold nothing could trip" were the same green pill; the latter is now a caution.
+
+`RunIntegrityReportingTest` asserts no *shipped* protocol reduces integrity, which makes raising the sycophancy threshold in `application.yml` a test failure rather than a quiet edit.
 
 ### 8.2 Phase 3B — Manual editor UI (`config.html`) — DEFERRED
 
