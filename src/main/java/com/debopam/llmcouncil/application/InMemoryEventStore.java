@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -107,6 +108,25 @@ public class InMemoryEventStore implements EventStore {
     @Override
     public List<CouncilEvent> history(String sessionId) {
         return List.copyOf(eventsBySession.getOrDefault(sessionId, new ArrayList<>()));
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Implemented by scanning, because this store is indexed by session and a
+     * chat's turns are spread across several of them. Keeping a parallel index
+     * by chat would be a second copy of the same references to hold in step with
+     * eviction, for a read that happens only when a browser reconnects — against
+     * a store the retention bounds cap at a few hundred sessions.
+     */
+    @Override
+    public List<CouncilEvent> sinceInChat(String chatId, long chatSeq) {
+        return eventsBySession.values().stream()
+                              .flatMap(List::stream)
+                              .filter(event -> chatId.equals(event.chatId()))
+                              .filter(event -> event.chatSeq() > chatSeq)
+                              .sorted(Comparator.comparingLong(CouncilEvent::chatSeq))
+                              .toList();
     }
 
     /** @return how many sessions currently have retained history */

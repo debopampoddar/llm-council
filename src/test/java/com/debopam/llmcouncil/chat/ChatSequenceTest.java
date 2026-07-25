@@ -173,6 +173,11 @@ class ChatSequenceTest {
         }
 
         @Override
+        public List<ChatEvent> since(String chatId, long chatSeq) {
+            return List.of();
+        }
+
+        @Override
         public void deleteChat(String chatId) {
         }
     }

@@ -58,6 +58,14 @@ public class JdbcChatEventStore implements ChatEventStore {
     }
 
     @Override
+    public List<ChatEvent> since(String chatId, long chatSeq) {
+        return jdbc.query("SELECT document FROM chat_event "
+                          + "WHERE chat_id = ? AND chat_seq > ? ORDER BY chat_seq",
+                          documents.documentRowMapper(ChatEvent.class),
+                          chatId, chatSeq);
+    }
+
+    @Override
     public void deleteChat(String chatId) {
         jdbc.update("DELETE FROM chat_event WHERE chat_id = ?", chatId);
     }

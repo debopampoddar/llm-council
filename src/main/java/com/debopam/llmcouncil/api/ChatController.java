@@ -9,6 +9,8 @@ import com.debopam.llmcouncil.chat.ChatCouncilService;
 import com.debopam.llmcouncil.chat.ChatEvent;
 import com.debopam.llmcouncil.chat.ChatEventBroker;
 import com.debopam.llmcouncil.chat.ChatSession;
+import com.debopam.llmcouncil.chat.ChatStreamFrame;
+import com.debopam.llmcouncil.chat.ChatStreamReplay;
 import com.debopam.llmcouncil.domain.CouncilEvent;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -20,6 +22,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -39,13 +43,16 @@ public class ChatController {
     private final ChatCouncilService chatService;
     private final ChatEventBroker chatEvents;
     private final EventPublisher councilEvents;
+    private final ChatStreamReplay streamReplay;
 
     public ChatController(ChatCouncilService chatService,
                           ChatEventBroker chatEvents,
-                          EventPublisher councilEvents) {
+                          EventPublisher councilEvents,
+                          ChatStreamReplay streamReplay) {
         this.chatService = chatService;
         this.chatEvents = chatEvents;
         this.councilEvents = councilEvents;
+        this.streamReplay = streamReplay;
     }
 
     @PostMapping
@@ -92,8 +99,39 @@ public class ChatController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Stream one chat: a snapshot, then its events and its turns' council
+     * events, live.
+     *
+     * <p><b>Resuming.</b> A client that already has part of the stream sends the
+     * position it reached and gets only what followed. The position is a single
+     * integer because every source in this stream — the chat's own events and
+     * the council events of each turn — draws its number from one per-chat
+     * sequence; without that, a single {@code Last-Event-ID} would locate a
+     * position in whichever source happened to send last and say nothing about
+     * the others, so resuming from it would skip events on all the rest.
+     *
+     * <p>Both the header and a query parameter are read. The header is what a
+     * browser's own {@code EventSource} reconnect sends; the query parameter is
+     * for a client that closes and reopens the stream deliberately — which
+     * {@code sse.js} does, to control its own backoff — because a freshly
+     * constructed {@code EventSource} sends no header.
+     *
+     * <p>A first connection, with no cursor, still replays full history through
+     * the per-source path rather than through the merged one. That path is
+     * lossless: an event whose chat position could not be allocated has no place
+     * in the merged ordering and would silently vanish from it.
+     *
+     * @param chatId          the chat to follow
+     * @param lastEventId     the position reached, from the standard header
+     * @param lastEventIdParam the same, for clients that reconnect by hand
+     * @return the open stream
+     */
     @GetMapping(path = "/{chatId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter events(@PathVariable("chatId") String chatId) {
+    public SseEmitter events(
+            @PathVariable("chatId") String chatId,
+            @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId,
+            @RequestParam(name = "lastEventId", required = false) String lastEventIdParam) {
         ChatSession chat = chatService.getChat(chatId);
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MILLIS);
         StreamState state = new StreamState();
@@ -105,22 +143,98 @@ public class ChatController {
         });
         emitter.onError(ignored -> state.closeAll());
 
+        // Always sent, resume or not: it is a full state replacement, so a
+        // reconnecting client gets the chat's current turns without having to
+        // rebuild them from the events it missed.
         sendSafe(emitter, "snapshot", ChatResponse.from(chat), state);
 
-        for (ChatEvent event : chatEvents.history(chatId)) {
-            sendSafe(emitter, "chat", event.id(), event, state);
-            subscribeCouncilIfTurnStarted(event, emitter, state);
+        long cursor = cursorFrom(lastEventId, lastEventIdParam);
+        // Resuming replays each source once, merged, so the per-session council
+        // history must not be replayed again on top of it — that is the whole
+        // saving a cursor exists to make.
+        boolean resuming = cursor > 0;
+        if (resuming) {
+            replayFrom(chatId, cursor, emitter, state);
+        } else {
+            replayEverything(chatId, emitter, state);
         }
+
         chat.turns().stream()
                 .map(turn -> turn.councilSessionId())
-                .forEach(sessionId -> subscribeCouncil(sessionId, emitter, state));
+                .forEach(sessionId -> subscribeCouncil(sessionId, emitter, state, !resuming));
 
         AutoCloseable chatSubscription = chatEvents.subscribe(chatId, event -> {
-            sendSafe(emitter, "chat", event.id(), event, state);
+            sendSafe(emitter, ChatStreamFrame.CHAT, frameId(event.chatSeq()), event, state);
             subscribeCouncilIfTurnStarted(event, emitter, state);
         });
         state.add(chatSubscription);
         return emitter;
+    }
+
+    /**
+     * Replay only what followed the client's position, in one merged run.
+     *
+     * @param chatId  the chat
+     * @param cursor  the position the client reached
+     * @param emitter the open stream
+     * @param state   subscriptions to close if the stream has gone away
+     */
+    private void replayFrom(String chatId, long cursor, SseEmitter emitter, StreamState state) {
+        for (ChatStreamFrame frame : streamReplay.since(chatId, cursor)) {
+            sendSafe(emitter, frame.name(), frameId(frame.chatSeq()), frame.data(), state);
+            if (frame.data() instanceof ChatEvent event) {
+                subscribeCouncilIfTurnStarted(event, emitter, state);
+            }
+        }
+    }
+
+    /**
+     * Replay the whole stream, source by source, for a first connection.
+     *
+     * @param chatId  the chat
+     * @param emitter the open stream
+     * @param state   subscriptions to close if the stream has gone away
+     */
+    private void replayEverything(String chatId, SseEmitter emitter, StreamState state) {
+        for (ChatEvent event : chatEvents.history(chatId)) {
+            sendSafe(emitter, ChatStreamFrame.CHAT, frameId(event.chatSeq()), event, state);
+            subscribeCouncilIfTurnStarted(event, emitter, state);
+        }
+    }
+
+    /**
+     * Read the resume position a client presented.
+     *
+     * <p>Anything unparseable is treated as no cursor at all, which replays
+     * everything. A client that sent nonsense gets duplicates it will dedupe;
+     * guessing at a number instead could silently skip the events between.
+     *
+     * @param header the standard {@code Last-Event-ID} header value, or null
+     * @param param  the query parameter value, or null
+     * @return the position, or 0 for "start from the beginning"
+     */
+    private long cursorFrom(String header, String param) {
+        String value = header != null && !header.isBlank() ? header : param;
+        if (value == null || value.isBlank()) {
+            return 0L;
+        }
+        try {
+            return Math.max(0L, Long.parseLong(value.trim()));
+        } catch (NumberFormatException ex) {
+            return 0L;
+        }
+    }
+
+    /**
+     * The frame id a client echoes back as its cursor.
+     *
+     * @param chatSeq the event's position in the chat's sequence
+     * @return the id, or null when the event has no position — an unnumbered
+     *         frame must not overwrite the client's cursor with a zero, which
+     *         would make its next reconnect replay the whole stream
+     */
+    private String frameId(long chatSeq) {
+        return chatSeq > 0 ? Long.toString(chatSeq) : null;
     }
 
     private void subscribeCouncilIfTurnStarted(ChatEvent event, SseEmitter emitter, StreamState state) {
@@ -129,20 +243,38 @@ public class ChatController {
         }
         Object sessionId = event.payload().get("councilSessionId");
         if (sessionId instanceof String value) {
-            subscribeCouncil(value, emitter, state);
+            // A turn that started during this connection has no history to
+            // replay, whether or not the client is resuming.
+            subscribeCouncil(value, emitter, state, false);
         }
     }
 
-    private void subscribeCouncil(String sessionId, SseEmitter emitter, StreamState state) {
+    /**
+     * Follow one turn's council session, optionally replaying what it already
+     * emitted.
+     *
+     * @param sessionId      the council session behind a turn
+     * @param emitter        the open stream
+     * @param state          subscriptions to close if the stream has gone away
+     * @param replayHistory  whether to send the session's existing events first;
+     *                       false for a resuming client, which has just been
+     *                       sent everything after its cursor and would otherwise
+     *                       receive the whole run again
+     */
+    private void subscribeCouncil(String sessionId, SseEmitter emitter, StreamState state,
+                                  boolean replayHistory) {
         if (sessionId == null || sessionId.isBlank() || !state.addCouncilSession(sessionId)) {
             return;
         }
-        for (CouncilEvent event : councilEvents.history(sessionId)) {
-            sendSafe(emitter, "council", event.id(), event, state);
+        if (replayHistory) {
+            for (CouncilEvent event : councilEvents.history(sessionId)) {
+                sendSafe(emitter, ChatStreamFrame.COUNCIL, frameId(event.chatSeq()), event, state);
+            }
         }
         AutoCloseable subscription = councilEvents.subscribe(
                 sessionId,
-                event -> sendSafe(emitter, "council", event.id(), event, state));
+                event -> sendSafe(emitter, ChatStreamFrame.COUNCIL,
+                                  frameId(event.chatSeq()), event, state));
         state.add(subscription);
     }
 
