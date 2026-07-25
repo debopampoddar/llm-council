@@ -1,0 +1,37 @@
+version: 1
+
+# A configuration somebody wrote by hand, before the advisor existed. Every
+# entity here is valid, and none of it belongs to the advisor. It exists so the
+# additive guarantee has something to fail to preserve.
+models:
+  - id: my-critic
+    provider: ollama
+    providerModelId: mistral:7b
+    defaultOutputTokens: 1200
+    temperature: 0.4
+    timeoutSeconds: 240
+    role: MEMBER
+    councilRole: CRITIC
+    modelFamily: mistral
+
+policies:
+  my-policy:
+    protocolId: balanced
+    memberModelIds: [my-critic, local-llama3]
+    chairModelId: local-chair
+    validatorModelId: local-validator
+    minimumSuccessfulDrafts: 1
+    minimumReviewsPerDraft: 1
+    validationRequired: false
+    allowPartial: true
+
+profiles:
+  my-council:
+    displayName: Hand-written council
+    defaultDepth: BALANCED
+    depthPolicies:
+      BALANCED: my-policy
+
+runtime:
+  maxConcurrentRuns: 2
+  chatRecentTurnCount: 6
