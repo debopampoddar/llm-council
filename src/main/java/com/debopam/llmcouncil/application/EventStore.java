@@ -34,4 +34,31 @@ public interface EventStore {
      *         unknown
      */
     List<CouncilEvent> history(String sessionId);
+
+    /**
+     * Replay the events of one chat's turns from a position onwards.
+     *
+     * <p>Scoped by chat rather than by session because that is what a chat's
+     * SSE stream is: the council events of every turn in it, interleaved with
+     * the chat's own. Events belonging to no chat — the direct
+     * {@code POST /sessions} path — are never returned here whatever the
+     * cursor, because they have no position in any chat's sequence.
+     *
+     * @param chatId  the chat whose turns to replay
+     * @param chatSeq the last position the client already has; zero for
+     *                everything
+     * @return the chat's council events after that position, in position order
+     */
+    List<CouncilEvent> sinceInChat(String chatId, long chatSeq);
+
+    /**
+     * Remove one session's events.
+     *
+     * <p>Called when the retention sweep evicts the session itself. Events
+     * outliving their session are unreachable — every read here is scoped to a
+     * session — so they would be pure accumulation.
+     *
+     * @param sessionId the session whose events to delete
+     */
+    void deleteSession(String sessionId);
 }

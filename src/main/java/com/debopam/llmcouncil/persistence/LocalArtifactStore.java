@@ -8,7 +8,9 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -80,6 +82,42 @@ public class LocalArtifactStore implements ArtifactStore {
         } catch (IOException ex) {
             throw new IllegalStateException("Unable to read artifact " + target, ex);
         }
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The only destructive operation in this class, so it is deliberately
+     * narrow. The directory is resolved the same way every read is — absolute,
+     * normalised, and checked to be inside the artifact root — because the
+     * session id reaching here has travelled through a database and a retention
+     * decision, and a path that escaped the root would delete something that was
+     * never an artifact. Symbolic links are not followed for the same reason.
+     *
+     * @param sessionId the session whose artifacts to delete
+     * @return {@code true} if a directory existed and was removed
+     */
+    @Override
+    public boolean deleteSession(String sessionId) {
+        Path sessionPath = basePath.resolve(sessionId).toAbsolutePath().normalize();
+        Path root = basePath.toAbsolutePath().normalize();
+        if (!sessionPath.startsWith(root) || sessionPath.equals(root)) {
+            throw new IllegalArgumentException(
+                    "Session directory escapes the artifact root: " + sessionId);
+        }
+        if (!Files.isDirectory(sessionPath, LinkOption.NOFOLLOW_LINKS)) {
+            return false;
+        }
+        try (var walk = Files.walk(sessionPath)) {
+            // Deepest first, because a directory cannot be deleted until it is
+            // empty.
+            for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
+            }
+        } catch (IOException ex) {
+            throw new IllegalStateException("Unable to delete artifacts for session " + sessionId, ex);
+        }
+        return true;
     }
 
     /**

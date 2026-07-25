@@ -7,14 +7,17 @@ import com.debopam.llmcouncil.domain.CouncilEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * In-memory event history.
@@ -30,8 +33,15 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * ones. A session whose run is still in flight is never evicted whatever the
  * bounds say — a timeline that loses its earlier stages mid-run does not read as
  * broken, it reads as stages that never happened.
+ *
+ * <p>This is the default store. {@code council.persistence.type=jdbc} replaces
+ * it with {@link com.debopam.llmcouncil.persistence.jdbc.JdbcEventStore}, which
+ * is held to the same contract test. The broker beside it stays in memory
+ * either way.
  */
 @Component
+@ConditionalOnProperty(name = "council.persistence.type", havingValue = "memory",
+                       matchIfMissing = true)
 public class InMemoryEventStore implements EventStore {
 
     private static final Logger log = LoggerFactory.getLogger(InMemoryEventStore.class);
@@ -40,6 +50,11 @@ public class InMemoryEventStore implements EventStore {
     // Last event time per session, so eviction can order by recency without
     // walking every session's event list on every append.
     private final Map<String, Instant> lastActivity = new ConcurrentHashMap<>();
+    // Per-session counters. Held separately from the event lists because the
+    // per-session cap drops the oldest events: deriving seq from list size
+    // would reissue numbers already used, and a cursor would then replay events
+    // the client had seen and skip ones it had not.
+    private final Map<String, AtomicLong> sequences = new ConcurrentHashMap<>();
 
     private final RetentionPolicy retention;
     private final RunRegistry runs;
@@ -78,18 +93,47 @@ public class InMemoryEventStore implements EventStore {
 
     @Override
     public CouncilEvent append(CouncilEvent event) {
+        CouncilEvent sequenced = event.withSeq(
+                sequences.computeIfAbsent(event.sessionId(), ignored -> new AtomicLong())
+                         .incrementAndGet());
         List<CouncilEvent> events = eventsBySession.computeIfAbsent(
                 event.sessionId(), ignored -> new CopyOnWriteArrayList<>());
-        events.add(event);
+        events.add(sequenced);
         lastActivity.put(event.sessionId(), event.occurredAt());
         trim(events);
         evictOldSessions();
-        return event;
+        return sequenced;
     }
 
     @Override
     public List<CouncilEvent> history(String sessionId) {
         return List.copyOf(eventsBySession.getOrDefault(sessionId, new ArrayList<>()));
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Implemented by scanning, because this store is indexed by session and a
+     * chat's turns are spread across several of them. Keeping a parallel index
+     * by chat would be a second copy of the same references to hold in step with
+     * eviction, for a read that happens only when a browser reconnects — against
+     * a store the retention bounds cap at a few hundred sessions.
+     */
+    @Override
+    public List<CouncilEvent> sinceInChat(String chatId, long chatSeq) {
+        return eventsBySession.values().stream()
+                              .flatMap(List::stream)
+                              .filter(event -> chatId.equals(event.chatId()))
+                              .filter(event -> event.chatSeq() > chatSeq)
+                              .sorted(Comparator.comparingLong(CouncilEvent::chatSeq))
+                              .toList();
+    }
+
+    @Override
+    public void deleteSession(String sessionId) {
+        eventsBySession.remove(sessionId);
+        lastActivity.remove(sessionId);
+        sequences.remove(sessionId);
     }
 
     /** @return how many sessions currently have retained history */
@@ -131,6 +175,7 @@ public class InMemoryEventStore implements EventStore {
         for (String sessionId : retention.selectEvictions(candidates, Instant.now())) {
             eventsBySession.remove(sessionId);
             lastActivity.remove(sessionId);
+            sequences.remove(sessionId);
             log.debug("Evicted event history for session {} under retention bounds", sessionId);
         }
     }

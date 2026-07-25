@@ -7,6 +7,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Entry point for the LLM Council Spring Boot application.
@@ -38,6 +39,12 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
  * built instead by
  * {@link com.debopam.llmcouncil.persistence.jdbc.JdbcPersistenceConfig}, which
  * exists only under {@code type=jdbc}.
+ *
+ * <p>Scheduling is enabled for the retention sweep, which is the one thing in
+ * this application that runs on a timer. Its first fire is an hour after
+ * startup, so it costs a test context a thread pool and nothing else — the
+ * in-memory stores still evict on write, and every retention test drives the
+ * sweep directly rather than waiting for it.
  */
 @SpringBootApplication(exclude = {
         VertexAiGeminiChatAutoConfiguration.class,
@@ -46,6 +53,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
         DataSourceAutoConfiguration.class
 })
 @EnableConfigurationProperties
+@EnableScheduling
 public class LlmCouncilApplication {
     public static void main(String[] args) {
         SpringApplication.run(LlmCouncilApplication.class, args);
