@@ -1190,7 +1190,7 @@ Four tabs: **Models**, **Policies**, **Profiles**, **Protocols**, plus a **Provi
 
 ---
 
-## 10. Phase 5 — Requirement Advisor (wizard + CLI)
+## 10. Phase 5 — Requirement Advisor (wizard + CLI) ✅ IMPLEMENTED (wizard; CLI deferred)
 
 **Goal:** a non-technical user describes what they want in plain language and gets a validated configuration.
 **Depends on:** Phases 1, **3A** (the write path — the wizard's confirm step calls `PUT /api/council/config/draft`). Not 3B. Phase 4 optional but makes it feel instant.
@@ -1275,6 +1275,82 @@ Interactive prompts, same synthesizer, prints the YAML, asks before writing, exi
 - `RequirementExtractorTest` — mocked `ModelClient` returning good JSON, malformed JSON, unknown enum values, and an outright refusal.
 - `AdvisorEndToEndTest` — synthesize → validate → merge produces a runnable catalog with zero errors.
 
+### 10.8 What shipped, and where it deviated
+
+Delivered in one PR onto `main`, 621 → 776 tests. Classes: `advisor/` holds
+`CouncilRequirement`, `AdvisorEnvironment`, `ConfigSynthesizer`, `AdvisorIds`,
+`ModelFamilyHeuristic`, `SynthesisResult`, `AdvisorEnvironmentService`,
+`AdvisorService`, `RequirementExtractor`, `ExtractionEnvelope`,
+`ExtractionOutcome`, `ProposalStore` + `FileProposalStore`, `ProposalEnvelope`,
+`StoredProposal`, `AdvisorRequestException`. Plus `api/AdvisorController`,
+`model/ClientAvailability`, `persistence/AtomicFileWriter`, and five static
+modules behind `setup.html`.
+
+**Deviations, and why.**
+
+1. **The Advisor is additive.** §10 assumed a fresh install. `PUT /config/draft`
+   replaces the whole overlay, so a user with a hand-written council would have
+   lost it to one click, mitigated only by a confirmation and a `.bak` — a
+   backstop, not a substitute. The Advisor now owns the `advisor-*` namespace and
+   carries everything else through unchanged. This also resolved the
+   `builtIn()`/`get()` tension: because a user's own models provably survive the
+   write, they can be seated.
+
+2. **`OllamaModelDiscoveryService` is not called from the synthesizer** (§10.3
+   implies it is). The installed list is an input, via `AdvisorEnvironment`. §12.9
+   is then structural rather than a matter of discipline.
+
+3. **Provider availability does not come from `CouncilConfig.hasRealCredential`**
+   (§10.3). It is private, and duplicating it recreates the drift `ConfigLimits`
+   was created to remove. `ClientAvailability.of(ModelClient)` now serves both the
+   catalog projection and the Advisor.
+
+4. **`Cost.FREE_ONLY` means local, not price zero.** §10.3 has no cost dimension,
+   and the obvious implementation is a bug: zero means *unpriced*, so filtering on
+   the price field seats an unpriced cloud model on a free-only council.
+
+5. **Review quorum is `size >= 2 ? 1 : 0`,** not §10.3's `size >= 3 ? 1 : 0`. With
+   two members each draft can be reviewed by the other, and a quorum of zero on a
+   protocol that runs a REVIEW stage collapses "reviewed and found sound" into
+   "reviewed by nobody". Matches the shipped `local-balanced`.
+
+6. **`domains` is inert and says so.** §10.2 lists it; §10.3 uses it for nothing.
+   Rather than drop it or invent a mapping, it appears in the profile's display
+   name and the rationale states outright that it did not affect model selection —
+   this application records no per-model capability data, so choosing by subject
+   would be invention presented as inference. The form control says the same.
+
+7. **`Latency` gained one real effect** beyond §10.3's FAST×RIGOROUS cell: FAST
+   caps council size at 3. Review is quadratic in members, so seats dominate run
+   time — a mechanism, not a guess. `MODERATE` and `PATIENT` still differ only in
+   the rationale, and that is stated rather than dressed up.
+
+8. **Extraction retries once, and only on a parse failure.** §10.4 does not say.
+   A provider failure is not a parse failure: the client is already wrapped in
+   retry for transient errors, so retrying here multiplies a timeout.
+
+9. **The extraction envelope is strict about unknown fields.** §10.4 says "never
+   let the model emit ids"; the enforcement is that an unknown field rejects the
+   whole reply rather than being dropped, because a dropped field is
+   indistinguishable from one never sent.
+
+10. **Free text is never echoed back.** §10.5's step 1 keeps the typed text on
+    failure; it does so client-side, so the description does not travel through a
+    second response body. `ExtractionOutcome` is asserted not to contain it.
+
+11. **The CLI (§10.5) is not built.** No stub ships — an untested class that does
+    nothing is worse than its absence. `AdvisorService` is the facade the CLI will
+    wrap, and every call it needs already has a real caller and real tests.
+
+12. **§12.6 is unenforceable as written** and was not silently "fixed". The
+    shipped `quick` protocol is `[GENERATE, SYNTHESIZE]` — it has no ANONYMIZE and
+    no REVIEW. Changing that would alter every QUICK run in the product to satisfy
+    a doc line. What the Advisor guarantees instead, and what is tested: it can
+    never produce a protocol lacking those stages (`orderedStages` is
+    inexpressible and the only tunable it emits is `DEBATE.max-rounds`), and every
+    synthesised profile maps all three depths, so the reviewed pipeline is always
+    one click away. §12.6 should be amended to say that.
+
 ---
 
 ## 11. Sequencing and effort
@@ -1289,9 +1365,9 @@ Interactive prompts, same synthesizer, prints the YAML, asks before writing, exi
 | 3A | Config **write path** — `ConfigController`, validate/preview/schema, atomic write | ✅ shipped — ~1500 LOC, 9 new classes, 542 → 604 tests | Medium — atomic write, schema generation |
 | 3B | Manual four-tab editor UI | ~300 LOC | Low — **deferred indefinitely**, see §8 |
 | 4 | Hot reload | ~400 LOC, touches 10 classes | **High** — concurrency; do not start before Phase 2 is proven |
-| 5 | Requirement Advisor | ~800 LOC | Medium — synthesizer is pure and testable; LLM part is optional by design |
+| 5 | Requirement Advisor | ✅ shipped — ~2100 LOC Java + ~900 LOC JS/CSS/HTML, 21 new classes, 621 → 776 tests | Medium — synthesizer is pure and testable; LLM part is optional by design |
 
-**Adopted order: 0 → 1 → 2 → 2A → 3A → 5 → 2B.** Phases 0, 1, 2, 2A, and 3A are complete; **5 (the Advisor) is next**. 3B and 4 are held back and built only if demand appears.
+**Adopted order: 0 → 1 → 2 → 2A → 3A → 5 → 2B.** Phases 0, 1, 2, 2A, 3A, and 5 are complete; **2B is next**. 3B and 4 are held back and built only if demand appears — and 3B is now further redundant, since the Advisor is the configuration surface in practice.
 
 This supersedes the original `2A → 2B, then 3 → 4 → 5`. Two reasons for the change:
 
@@ -1317,7 +1393,7 @@ Verify each before declaring any phase done:
 3. The public API still never accepts a raw `protocolId`. Callers pick `profileId` + `depthMode`; Phase 3A and the Phase 5 Advisor let a user *define* a profile, not bypass one. The Advisor is bound by this too — §10.4 keeps the LLM away from ids, providers, and stage names structurally, not by prompt.
 4. No credential is ever written to the overlay file, an artifact, an export, a log line, or an API response.
 5. Built-in config errors remain fail-fast `IllegalStateException`; only the user layer is fail-soft.
-6. `ANONYMIZE` and `REVIEW` are present in every protocol a user can select. Anti-sycophancy signals (sycophancy warnings, preserved dissent, `integrityReduced`) are surfaced, never hidden.
+6. Anti-sycophancy signals (sycophancy warnings, preserved dissent, `integrityReduced`) are surfaced, never hidden. **Amended in Phase 5** — the original wording, "`ANONYMIZE` and `REVIEW` are present in every protocol a user can select", was never true: the shipped `quick` protocol is `[GENERATE, SYNTHESIZE]`. The enforceable version, and the one now tested: no user-reachable path can *produce* a protocol without those stages — `orderedStages` is inexpressible in the overlay and the Advisor's only tunable is `DEBATE.max-rounds` — and every synthesised profile maps all three depths, so the reviewed pipeline is always selectable. See §10.8.12.
 7. `DockerComposeConfigurationTest` reads the compose files as text — if any phase touches a compose file, update the test in the same commit.
 8. Every new public type and method carries Javadoc with `@param`/`@return`, matching the existing files.
 9. `mvn test` stays hermetic: no network, no containers, no daemon. Durable-store tests run against in-process H2/SQLite only; real-engine coverage lives behind `-Pintegration`.
