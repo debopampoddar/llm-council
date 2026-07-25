@@ -3,10 +3,13 @@ package com.debopam.llmcouncil.api.dto;
 import com.debopam.llmcouncil.config.ConfigIssue;
 import com.debopam.llmcouncil.config.ConfigOrigin;
 import com.debopam.llmcouncil.domain.DepthMode;
+import com.debopam.llmcouncil.model.CouncilProfile;
 import com.debopam.llmcouncil.model.ValidationIndependence;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -61,7 +64,30 @@ public record CatalogResponse(
             Map<DepthMode, String> policyIdsByDepth,
             boolean testOnly,
             ConfigOrigin origin
-    ) {}
+    ) {
+
+        /**
+         * Project a profile for a response.
+         *
+         * <p>Shared so the profile list a configuration preview shows and the one
+         * the catalog serves are built the same way. Two projections of the same
+         * record drift, and here the drift would be a user approving a preview
+         * that does not describe what they will get.
+         *
+         * @param id      the profile's id
+         * @param profile the profile to project
+         * @param origin  where it was defined
+         * @return the summary
+         */
+        public static ProfileSummary from(String id, CouncilProfile profile, ConfigOrigin origin) {
+            List<DepthMode> depths = profile.depthPolicyIds().keySet().stream()
+                                            .sorted(Comparator.comparing(Enum::ordinal))
+                                            .toList();
+            return new ProfileSummary(id, profile.displayName(), profile.defaultDepthMode(),
+                                      depths, new LinkedHashMap<>(profile.depthPolicyIds()),
+                                      profile.testOnly(), origin);
+        }
+    }
 
     /**
      * An execution policy.
