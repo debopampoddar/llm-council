@@ -8,20 +8,18 @@ import com.debopam.llmcouncil.config.ConfigOrigin;
 import com.debopam.llmcouncil.config.CouncilCatalog;
 import com.debopam.llmcouncil.config.CouncilCatalogHolder;
 import com.debopam.llmcouncil.config.user.CatalogMerger;
-import com.debopam.llmcouncil.config.user.StageOptionSpec;
+import com.debopam.llmcouncil.config.user.IntegrityAssessment;
 import com.debopam.llmcouncil.config.user.UserConfigDocument;
 import com.debopam.llmcouncil.config.user.UserConfigLoader;
 import com.debopam.llmcouncil.config.user.UserConfigValidator;
 import com.debopam.llmcouncil.model.ModelProfile;
 import com.debopam.llmcouncil.model.UnavailableModelClient;
-import com.debopam.llmcouncil.orchestration.StageType;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -188,29 +186,8 @@ public class ConfigDraftService {
      * @return {@code true} when at least one option weakens a guarantee
      */
     private boolean reducesIntegrity(UserConfigDocument sanitised) {
-        for (UserConfigDocument.UserProtocol protocol : sanitised.protocols().values()) {
-            if (protocol.stageOptions() == null) {
-                continue;
-            }
-            for (Map.Entry<String, Map<String, Object>> stage : protocol.stageOptions().entrySet()) {
-                if (stage.getValue() == null) {
-                    continue;
-                }
-                StageType stageType;
-                try {
-                    stageType = StageType.valueOf(stage.getKey());
-                } catch (IllegalArgumentException ex) {
-                    continue;
-                }
-                for (Map.Entry<String, Object> option : stage.getValue().entrySet()) {
-                    Optional<StageOptionSpec> spec = StageOptionSpec.find(stageType, option.getKey());
-                    if (spec.isPresent() && spec.get().weakensIntegrity(option.getValue())) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
+        return sanitised.protocols().values().stream()
+                        .anyMatch(protocol -> IntegrityAssessment.reducedIn(protocol.stageOptions()));
     }
 
     /**
