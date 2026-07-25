@@ -27,8 +27,15 @@
         <button class="btn btn-ghost btn-sm sidebar-toggle" id="sidebar-toggle" aria-label="Toggle chat list">☰</button>
         <div id="topbar-config"></div>
         <div class="spacer"></div>
+        <button class="btn btn-ghost btn-sm" id="providers-toggle" aria-expanded="false"
+                aria-controls="providers-panel">Providers</button>
         <span class="conn" id="conn" data-state="closed"><span class="led"></span><span id="conn-label">not connected</span></span>
       </header>
+
+      <!-- Read-only. There is no input here on purpose: credentials live in the
+           environment, and the panel says which variable to set rather than
+           offering somewhere to type one. -->
+      <section class="providers" id="providers-panel" hidden aria-label="Provider status"></section>
 
       <div class="stream" id="stream">
         <div class="stream-inner" id="stream-inner">

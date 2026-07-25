@@ -148,17 +148,8 @@ public class CatalogService {
             if (!includeTestOnly && profile.testOnly()) {
                 return;
             }
-            List<DepthMode> depths = profile.depthPolicyIds().keySet().stream()
-                                            .sorted(Comparator.comparing(Enum::ordinal))
-                                            .toList();
-            result.add(new CatalogResponse.ProfileSummary(
-                    id,
-                    profile.displayName(),
-                    profile.defaultDepthMode(),
-                    depths,
-                    new LinkedHashMap<>(profile.depthPolicyIds()),
-                    profile.testOnly(),
-                    catalog.originOf("profile", id)));
+            result.add(CatalogResponse.ProfileSummary.from(id, profile,
+                                                           catalog.originOf("profile", id)));
         });
         return result;
     }
