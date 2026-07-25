@@ -165,7 +165,7 @@ public class ChatController {
 
         AutoCloseable chatSubscription = chatEvents.subscribe(chatId, event -> {
             sendSafe(emitter, ChatStreamFrame.CHAT, frameId(event.chatSeq()), event, state);
-            subscribeCouncilIfTurnStarted(event, emitter, state);
+            subscribeCouncilIfTurnStarted(event, emitter, state, false);
         });
         state.add(chatSubscription);
         return emitter;
@@ -183,7 +183,7 @@ public class ChatController {
         for (ChatStreamFrame frame : streamReplay.since(chatId, cursor)) {
             sendSafe(emitter, frame.name(), frameId(frame.chatSeq()), frame.data(), state);
             if (frame.data() instanceof ChatEvent event) {
-                subscribeCouncilIfTurnStarted(event, emitter, state);
+                subscribeCouncilIfTurnStarted(event, emitter, state, false);
             }
         }
     }
@@ -198,7 +198,11 @@ public class ChatController {
     private void replayEverything(String chatId, SseEmitter emitter, StreamState state) {
         for (ChatEvent event : chatEvents.history(chatId)) {
             sendSafe(emitter, ChatStreamFrame.CHAT, frameId(event.chatSeq()), event, state);
-            subscribeCouncilIfTurnStarted(event, emitter, state);
+            // True, not false: these turns have already run. Claiming the
+            // session here without replaying would make the per-turn loop
+            // afterwards skip it as already-followed, and a first connection
+            // would receive no council events at all.
+            subscribeCouncilIfTurnStarted(event, emitter, state, true);
         }
     }
 
@@ -237,15 +241,27 @@ public class ChatController {
         return chatSeq > 0 ? Long.toString(chatSeq) : null;
     }
 
-    private void subscribeCouncilIfTurnStarted(ChatEvent event, SseEmitter emitter, StreamState state) {
+    /**
+     * Follow the council session a {@code TURN_STARTED} event announces.
+     *
+     * @param event         the chat event, which may or may not be a turn start
+     * @param emitter       the open stream
+     * @param state         subscriptions to close if the stream has gone away
+     * @param replayHistory whether that session's existing events should be sent
+     *                      first. True while replaying chat history, where the
+     *                      turn announced has already run; false for a turn
+     *                      starting now, which has nothing behind it, and false
+     *                      on a resume, where the merged replay has already sent
+     *                      everything after the cursor
+     */
+    private void subscribeCouncilIfTurnStarted(ChatEvent event, SseEmitter emitter,
+                                               StreamState state, boolean replayHistory) {
         if (!"TURN_STARTED".equals(event.type())) {
             return;
         }
         Object sessionId = event.payload().get("councilSessionId");
         if (sessionId instanceof String value) {
-            // A turn that started during this connection has no history to
-            // replay, whether or not the client is resuming.
-            subscribeCouncil(value, emitter, state, false);
+            subscribeCouncil(value, emitter, state, replayHistory);
         }
     }
 

@@ -81,6 +81,30 @@ class SseCursorTest {
     }
 
     @Test
+    void aFirstConnectionReplaysTheCouncilEventsOfEveryTurn() {
+        // The regression this exists for: replaying chat history claims each
+        // turn's council session as already-followed, so a per-turn loop that
+        // ran afterwards skipped it — and a first connection received the
+        // chat's own events and not one stage of any run. The timeline came up
+        // empty, and only for a chat that already had turns, so a fresh chat
+        // watched live looked perfect.
+        ChatSession chat = chatService.createChat("mock", DepthMode.QUICK, null);
+        chat.addTurn(ChatTurn.running("t1", "why?", "replay-all-session"));
+        chatStore.save(chat);
+        attribution.link("replay-all-session", chat.id());
+        chatEvents.publish(chat.id(), "TURN_STARTED",
+                           Map.of("councilSessionId", "replay-all-session"));
+        councilEvents.publish("replay-all-session", "GENERATE", "STAGE_STARTED", null, Map.of());
+        councilEvents.publish("replay-all-session", "SYNTHESIZE", "STAGE_COMPLETED", null, Map.of());
+
+        String stream = streamOf(chat.id(), null);
+
+        assertTrue(stream.contains("event:council"), "a first connection replays council events");
+        assertEquals(1, occurrences(stream, "STAGE_STARTED"));
+        assertEquals(1, occurrences(stream, "STAGE_COMPLETED"));
+    }
+
+    @Test
     void aCursorReplaysOnlyWhatFollowedIt() {
         ChatSession chat = chatService.createChat("mock", DepthMode.QUICK, null);
         chatEvents.publish(chat.id(), "TURN_STARTED", Map.of("turnId", "t1"));
