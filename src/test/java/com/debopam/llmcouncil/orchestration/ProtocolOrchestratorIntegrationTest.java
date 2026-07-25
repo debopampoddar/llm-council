@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.orchestration;
 
+import com.debopam.llmcouncil.config.TestModels;
 import com.debopam.llmcouncil.application.DefaultEventPublisher;
 import com.debopam.llmcouncil.application.RunRegistry;
 import com.debopam.llmcouncil.domain.CouncilSession;
@@ -61,11 +62,10 @@ class ProtocolOrchestratorIntegrationTest {
         // Run the protocol
         CouncilSession session = CouncilSession.create("integration-1",
                 "What is the meaning of life?", null, DepthMode.QUICK, "mock");
-        CouncilProfile profile = new CouncilProfile("mock", "Mock", true,
-                DepthMode.QUICK, Map.of(DepthMode.QUICK, "mock-quick"));
-        CouncilPolicy policy = new CouncilPolicy("mock-quick", "quick",
-                List.of("mock-member-1", "mock-member-2"), "mock-chair",
-                null, 1, 0, false, true);
+        CouncilProfile profile = TestModels.profile("mock").displayName("Mock").testOnly(true)
+                .defaultDepth(DepthMode.QUICK).depth(DepthMode.QUICK, "mock-quick").build();
+        CouncilPolicy policy = TestModels.policy("mock-quick").protocol("quick")
+                .members("mock-member-1", "mock-member-2").chair("mock-chair").build();
 
         CouncilContext result = orchestrator.run(session, profile, policy);
 
@@ -123,11 +123,11 @@ class ProtocolOrchestratorIntegrationTest {
         CouncilSession session = CouncilSession.create("integration-2",
                 "Should we use microservices or monolith?", null,
                 DepthMode.RIGOROUS, "mock");
-        CouncilProfile profile = new CouncilProfile("mock", "Mock", true,
-                DepthMode.RIGOROUS, Map.of(DepthMode.RIGOROUS, "mock-rigorous"));
-        CouncilPolicy policy = new CouncilPolicy("mock-rigorous", "rigorous",
-                List.of("mock-member-1", "mock-member-2"), "mock-chair",
-                null, 1, 0, false, true);
+        CouncilProfile profile = TestModels.profile("mock").displayName("Mock").testOnly(true)
+                .defaultDepth(DepthMode.RIGOROUS)
+                .depth(DepthMode.RIGOROUS, "mock-rigorous").build();
+        CouncilPolicy policy = TestModels.policy("mock-rigorous").protocol("rigorous")
+                .members("mock-member-1", "mock-member-2").chair("mock-chair").build();
 
         CouncilContext result = orchestrator.run(session, profile, policy);
 
@@ -172,11 +172,10 @@ class ProtocolOrchestratorIntegrationTest {
 
         CouncilSession session = CouncilSession.create("integration-3",
                 "Test question", null, DepthMode.QUICK, "mock");
-        CouncilProfile profile = new CouncilProfile("mock", "Mock", true,
-                DepthMode.QUICK, Map.of(DepthMode.QUICK, "mock-partial"));
-        CouncilPolicy policy = new CouncilPolicy("mock-partial", "partial",
-                List.of("mock-member-1"), "mock-chair",
-                null, 1, 0, false, true);
+        CouncilProfile profile = TestModels.profile("mock").displayName("Mock").testOnly(true)
+                .defaultDepth(DepthMode.QUICK).depth(DepthMode.QUICK, "mock-partial").build();
+        CouncilPolicy policy = TestModels.policy("mock-partial").protocol("partial")
+                .members("mock-member-1").chair("mock-chair").build();
 
         // Should not throw — missing executors are skipped with a warning
         CouncilContext result = orchestrator.run(session, profile, policy);
@@ -186,16 +185,19 @@ class ProtocolOrchestratorIntegrationTest {
     // ── Helpers 
 
     private ModelRegistry buildMockRegistry() {
-        return new ModelRegistry(
-                Map.of("mock-member-1", new ModelProfile("mock-member-1", "mock", "mock",
-                                800, 0.1, Duration.ofSeconds(30), ModelRole.MEMBER,
-                                CouncilRole.PROPOSER, "mock"),
-                       "mock-member-2", new ModelProfile("mock-member-2", "mock", "mock",
-                                800, 0.1, Duration.ofSeconds(30), ModelRole.MEMBER,
-                                CouncilRole.CRITIC, "mock"),
-                       "mock-chair", new ModelProfile("mock-chair", "mock", "mock",
-                                800, 0.1, Duration.ofSeconds(30), ModelRole.CHAIR,
-                                CouncilRole.SYNTHESIZER, "mock")),
+        return TestModels.registry(
+                List.of(TestModels.model("mock-member-1")
+                                  .provider("mock").providerModelId("mock")
+                                  .outputTokens(800).temperature(0.1)
+                                  .timeout(Duration.ofSeconds(30)).role(ModelRole.MEMBER).councilRole(CouncilRole.PROPOSER).family("mock").build(),
+                        TestModels.model("mock-member-2")
+                                  .provider("mock").providerModelId("mock")
+                                  .outputTokens(800).temperature(0.1)
+                                  .timeout(Duration.ofSeconds(30)).role(ModelRole.MEMBER).councilRole(CouncilRole.CRITIC).family("mock").build(),
+                        TestModels.model("mock-chair")
+                                  .provider("mock").providerModelId("mock")
+                                  .outputTokens(800).temperature(0.1)
+                                  .timeout(Duration.ofSeconds(30)).role(ModelRole.CHAIR).councilRole(CouncilRole.SYNTHESIZER).family("mock").build()),
                 Map.of("mock-member-1", new MockModelClient("mock-member-1"),
                        "mock-member-2", new MockModelClient("mock-member-2"),
                        "mock-chair", new MockModelClient("mock-chair")));

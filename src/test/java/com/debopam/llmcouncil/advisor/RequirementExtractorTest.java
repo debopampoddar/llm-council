@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.advisor;
 
+import com.debopam.llmcouncil.config.TestModels;
 import com.debopam.llmcouncil.model.CouncilRole;
 import com.debopam.llmcouncil.model.ModelCallException;
 import com.debopam.llmcouncil.model.ModelCallRequest;
@@ -300,9 +301,10 @@ class RequirementExtractorTest {
     }
 
     private ModelProfile model() {
-        return new ModelProfile("local-chair", "ollama", "llama3.1:8b", 1800, 0.7,
-                                Duration.ofSeconds(240), ModelRole.CHAIR,
-                                CouncilRole.SYNTHESIZER, "llama");
+        return TestModels.model("local-chair").providerModelId("llama3.1:8b")
+                         .outputTokens(1800).temperature(0.7)
+                         .timeout(Duration.ofSeconds(240)).role(ModelRole.CHAIR)
+                         .councilRole(CouncilRole.SYNTHESIZER).family("llama").build();
     }
 
     /** Returns canned replies in order, repeating the last one. */

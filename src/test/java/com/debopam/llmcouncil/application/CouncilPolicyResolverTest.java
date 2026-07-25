@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.application;
 
+import com.debopam.llmcouncil.config.TestModels;
 import com.debopam.llmcouncil.config.TestCatalogs;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.model.CouncilPolicy;
@@ -16,9 +17,9 @@ class CouncilPolicyResolverTest {
 
     @Test
     void resolvesPolicyFromProfileAndDepth() {
-        CouncilProfile profile = new CouncilProfile(
-                "local", "Local", false, DepthMode.BALANCED,
-                Map.of(DepthMode.QUICK, "local-quick", DepthMode.BALANCED, "local-balanced"));
+        CouncilProfile profile = TestModels.profile("local").displayName("Local")
+                .depth(DepthMode.QUICK, "local-quick")
+                .depth(DepthMode.BALANCED, "local-balanced").build();
         CouncilPolicy quick = policy("local-quick", "quick");
         CouncilPolicy balanced = policy("local-balanced", "balanced");
 
@@ -35,9 +36,8 @@ class CouncilPolicyResolverTest {
 
     @Test
     void usesProfileDefaultDepthWhenRequestDepthIsMissing() {
-        CouncilProfile profile = new CouncilProfile(
-                "local", "Local", false, DepthMode.BALANCED,
-                Map.of(DepthMode.BALANCED, "local-balanced"));
+        CouncilProfile profile = TestModels.profile("local").displayName("Local")
+                .depth(DepthMode.BALANCED, "local-balanced").build();
         CouncilPolicy balanced = policy("local-balanced", "balanced");
 
         CouncilPolicyResolver resolver = new CouncilPolicyResolver(TestCatalogs.holder(
@@ -59,7 +59,6 @@ class CouncilPolicyResolverTest {
     }
 
     private CouncilPolicy policy(String id, String protocolId) {
-        return new CouncilPolicy(id, protocolId, List.of("member"), "chair", "validator",
-                                 1, 0, false, true);
+        return TestModels.policy(id).protocol(protocolId).optionalValidator("validator").build();
     }
 }

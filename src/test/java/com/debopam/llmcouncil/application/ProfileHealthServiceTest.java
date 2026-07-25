@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.application;
 
+import com.debopam.llmcouncil.config.TestModels;
 import com.debopam.llmcouncil.api.dto.ProfileHealthResponse;
 import com.debopam.llmcouncil.config.TestCatalogs;
 import com.debopam.llmcouncil.domain.DepthMode;
@@ -23,17 +24,12 @@ class ProfileHealthServiceTest {
 
     @Test
     void reportsProfileRunnableWhenRequiredModelsAreHealthy() {
-        ModelRegistry registry = new ModelRegistry(
-                Map.of(
-                        "member", model("member", ModelRole.MEMBER),
-                        "chair", model("chair", ModelRole.CHAIR)),
+        ModelRegistry registry = TestModels.registry(
+                List.of(model("member", ModelRole.MEMBER), model("chair", ModelRole.CHAIR)),
                 Map.of());
-        CouncilProfile profile = new CouncilProfile(
-                "local", "Local", false, DepthMode.QUICK,
-                Map.of(DepthMode.QUICK, "policy"));
-        CouncilPolicy policy = new CouncilPolicy(
-                "policy", "quick", List.of("member"), "chair", null,
-                1, 0, false, true);
+        CouncilProfile profile = TestModels.profile("local").displayName("Local")
+                .defaultDepth(DepthMode.QUICK).depth(DepthMode.QUICK, "policy").build();
+        CouncilPolicy policy = TestModels.policy("policy").protocol("quick").build();
         ProfileHealthService service = new ProfileHealthService(
                 TestCatalogs.holder(registry, Map.of("local", profile), Map.of("policy", policy)),
                 List.of(new AlwaysHealthyChecker()));
@@ -46,7 +42,8 @@ class ProfileHealthServiceTest {
     }
 
     private ModelProfile model(String id, ModelRole role) {
-        return new ModelProfile(id, "mock", id, 100, 0.1, Duration.ofSeconds(1), role);
+        return TestModels.model(id).provider("mock").providerModelId(id).outputTokens(100)
+                         .temperature(0.1).timeout(Duration.ofSeconds(1)).role(role).build();
     }
 
     private static class AlwaysHealthyChecker implements ProviderHealthChecker {
