@@ -1,10 +1,13 @@
 package com.debopam.llmcouncil.api;
 
 import com.debopam.llmcouncil.api.dto.CatalogDiffResponse;
+import com.debopam.llmcouncil.api.dto.ConfigImportResponse;
+import com.debopam.llmcouncil.api.dto.ConfigSaveResponse;
 import com.debopam.llmcouncil.api.dto.ConfigSchemaResponse;
 import com.debopam.llmcouncil.api.dto.ValidationReportResponse;
 import com.debopam.llmcouncil.application.ConfigDraftService;
 import com.debopam.llmcouncil.application.ConfigSchemaService;
+import com.debopam.llmcouncil.application.ConfigWriteService;
 import com.debopam.llmcouncil.config.user.UserConfigCodec;
 import com.debopam.llmcouncil.config.user.UserConfigDocument;
 import com.debopam.llmcouncil.config.user.UserConfigDocumentException;
@@ -14,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -47,20 +51,27 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/council/config")
 public class ConfigController {
 
+    /** Filename offered when the configuration is downloaded. */
+    private static final String EXPORT_FILE_NAME = "council-user.yml";
+
     private final ConfigSchemaService schemaService;
     private final ConfigDraftService draftService;
+    private final ConfigWriteService writeService;
     private final UserConfigCodec codec;
 
     /**
      * @param schemaService generates the overlay schema
      * @param draftService  reads, validates, and previews configuration
+     * @param writeService  saves and exports configuration
      * @param codec         parses request bodies, refusing credentials first
      */
     public ConfigController(ConfigSchemaService schemaService,
                             ConfigDraftService draftService,
+                            ConfigWriteService writeService,
                             UserConfigCodec codec) {
         this.schemaService = schemaService;
         this.draftService = draftService;
+        this.writeService = writeService;
         this.codec = codec;
     }
 
@@ -103,6 +114,59 @@ public class ConfigController {
     @PostMapping(value = "/preview", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<CatalogDiffResponse> preview(@RequestBody(required = false) String body) {
         return ResponseEntity.ok(draftService.preview(codec.readJson(body)));
+    }
+
+    /**
+     * Save a proposed configuration, if it is clean.
+     *
+     * <p>Returns 200 whether or not anything was written, with {@code written}
+     * saying which. A refused save is a considered answer to a well-formed
+     * question — the same answer {@code POST /validate} would have given — and
+     * reporting it as an HTTP error would make a caller handle two shapes for one
+     * outcome. Only a body that cannot be read at all is a 400.
+     *
+     * <p>The saved configuration takes effect at the next restart, which is what
+     * {@code restartRequired} says. Nothing here swaps the running catalog.
+     *
+     * @param body the configuration to save, as JSON
+     * @return 200 OK with the outcome, written or refused
+     */
+    @PutMapping(value = "/draft", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ConfigSaveResponse> saveDraft(@RequestBody(required = false) String body) {
+        return ResponseEntity.ok(writeService.save(codec.readJson(body)));
+    }
+
+    /**
+     * Download the current configuration as YAML.
+     *
+     * <p>Re-rendered from the parsed document rather than streamed from disk, so
+     * an export carries exactly what the schema permits — which matters, because
+     * an export is the artefact people send each other.
+     *
+     * @return 200 OK with a YAML attachment
+     */
+    @GetMapping(value = "/export", produces = "application/yaml")
+    public ResponseEntity<String> export() {
+        return ResponseEntity.ok()
+                             .header("Content-Disposition",
+                                     "attachment; filename=\"" + EXPORT_FILE_NAME + "\"")
+                             .body(writeService.export());
+    }
+
+    /**
+     * Check a configuration someone else wrote. Writes nothing.
+     *
+     * <p>Deliberately separate from saving. An imported configuration is exactly
+     * the case where a user should see what they are taking on — which profiles it
+     * redefines, whether it weakens a guarantee — before it replaces their own.
+     *
+     * @param body the configuration as YAML
+     * @return 200 OK with the parsed document and what validating it found
+     */
+    @PostMapping(value = "/import", consumes = {"application/yaml", "text/yaml", "text/plain"})
+    public ResponseEntity<ConfigImportResponse> importConfig(@RequestBody(required = false) String body) {
+        UserConfigDocument document = codec.readYaml(body);
+        return ResponseEntity.ok(new ConfigImportResponse(document, draftService.validate(document)));
     }
 
     /**
