@@ -103,6 +103,15 @@ public class JdbcEventStore implements EventStore {
                           chatId, chatSeq);
     }
 
+    @Override
+    public void deleteSession(String sessionId) {
+        jdbc.update("DELETE FROM council_event WHERE session_id = ?", sessionId);
+        // The cached counter goes with the rows. Leaving it would keep issuing
+        // positions above a MAX(seq) that no longer exists, which is harmless
+        // but makes the numbers lie about how many events there have been.
+        sequences.remove(sessionId);
+    }
+
     /**
      * Allocate the next position in a session's sequence.
      *
