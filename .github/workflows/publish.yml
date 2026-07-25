@@ -1,0 +1,59 @@
+name: Publish to GitHub Packages
+
+# Publishing runs from a release, not from a push. A version that reaches the
+# registry cannot be replaced — GitHub Packages refuses a re-deploy of an
+# existing version rather than overwriting it — so cutting a release is the
+# deliberate act that should trigger it.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, e.g. 2.1.0"
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # server-id matches <distributionManagement> in the POM. setup-java
+      # writes the settings.xml server block from the two env vars below, so no
+      # credential is ever committed or echoed.
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: maven
+          server-id: github
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_TOKEN
+
+      # The suite is hermetic and takes under a minute. Publishing an artifact
+      # nobody has run the tests against is how a broken release reaches someone
+      # else's build.
+      - name: Test
+        run: mvn --batch-mode verify
+
+      - name: Set the release version
+        run: |
+          VERSION="${{ github.event.inputs.version || github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "Publishing version $VERSION"
+          mvn --batch-mode versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+
+      # -DskipTests because verify above already ran them; running the suite
+      # twice in one job buys nothing.
+      - name: Deploy
+        run: mvn --batch-mode deploy -DskipTests
+        env:
+          MAVEN_USERNAME: ${{ github.actor }}
+          MAVEN_TOKEN: ${{ secrets.GITHUB_TOKEN }}

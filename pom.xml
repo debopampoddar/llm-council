@@ -11,7 +11,35 @@
     <maven.compiler.release>25</maven.compiler.release>
     <spring.boot.version>3.5.0</spring.boot.version>
     <spring.ai.version>1.0.0</spring.ai.version>
+    <!-- Where `mvn deploy` publishes. Overridable so a fork or a private mirror
+         does not need the POM edited: -Dgithub.repository=owner/name -->
+    <github.repository>debopampoddar/llm-council</github.repository>
   </properties>
+
+  <!-- GitHub Packages. The id is matched against a <server> in settings.xml, so
+       it must stay in step with the credentials block documented in the README.
+
+       Note what publishing here does and does not imply. GitHub Packages
+       requires authentication to *download* as well as to publish, even for a
+       public package — unlike Maven Central, there is no anonymous read. That
+       is a cost for consumers and the reason to choose it deliberately rather
+       than by default.
+
+       A released version cannot be overwritten. Re-running deploy for a version
+       that already exists fails rather than replacing it, which is the correct
+       behaviour and the reason releases bump the version rather than reusing it. -->
+  <distributionManagement>
+    <repository>
+      <id>github</id>
+      <name>GitHub Packages</name>
+      <url>https://maven.pkg.github.com/${github.repository}</url>
+    </repository>
+    <snapshotRepository>
+      <id>github</id>
+      <name>GitHub Packages Snapshots</name>
+      <url>https://maven.pkg.github.com/${github.repository}</url>
+    </snapshotRepository>
+  </distributionManagement>
   <dependencyManagement>
     <dependencies>
       <dependency>
