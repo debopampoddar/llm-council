@@ -224,6 +224,64 @@ PATH=/Library/Java/JavaVirtualMachines/jdk-25.jdk/Contents/Home/bin:$PATH \
 mvn clean package
 ```
 
+## Publishing
+
+Releases go to GitHub Packages. The
+[publish workflow](.github/workflows/publish.yml) runs on a published release
+and needs no secret beyond the automatic `GITHUB_TOKEN` — cutting a release is
+the whole procedure.
+
+**A published version cannot be replaced.** GitHub Packages refuses a re-deploy
+of a version that already exists rather than overwriting it, so every release
+bumps the version; there is no republishing a fix under the same number.
+
+To publish by hand you need a personal access token with `write:packages`, in
+`~/.m2/settings.xml`. The `id` must be `github`, matching
+`<distributionManagement>` in the POM:
+
+```xml
+<settings>
+  <servers>
+    <server>
+      <id>github</id>
+      <username>YOUR_GITHUB_USERNAME</username>
+      <password>ghp_YOUR_TOKEN</password>
+    </server>
+  </servers>
+</settings>
+```
+
+Then:
+
+```bash
+mvn deploy
+```
+
+Never put that token in the POM or anywhere in this repository. It belongs in
+`~/.m2/settings.xml`, which is outside the working tree — the same rule the
+application itself follows for provider credentials.
+
+### Consuming the published artifact
+
+**GitHub Packages requires authentication to download as well as to publish**,
+even for a public package. There is no anonymous read, unlike Maven Central, so
+anyone depending on this needs a token with `read:packages` in their own
+`settings.xml` plus:
+
+```xml
+<repository>
+  <id>github</id>
+  <url>https://maven.pkg.github.com/debopampoddar/llm-council</url>
+</repository>
+```
+
+The published artifact is the **executable** jar produced by Spring Boot's
+`repackage` — the one you run with `java -jar`. Its dependencies are nested
+under `BOOT-INF/lib` rather than on a normal classpath, so it is a distribution
+format, not something to depend on as a library. Publishing a plain library jar
+alongside it would mean giving the fat jar a classifier and letting the thin one
+be the main artifact.
+
 ## Run
 
 ```bash
