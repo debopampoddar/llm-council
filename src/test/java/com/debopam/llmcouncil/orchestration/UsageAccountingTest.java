@@ -2,7 +2,7 @@ package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.api.dto.CouncilRunResponse;
 import com.debopam.llmcouncil.api.dto.UsageSummary;
-import com.debopam.llmcouncil.application.InMemoryEventPublisher;
+import com.debopam.llmcouncil.application.DefaultEventPublisher;
 import com.debopam.llmcouncil.application.RunRegistry;
 import com.debopam.llmcouncil.config.CouncilCatalog;
 import com.debopam.llmcouncil.config.TestCatalogs;
@@ -277,7 +277,7 @@ class UsageAccountingTest {
      * @return the completed context
      */
     private CouncilContext runFullProtocol(ModelRegistry registry) {
-        InMemoryEventPublisher events = new InMemoryEventPublisher();
+        DefaultEventPublisher events = new DefaultEventPublisher();
         ArtifactStore artifacts = new NoopArtifactStore();
         PromptBuilder promptBuilder = new PromptBuilder();
         StructuredOutputParser parser = new StructuredOutputParser(new ObjectMapper());

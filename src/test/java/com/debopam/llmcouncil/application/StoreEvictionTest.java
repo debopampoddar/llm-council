@@ -6,6 +6,7 @@ import com.debopam.llmcouncil.chat.ChatTurn;
 import com.debopam.llmcouncil.chat.InMemoryChatSessionStore;
 import com.debopam.llmcouncil.config.RetentionPolicy;
 import com.debopam.llmcouncil.config.RetentionSettings;
+import com.debopam.llmcouncil.domain.CouncilEvent;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.CouncilStatus;
 import com.debopam.llmcouncil.domain.DepthMode;
@@ -106,14 +107,18 @@ class StoreEvictionTest {
     }
 
     // ── Events
+    //
+    // Retention lives on the store rather than on the publisher, so these
+    // target InMemoryEventStore directly. The publisher above it only appends
+    // and fans out.
 
     @Test
     void aSessionsOldestEventsAreDroppedOnceItPassesThePerSessionCap() {
-        InMemoryEventPublisher events = new InMemoryEventPublisher(
+        InMemoryEventStore events = new InMemoryEventStore(
                 new RetentionPolicy(new RetentionSettings(500, 90, 5)), new RunRegistry());
 
         for (int i = 0; i < 8; i++) {
-            events.publish("s1", "GENERATE", "EVENT_" + i, null, Map.of());
+            events.append(event("s1", "EVENT_" + i));
         }
 
         assertEquals(5, events.history("s1").size());
@@ -126,21 +131,21 @@ class StoreEvictionTest {
     @Test
     void aRunUnderThePerSessionCapKeepsEveryEvent() {
         // Positive control: the trim has to be capable of not firing.
-        InMemoryEventPublisher events = new InMemoryEventPublisher(
+        InMemoryEventStore events = new InMemoryEventStore(
                 new RetentionPolicy(new RetentionSettings(500, 90, 5)), new RunRegistry());
 
-        events.publish("s1", "GENERATE", "ONLY", null, Map.of());
+        events.append(event("s1", "ONLY"));
 
         assertEquals(1, events.history("s1").size());
     }
 
     @Test
     void wholeSessionsAreEvictedOnceTheEventStorePassesItsCap() {
-        InMemoryEventPublisher events = new InMemoryEventPublisher(policy(2, 90), new RunRegistry());
+        InMemoryEventStore events = new InMemoryEventStore(policy(2, 90), new RunRegistry());
 
-        events.publish("s1", "GENERATE", "E", null, Map.of());
-        events.publish("s2", "GENERATE", "E", null, Map.of());
-        events.publish("s3", "GENERATE", "E", null, Map.of());
+        events.append(event("s1", "E"));
+        events.append(event("s2", "E"));
+        events.append(event("s3", "E"));
 
         assertEquals(2, events.retainedSessionCount());
         assertTrue(events.history("s1").isEmpty(), "the least recently active session goes");
@@ -150,12 +155,12 @@ class StoreEvictionTest {
     @Test
     void anInFlightRunKeepsItsEventHistoryWhileTheStoreEvictsAroundIt() {
         RunRegistry runs = new RunRegistry();
-        InMemoryEventPublisher events = new InMemoryEventPublisher(policy(1, 90), runs);
+        InMemoryEventStore events = new InMemoryEventStore(policy(1, 90), runs);
 
-        events.publish("live", "GENERATE", "E", null, Map.of());
+        events.append(event("live", "E"));
         runs.register("live", inFlightContext());
-        events.publish("done", "GENERATE", "E", null, Map.of());
-        events.publish("newest", "GENERATE", "E", null, Map.of());
+        events.append(event("done", "E"));
+        events.append(event("newest", "E"));
 
         assertFalse(events.history("live").isEmpty(),
                     "a run still executing keeps its history: a timeline that loses its earlier "
@@ -258,6 +263,10 @@ class StoreEvictionTest {
     private CouncilSession session(String id, CouncilStatus status, Instant updatedAt) {
         return new CouncilSession(id, "question", null, DepthMode.QUICK, "mock",
                                   null, null, status, updatedAt, updatedAt, null, null);
+    }
+
+    private CouncilEvent event(String sessionId, String type) {
+        return CouncilEvent.of(sessionId, "GENERATE", type, null, Map.of());
     }
 
     private ChatSession chat(String id) {
