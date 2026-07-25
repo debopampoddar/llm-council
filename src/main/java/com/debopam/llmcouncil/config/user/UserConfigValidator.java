@@ -42,50 +42,31 @@ import java.util.regex.Pattern;
 @Component
 public class UserConfigValidator {
 
-    // Must start and end alphanumeric: ids become map keys and URL path
-    // segments, where a trailing hyphen is a nuisance rather than a choice.
-    private static final Pattern ID_PATTERN = Pattern.compile("^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$");
-
-    /** Providers a user may bind to. Adding a provider needs Java, not config. */
-    private static final Set<String> ALLOWED_PROVIDERS = Set.of(
-            "ollama", "openai", "anthropic", "gemini", "openai-compatible");
-
-    private static final int MIN_OUTPUT_TOKENS = 64;
-    private static final int MAX_OUTPUT_TOKENS = 32_000;
-    private static final int MIN_TIMEOUT_SECONDS = 5;
-    private static final int MAX_TIMEOUT_SECONDS = 900;
-    private static final int MIN_CONTEXT_TOKENS = 1_024;
-    private static final int MAX_CONTEXT_TOKENS = 1_000_000;
-    private static final int MAX_MEMBERS = 8;
-    private static final int MIN_CONCURRENT_RUNS = 1;
-    private static final int MAX_CONCURRENT_RUNS = 8;
-    private static final int MIN_RECENT_TURNS = 1;
-    private static final int MAX_RECENT_TURNS = 20;
-    private static final int MAX_RETRY_ATTEMPTS = 5;
-
-    // Retention bounds. The lower bounds are what stop a user turning eviction
-    // into deletion: a maxSessions of 0 would evict every entry the instant it
-    // was written, so a finished run would lose its own result. The upper bounds
-    // are what stop a user turning eviction off by writing a number so large it
-    // never fires — which is the unbounded growth this feature exists to end.
-    private static final int MIN_MAX_SESSIONS = 10;
-    private static final int MAX_MAX_SESSIONS = 100_000;
-    private static final int MIN_MAX_AGE_DAYS = 1;
-    private static final int MAX_MAX_AGE_DAYS = 3_650;
-    private static final int MIN_MAX_EVENTS_PER_SESSION = 100;
-    private static final int MAX_MAX_EVENTS_PER_SESSION = 1_000_000;
-    private static final long MIN_RETRY_DELAY_MS = 100L;
-    private static final long MAX_RETRY_DELAY_MS = 30_000L;
-
-    /**
-     * Upper bound on a per-1,000-token price, in USD.
-     *
-     * <p>No provider charges anywhere near this. The bound exists to catch a
-     * misplaced decimal point or a per-million figure pasted into a per-thousand
-     * field, either of which would inflate every reported cost by three orders
-     * of magnitude and make the spend signal actively misleading.
-     */
-    private static final double MAX_COST_PER_1K_TOKENS = 1000.0;
+    // Bounds live in ConfigLimits so the configuration schema served to the UI
+    // and the checks applied here cannot describe different rules.
+    private static final Pattern ID_PATTERN = ConfigLimits.ID_PATTERN;
+    private static final Set<String> ALLOWED_PROVIDERS = ConfigLimits.ALLOWED_PROVIDERS;
+    private static final int MIN_OUTPUT_TOKENS = ConfigLimits.MIN_OUTPUT_TOKENS;
+    private static final int MAX_OUTPUT_TOKENS = ConfigLimits.MAX_OUTPUT_TOKENS;
+    private static final int MIN_TIMEOUT_SECONDS = ConfigLimits.MIN_TIMEOUT_SECONDS;
+    private static final int MAX_TIMEOUT_SECONDS = ConfigLimits.MAX_TIMEOUT_SECONDS;
+    private static final int MIN_CONTEXT_TOKENS = ConfigLimits.MIN_CONTEXT_TOKENS;
+    private static final int MAX_CONTEXT_TOKENS = ConfigLimits.MAX_CONTEXT_TOKENS;
+    private static final int MAX_MEMBERS = ConfigLimits.MAX_MEMBERS;
+    private static final int MIN_CONCURRENT_RUNS = ConfigLimits.MIN_CONCURRENT_RUNS;
+    private static final int MAX_CONCURRENT_RUNS = ConfigLimits.MAX_CONCURRENT_RUNS;
+    private static final int MIN_RECENT_TURNS = ConfigLimits.MIN_RECENT_TURNS;
+    private static final int MAX_RECENT_TURNS = ConfigLimits.MAX_RECENT_TURNS;
+    private static final int MAX_RETRY_ATTEMPTS = ConfigLimits.MAX_RETRY_ATTEMPTS;
+    private static final int MIN_MAX_SESSIONS = ConfigLimits.MIN_MAX_SESSIONS;
+    private static final int MAX_MAX_SESSIONS = ConfigLimits.MAX_MAX_SESSIONS;
+    private static final int MIN_MAX_AGE_DAYS = ConfigLimits.MIN_MAX_AGE_DAYS;
+    private static final int MAX_MAX_AGE_DAYS = ConfigLimits.MAX_MAX_AGE_DAYS;
+    private static final int MIN_MAX_EVENTS_PER_SESSION = ConfigLimits.MIN_MAX_EVENTS_PER_SESSION;
+    private static final int MAX_MAX_EVENTS_PER_SESSION = ConfigLimits.MAX_MAX_EVENTS_PER_SESSION;
+    private static final long MIN_RETRY_DELAY_MS = ConfigLimits.MIN_RETRY_DELAY_MS;
+    private static final long MAX_RETRY_DELAY_MS = ConfigLimits.MAX_RETRY_DELAY_MS;
+    private static final double MAX_COST_PER_1K_TOKENS = ConfigLimits.MAX_COST_PER_1K_TOKENS;
 
     /**
      * Validate an overlay against the built-in catalog.
@@ -168,9 +149,12 @@ public class UserConfigValidator {
                        0.0, MAX_COST_PER_1K_TOKENS);
             checkRange(modelIssues, key, "costPer1kOutputTokens", model.costPer1kOutputTokens(),
                        0.0, MAX_COST_PER_1K_TOKENS);
-            if (model.temperature() != null && (model.temperature() < 0.0 || model.temperature() > 2.0)) {
+            if (model.temperature() != null
+                && (model.temperature() < ConfigLimits.MIN_TEMPERATURE
+                    || model.temperature() > ConfigLimits.MAX_TEMPERATURE)) {
                 modelIssues.add(error(key, "temperature",
-                        "temperature must be between 0.0 and 2.0, was " + model.temperature() + ".", null));
+                        "temperature must be between " + ConfigLimits.MIN_TEMPERATURE + " and "
+                        + ConfigLimits.MAX_TEMPERATURE + ", was " + model.temperature() + ".", null));
             }
             if (model.retryBaseDelayMs() != null
                 && (model.retryBaseDelayMs() < MIN_RETRY_DELAY_MS || model.retryBaseDelayMs() > MAX_RETRY_DELAY_MS)) {
@@ -567,9 +551,11 @@ public class UserConfigValidator {
                         "Profile '" + id + "' is a built-in test profile and cannot be overridden.",
                         "Choose a different id."));
             }
-            if (!isBlank(profile.displayName()) && profile.displayName().length() > 80) {
+            if (!isBlank(profile.displayName())
+                && profile.displayName().length() > ConfigLimits.MAX_DISPLAY_NAME_LENGTH) {
                 profileIssues.add(error(key, "displayName",
-                        "displayName must be 80 characters or fewer.", null));
+                        "displayName must be " + ConfigLimits.MAX_DISPLAY_NAME_LENGTH
+                        + " characters or fewer.", null));
             }
 
             DepthMode defaultDepth = null;
