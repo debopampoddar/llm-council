@@ -107,10 +107,53 @@ public class AdvisorEnvironmentService {
                                                  : existing);
         }
 
+        List<CandidateModel> extractionModels = extractionModels(installedOllamaTags);
         return new AdvisorEnvironment(
-                installedOllamaTags, providers, candidates,
-                defaultExtractionModel(builtIn, candidates, installedOllamaTags),
+                installedOllamaTags, providers, candidates, extractionModels,
+                defaultExtractionModel(builtIn, extractionModels, installedOllamaTags),
                 Instant.now());
+    }
+
+    /**
+     * Models that may be asked to read a description.
+     *
+     * <p>Read from the <b>active</b> catalog, unlike the synthesis candidates
+     * above. Extraction happens now, against the configuration that is running,
+     * so a model the user defined by hand is as usable for it as a shipped one —
+     * whereas a synthesis candidate has to survive the overlay being replaced.
+     *
+     * <p>This list is also the allowlist the submitted model id is checked
+     * against, which is what stops a description redirecting extraction at a
+     * model the user was never offered.
+     *
+     * @param installedOllamaTags the local runtime's models
+     * @return callable, non-mock models, in id order
+     */
+    private List<CandidateModel> extractionModels(List<String> installedOllamaTags) {
+        ModelRegistry registry = catalogHolder.get().modelRegistry();
+        List<CandidateModel> usable = new ArrayList<>();
+
+        for (String id : new TreeSet<>(registry.modelIds())) {
+            ModelProfile model = registry.model(id);
+            ClientAvailability availability = ClientAvailability.of(registry.clientForModel(id));
+            String provider = model.provider() == null ? "" : model.provider().toLowerCase(Locale.ROOT);
+
+            if (!availability.callable() || "mock".equals(provider)) {
+                continue;
+            }
+            boolean local = AdvisorEnvironment.LOCAL_PROVIDER.equals(provider);
+            if (local && installedOllamaTags.stream()
+                                            .noneMatch(tag -> sameTag(tag, model.providerModelId()))) {
+                continue;
+            }
+            usable.add(new CandidateModel(
+                    model.id(), provider, model.providerModelId(), model.modelFamily(), false,
+                    model.role(), model.councilRole(), model.contextWindowTokens(), availability,
+                    catalogHolder.builtIn().modelRegistry().findModel(id).isPresent()
+                    ? CandidateModel.Source.BUILT_IN
+                    : CandidateModel.Source.USER));
+        }
+        return usable;
     }
 
     /**
@@ -126,27 +169,27 @@ public class AdvisorEnvironmentService {
      * pre-selected cloud model turns that into a click-through.
      *
      * @param builtIn    the shipped catalog
-     * @param candidates every built-in model with its availability
+     * @param usable     the models extraction may use
      * @param installed  the local runtime's models
      * @return the model id to pre-select, or null when nothing local qualifies
      */
-    private String defaultExtractionModel(CouncilCatalog builtIn, List<CandidateModel> candidates,
+    private String defaultExtractionModel(CouncilCatalog builtIn, List<CandidateModel> usable,
                                           List<String> installed) {
         Map<String, CandidateModel> byId = new LinkedHashMap<>();
-        candidates.forEach(candidate -> byId.put(candidate.id(), candidate));
+        usable.forEach(candidate -> byId.put(candidate.id(), candidate));
 
         for (String id : preferredExtractionIds(builtIn)) {
             CandidateModel candidate = byId.get(id);
-            if (usableForExtraction(candidate, installed)) {
+            if (candidate != null && candidate.local()) {
                 return candidate.id();
             }
         }
-        return candidates.stream()
-                         .filter(candidate -> usableForExtraction(candidate, installed))
-                         .map(CandidateModel::id)
-                         .sorted()
-                         .findFirst()
-                         .orElse(null);
+        return usable.stream()
+                     .filter(CandidateModel::local)
+                     .map(CandidateModel::id)
+                     .sorted()
+                     .findFirst()
+                     .orElse(null);
     }
 
     /** The local profile's chair, then its members, in the order it lists them. */
@@ -166,13 +209,6 @@ public class AdvisorEnvironmentService {
         preferred.add(policy.chairModelId());
         preferred.addAll(policy.memberModelIds());
         return preferred;
-    }
-
-    private boolean usableForExtraction(CandidateModel candidate, List<String> installed) {
-        return candidate != null
-               && candidate.local()
-               && candidate.availability().callable()
-               && installed.stream().anyMatch(tag -> sameTag(tag, candidate.providerModelId()));
     }
 
     private boolean sameTag(String left, String right) {

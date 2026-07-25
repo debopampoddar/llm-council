@@ -668,7 +668,11 @@ class ConfigSynthesizerTest {
     private AdvisorEnvironment environment(List<String> installed,
                                            Map<String, ClientAvailability> providers,
                                            List<CandidateModel> models) {
-        return new AdvisorEnvironment(installed, providers, models, "local-chair", Instant.EPOCH);
+        // Extraction candidates are irrelevant to synthesis and deliberately left
+        // empty here: if selection ever started reading them, these tests would
+        // notice by producing a different council.
+        return new AdvisorEnvironment(installed, providers, models, List.of(), "local-chair",
+                                      Instant.EPOCH);
     }
 
     /** The shipped catalog, with cloud models unavailable unless stated otherwise. */
