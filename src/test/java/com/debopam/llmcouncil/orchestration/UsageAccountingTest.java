@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.orchestration;
 
+import com.debopam.llmcouncil.config.TestModels;
 import com.debopam.llmcouncil.api.dto.CouncilRunResponse;
 import com.debopam.llmcouncil.api.dto.UsageSummary;
 import com.debopam.llmcouncil.application.DefaultEventPublisher;
@@ -214,11 +215,8 @@ class UsageAccountingTest {
 
     @Test
     void aMixOfPricedAndUnpricedModelsIsFlaggedAsPartial() {
-        ModelRegistry registry = new ModelRegistry(
-                Map.of("priced", pricedModel("priced", 0.01, 0.02),
-                       "free", pricedModel("free", 0.0, 0.0)),
-                Map.of("priced", new MockModelClient("priced"),
-                       "free", new MockModelClient("free")));
+        ModelRegistry registry = TestModels.registry(
+                pricedModel("priced", 0.01, 0.02), pricedModel("free", 0.0, 0.0));
         CouncilContext ctx = contextWith(registry);
         ctx.recordUsage("priced", StageType.GENERATE, 1000L, 1000L, null);
         ctx.recordUsage("free", StageType.GENERATE, 1000L, 1000L, null);
@@ -308,11 +306,12 @@ class UsageAccountingTest {
 
         CouncilSession session = CouncilSession.create("usage-session",
                 "How should we account for tokens?", null, DepthMode.RIGOROUS, "mock");
-        CouncilProfile profile = new CouncilProfile("mock", "Mock", true,
-                DepthMode.RIGOROUS, Map.of(DepthMode.RIGOROUS, "usage-policy"));
-        CouncilPolicy policy = new CouncilPolicy("usage-policy", "full",
-                List.of("mock-member-1", "mock-member-2"), "mock-chair",
-                "mock-validator", 1, 0, false, true);
+        CouncilProfile profile = TestModels.profile("mock").displayName("Mock").testOnly(true)
+                .defaultDepth(DepthMode.RIGOROUS)
+                .depth(DepthMode.RIGOROUS, "usage-policy").build();
+        CouncilPolicy policy = TestModels.policy("usage-policy").protocol("full")
+                .members("mock-member-1", "mock-member-2").chair("mock-chair")
+                .optionalValidator("mock-validator").build();
 
         return new ProtocolOrchestrator(protocols, executors, events, new RunRegistry())
                 .run(session, profile, policy, catalogFor(registry));
@@ -325,28 +324,28 @@ class UsageAccountingTest {
             models.put(id, pricedModel(id, inputCost, outputCost));
             clients.put(id, new MockModelClient(id));
         }
-        return new ModelRegistry(models, clients);
+        return TestModels.registry(List.copyOf(models.values()), clients);
     }
 
     private ModelProfile pricedModel(String id, double inputCost, double outputCost) {
-        return new ModelProfile(id, "mock", "mock", 800, 0.1, Duration.ofSeconds(30),
-                                ModelRole.MEMBER, CouncilRole.PROPOSER, "mock", 8192,
-                                inputCost, outputCost);
+        return TestModels.model(id).provider("mock").providerModelId("mock")
+                         .outputTokens(800).temperature(0.1).timeout(Duration.ofSeconds(30))
+                         .family("mock").contextWindow(8192)
+                         .priced(inputCost, outputCost).build();
     }
 
     /** A context with one priced model and no run behind it, for arithmetic only. */
     private CouncilContext pricedContext(double inputCost, double outputCost) {
-        return contextWith(new ModelRegistry(
-                Map.of("priced", pricedModel("priced", inputCost, outputCost)),
-                Map.of("priced", new MockModelClient("priced"))));
+        return contextWith(TestModels.registry(pricedModel("priced", inputCost, outputCost)));
     }
 
     /** A context with no catalog binding at all: tokens are known, prices are not. */
     private CouncilContext bareContext() {
         return new CouncilContext(
                 CouncilSession.create("s", "q", null, DepthMode.QUICK, "mock"),
-                new CouncilProfile("mock", "Mock", true, DepthMode.QUICK, Map.of()),
-                new CouncilPolicy("p", "proto", List.of("m1"), "m1", null, 1, 0, false, true),
+                TestModels.profile("mock").displayName("Mock").testOnly(true)
+                          .defaultDepth(DepthMode.QUICK).build(),
+                TestModels.policy("p").protocol("proto").members("m1").chair("m1").build(),
                 new ProtocolDefinition("proto", "proto",
                                        List.of(StageType.GENERATE, StageType.SYNTHESIZE), Map.of()));
     }
@@ -354,8 +353,9 @@ class UsageAccountingTest {
     private CouncilContext contextWith(ModelRegistry registry) {
         return new CouncilContext(
                 CouncilSession.create("s", "q", null, DepthMode.QUICK, "mock"),
-                new CouncilProfile("mock", "Mock", true, DepthMode.QUICK, Map.of()),
-                new CouncilPolicy("p", "proto", List.of("priced"), "priced", null, 1, 0, false, true),
+                TestModels.profile("mock").displayName("Mock").testOnly(true)
+                          .defaultDepth(DepthMode.QUICK).build(),
+                TestModels.policy("p").protocol("proto").members("priced").chair("priced").build(),
                 new ProtocolDefinition("proto", "proto",
                                        List.of(StageType.GENERATE, StageType.SYNTHESIZE), Map.of()),
                 catalogFor(registry));

@@ -34,12 +34,12 @@ public final class TestCatalogs {
      */
     public static CouncilCatalogHolder holder(CouncilRuntimeSettings runtime) {
         return new CouncilCatalogHolder(
-                catalog(new ModelRegistry(Map.of(), Map.of()), Map.of(), Map.of(), Map.of(), runtime));
+                catalog(TestModels.registry(), Map.of(), Map.of(), Map.of(), runtime));
     }
 
     public static CouncilCatalogHolder holder(Map<String, CouncilProfile> profiles,
                                               Map<String, CouncilPolicy> policies) {
-        return holder(new ModelRegistry(Map.of(), Map.of()), profiles, policies, Map.of());
+        return holder(TestModels.registry(), profiles, policies, Map.of());
     }
 
     /**

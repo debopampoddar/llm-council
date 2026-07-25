@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.orchestration;
 
+import com.debopam.llmcouncil.config.TestModels;
 import com.debopam.llmcouncil.api.dto.CouncilRunResponse;
 import com.debopam.llmcouncil.config.CouncilCatalogHolder;
 import com.debopam.llmcouncil.config.user.IntegrityAssessment;
@@ -150,11 +151,11 @@ class RunIntegrityReportingTest {
 
     private CouncilRunResponse response(ProtocolDefinition protocol) {
         CouncilSession session = CouncilSession.create("s", "q", null, DepthMode.RIGOROUS, "mock");
-        CouncilProfile profile = new CouncilProfile("mock", "Mock", true, DepthMode.RIGOROUS,
-                                                    Map.of(DepthMode.RIGOROUS, "mock-rigorous"));
-        CouncilPolicy policy = new CouncilPolicy("mock-rigorous", protocol.id(),
-                                                 List.of("mock-member"), "mock-chair", null,
-                                                 1, 0, false, true);
+        CouncilProfile profile = TestModels.profile("mock").displayName("Mock").testOnly(true)
+                .defaultDepth(DepthMode.RIGOROUS)
+                .depth(DepthMode.RIGOROUS, "mock-rigorous").build();
+        CouncilPolicy policy = TestModels.policy("mock-rigorous").protocol(protocol.id())
+                .members("mock-member").chair("mock-chair").build();
         CouncilContext ctx = new CouncilContext(session, profile, policy, protocol);
         return CouncilRunResponse.from("s", ctx);
     }

@@ -1,5 +1,7 @@
 package com.debopam.llmcouncil.model;
 
+import com.debopam.llmcouncil.config.TestModels;
+
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 
@@ -83,7 +85,8 @@ class OllamaProviderHealthCheckerTest {
     }
 
     private ModelProfile model(String providerModelId) {
-        return new ModelProfile("local-llama3", "ollama", providerModelId,
-                                1000, 0.2, Duration.ofSeconds(30), ModelRole.MEMBER);
+        return TestModels.model("local-llama3").providerModelId(providerModelId)
+                         .outputTokens(1000).temperature(0.2)
+                         .timeout(Duration.ofSeconds(30)).build();
     }
 }

@@ -1,5 +1,7 @@
 package com.debopam.llmcouncil.model;
 
+import com.debopam.llmcouncil.config.TestModels;
+
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -71,8 +73,8 @@ class ModelFamilyIdentityTest {
     }
 
     private ModelProfile model(String id, String family) {
-        return new ModelProfile(id, "ollama", "llama3.1:8b", 1000, 0.3,
-                                Duration.ofSeconds(60), ModelRole.CHAIR,
-                                CouncilRole.SYNTHESIZER, family);
+        return TestModels.model(id).providerModelId("llama3.1:8b").outputTokens(1000)
+                         .role(ModelRole.CHAIR).councilRole(CouncilRole.SYNTHESIZER)
+                         .family(family).build();
     }
 }

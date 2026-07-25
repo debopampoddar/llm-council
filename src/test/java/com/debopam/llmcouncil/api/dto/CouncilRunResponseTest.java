@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.api.dto;
 
+import com.debopam.llmcouncil.config.TestModels;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.model.CouncilPolicy;
@@ -66,11 +67,11 @@ class CouncilRunResponseTest {
     private CouncilContext context() {
         CouncilSession session = CouncilSession.create("session-1", "q", null,
                                                        DepthMode.RIGOROUS, "local");
-        CouncilProfile profile = new CouncilProfile("local", "Local", false, DepthMode.RIGOROUS,
-                                                    Map.of(DepthMode.RIGOROUS, "local-rigorous"));
-        CouncilPolicy policy = new CouncilPolicy("local-rigorous", "rigorous",
-                                                 List.of("member-a", "member-b"), "chair", null,
-                                                 1, 0, false, true);
+        CouncilProfile profile = TestModels.profile("local").displayName("Local")
+                .defaultDepth(DepthMode.RIGOROUS)
+                .depth(DepthMode.RIGOROUS, "local-rigorous").build();
+        CouncilPolicy policy = TestModels.policy("local-rigorous").protocol("rigorous")
+                .members("member-a", "member-b").chair("chair").build();
         ProtocolDefinition protocol = new ProtocolDefinition("rigorous", "Rigorous",
                 List.of(StageType.GENERATE, StageType.DEBATE, StageType.SYNTHESIZE), Map.of());
         return new CouncilContext(session, profile, policy, protocol);
