@@ -26,4 +26,17 @@ public interface ArtifactStore {
      * @throws IllegalArgumentException if the path escapes the session directory
      */
     Optional<String> readArtifact(String sessionId, String relativePath);
+
+    /**
+     * Remove everything written for one session.
+     *
+     * <p>Durability moved unbounded growth from RAM to disk; it did not remove
+     * it, and artifacts are the largest part of what a run leaves behind. This
+     * is called only by the retention sweep, only for a session it has just
+     * decided to evict.
+     *
+     * @param sessionId the session whose artifacts to delete
+     * @return {@code true} if anything was removed
+     */
+    boolean deleteSession(String sessionId);
 }

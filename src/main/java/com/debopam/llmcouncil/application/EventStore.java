@@ -50,4 +50,15 @@ public interface EventStore {
      * @return the chat's council events after that position, in position order
      */
     List<CouncilEvent> sinceInChat(String chatId, long chatSeq);
+
+    /**
+     * Remove one session's events.
+     *
+     * <p>Called when the retention sweep evicts the session itself. Events
+     * outliving their session are unreachable — every read here is scoped to a
+     * session — so they would be pure accumulation.
+     *
+     * @param sessionId the session whose events to delete
+     */
+    void deleteSession(String sessionId);
 }

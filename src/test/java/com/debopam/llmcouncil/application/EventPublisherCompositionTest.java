@@ -128,6 +128,10 @@ class EventPublisherCompositionTest {
         public List<CouncilEvent> sinceInChat(String chatId, long chatSeq) {
             return List.of();
         }
+
+        @Override
+        public void deleteSession(String sessionId) {
+        }
     }
 
     private void closeQuietly(AutoCloseable subscription) {
