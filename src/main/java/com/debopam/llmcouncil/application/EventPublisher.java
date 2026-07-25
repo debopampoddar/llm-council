@@ -9,9 +9,14 @@ import java.util.function.Consumer;
 /**
  * Publishes and replays council execution events.
  *
- * <p>The first implementation is in-memory, but callers depend on the replay
- * contract rather than log output. That makes it straightforward to replace
- * this with a database-backed event store later.
+ * <p>This is now a facade over two separate jobs — {@link EventStore} keeps and
+ * replays events, {@link EventBroker} hands them to whoever is streaming. It
+ * survives as its own interface because fourteen classes take one, and none of
+ * them care which half they are using.
+ *
+ * <p>{@link DefaultEventPublisher} is the only implementation. Swapping the
+ * store underneath it is what makes an event history durable; the broker stays
+ * in memory either way.
  */
 public interface EventPublisher {
     CouncilEvent publish(String sessionId, String stage, String eventType,

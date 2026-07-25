@@ -1,4 +1,5 @@
 package com.debopam.llmcouncil.application;
+
 import com.debopam.llmcouncil.config.CouncilCatalogHolder;
 import com.debopam.llmcouncil.config.RetentionPolicy;
 import com.debopam.llmcouncil.config.RetentionSettings;
@@ -7,37 +8,37 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.Consumer;
 
 /**
- * In-memory event store plus logger.
+ * In-memory event history.
  *
- * <p>This gives the API a replayable event history during local development.
- * It is still process-local; production persistence should swap this component
- * for a durable implementation without changing stage executors.
+ * <p>Process-local: events do not survive a restart. The replay contract is
+ * what callers depend on, not where the events live.
  *
  * <p><b>Retention.</b> This is the highest-cardinality store in the process —
- * dozens of events per run — and it previously grew for the life of the
- * application with no eviction at all. Two caps apply now, answering different
- * questions: {@code maxEventsPerSession} bounds one pathological run, while
+ * dozens of events per run — and it once grew for the life of the application
+ * with no eviction at all. Two caps apply, answering different questions:
+ * {@code maxEventsPerSession} bounds one pathological run, while
  * {@code maxSessions} and {@code maxAgeDays} bound the accumulation of ordinary
  * ones. A session whose run is still in flight is never evicted whatever the
  * bounds say — a timeline that loses its earlier stages mid-run does not read as
  * broken, it reads as stages that never happened.
  */
 @Component
-public class InMemoryEventPublisher implements EventPublisher {
-    private static final Logger log = LoggerFactory.getLogger(InMemoryEventPublisher.class);
+public class InMemoryEventStore implements EventStore {
+
+    private static final Logger log = LoggerFactory.getLogger(InMemoryEventStore.class);
+
     private final Map<String, List<CouncilEvent>> eventsBySession = new ConcurrentHashMap<>();
-    private final Map<String, List<Consumer<CouncilEvent>>> subscribersBySession = new ConcurrentHashMap<>();
     // Last event time per session, so eviction can order by recency without
-    // walking every session's event list on every publish.
+    // walking every session's event list on every append.
     private final Map<String, Instant> lastActivity = new ConcurrentHashMap<>();
 
     private final RetentionPolicy retention;
@@ -49,7 +50,7 @@ public class InMemoryEventPublisher implements EventPublisher {
      * @param runs          identifies runs still in flight, which are never evicted
      */
     @Autowired
-    public InMemoryEventPublisher(CouncilCatalogHolder catalogHolder, RunRegistry runs) {
+    public InMemoryEventStore(CouncilCatalogHolder catalogHolder, RunRegistry runs) {
         this(new RetentionPolicy(catalogHolder.get().runtime().retention()), runs);
     }
 
@@ -59,7 +60,7 @@ public class InMemoryEventPublisher implements EventPublisher {
      * @param retention the bounds to enforce
      * @param runs      the registry of in-flight runs
      */
-    public InMemoryEventPublisher(RetentionPolicy retention, RunRegistry runs) {
+    public InMemoryEventStore(RetentionPolicy retention, RunRegistry runs) {
         this.retention = retention;
         this.runs = runs;
     }
@@ -71,42 +72,24 @@ public class InMemoryEventPublisher implements EventPublisher {
      * <p>There is deliberately no constructor that switches eviction off:
      * unbounded growth is the defect this replaced, not a mode.
      */
-    public InMemoryEventPublisher() {
+    public InMemoryEventStore() {
         this(new RetentionPolicy(RetentionSettings.DEFAULTS), new RunRegistry());
     }
 
     @Override
-    public CouncilEvent publish(String sessionId, String stage, String eventType,
-                                String modelId, Map<String, Object> metadata) {
-        CouncilEvent event = CouncilEvent.of(sessionId, stage, eventType, modelId, metadata);
-        List<CouncilEvent> events =
-                eventsBySession.computeIfAbsent(sessionId, ignored -> new CopyOnWriteArrayList<>());
+    public CouncilEvent append(CouncilEvent event) {
+        List<CouncilEvent> events = eventsBySession.computeIfAbsent(
+                event.sessionId(), ignored -> new CopyOnWriteArrayList<>());
         events.add(event);
-        lastActivity.put(sessionId, event.occurredAt());
+        lastActivity.put(event.sessionId(), event.occurredAt());
         trim(events);
         evictOldSessions();
-        subscribersBySession.getOrDefault(sessionId, List.of())
-                .forEach(listener -> listener.accept(event));
-        log.info("[{}] {}/{} model={} meta={}", sessionId, stage, eventType, modelId, metadata);
         return event;
     }
 
     @Override
     public List<CouncilEvent> history(String sessionId) {
         return List.copyOf(eventsBySession.getOrDefault(sessionId, new ArrayList<>()));
-    }
-
-    @Override
-    public AutoCloseable subscribe(String sessionId, Consumer<CouncilEvent> listener) {
-        List<Consumer<CouncilEvent>> listeners =
-                subscribersBySession.computeIfAbsent(sessionId, ignored -> new CopyOnWriteArrayList<>());
-        listeners.add(listener);
-        return () -> {
-            listeners.remove(listener);
-            if (listeners.isEmpty()) {
-                subscribersBySession.remove(sessionId, listeners);
-            }
-        };
     }
 
     /** @return how many sessions currently have retained history */
@@ -132,7 +115,7 @@ public class InMemoryEventPublisher implements EventPublisher {
     /**
      * Evict whole sessions past the size or age bound.
      *
-     * <p>Run on every publish rather than on a timer. The store is capped at a
+     * <p>Run on every append rather than on a timer. The store is capped at a
      * few hundred entries, so the sweep costs microseconds beside the model call
      * that produced the event, and the bound then holds continuously rather than
      * up to an hour late.
