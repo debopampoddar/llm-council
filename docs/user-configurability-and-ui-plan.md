@@ -1101,7 +1101,7 @@ Do not attempt sub-stage resume. If `GENERATE` fanned out to five models and die
 >
 > The **Providers panel** (§8.2, last bullet) is **not** part of 3B — it is read-only, implements D2, and ships with 3A or Phase 5's environment step.
 
-### 8.1 Phase 3A — New endpoints (`api/ConfigController.java`, `/api/council/config`)
+### 8.1 Phase 3A — New endpoints (`api/ConfigController.java`, `/api/council/config`) ✅ IMPLEMENTED
 
 | Method | Path | Body → Response | Notes |
 |---|---|---|---|
@@ -1114,6 +1114,19 @@ Do not attempt sub-stage resume. If `GENERATE` fanned out to five models and die
 | POST | `/import` | YAML → `ValidationReportResponse` | Validate-only; the user still confirms before `PUT /draft`. |
 
 The `/schema` endpoint matters: it keeps the clamp table in exactly one place. If the UI hard-codes ranges, they will drift from the validator within one release.
+
+#### Deviations in the delivered 3A
+
+Recorded so the next phase does not rediscover them.
+
+1. **`CouncilCatalogHolder` now keeps two snapshots.** `get()` is the running catalog; `builtIn()` is the shipped one before the overlay was merged. Validation and preview resolve against `builtIn()`. Against the running catalog, a draft that dropped one of its own models would still resolve every policy referencing it — the model is present because the *current* overlay put it there — and the break would surface at the next restart rather than in the form. Phase 4's `swap` must replace the active reference only and leave `builtIn()` alone.
+2. **Bounds moved to `config/user/ConfigLimits.java`.** They were private to `UserConfigValidator`; the schema has to read the same numbers. Only constraints the validator actually enforces were moved, so the schema cannot advertise a rule the API does not apply. Two §2 constraints are therefore *not* in the schema because Phase 1 never implemented them: `providerModelId` ≤ 200 chars and `modelFamily` ≤ 40 chars. Add the checks and the schema entries together, or not at all.
+3. **Whether a value reduces integrity is now `StageOptionSpec.weakensIntegrity(value)`.** The 0.85 sycophancy suppression threshold lives there, so the warning shown while editing and the flag a run carries cannot disagree. §2.4's requirement (c) — `integrityReduced: true` on every run using such an option — is still **not implemented**; the API reports it about a *configuration*, not about a run. That remains Phase 4/5 work and the hook now exists for it.
+4. **`PUT /draft` returns 200 even when it refuses to write.** `written: false` plus the issue list, which is the same verdict `POST /validate` gives for the same document. A refused save is a considered answer to a well-formed question; returning an HTTP error would make a caller handle two body shapes for one outcome. Only a body that cannot be read at all — malformed, or carrying a credential — is a 400.
+5. **`POST /import` returns the parsed document alongside the report**, not the report alone. Otherwise every client needs a YAML parser to complete a round trip the server has already done: import takes YAML, and the confirm step takes JSON.
+6. **`UserConfigDocument.isEmpty()` needed `@JsonIgnore`.** Jackson was serialising it as a field named `empty`, which strict binding then rejected on the way back in — a configuration saved through the API failed to load and read as an empty one. Any future derived accessor on an overlay record needs the same treatment.
+7. **The preview builds a catalog with placeholder clients.** Constructing real ones is where credential detection and connection setup happen, and nothing in the diff depends on whether a model would be callable. Provider availability stays a separate question with a separate answer.
+8. **The providers panel special-cases `mock`.** The catalog reports it `active: false` because its client is not a live one, which the panel would otherwise render as "not configured" — sending a user to look for the credential that would fix it. It shows as test-only instead.
 
 ### 8.2 Phase 3B — Manual editor UI (`config.html`) — DEFERRED
 
@@ -1257,12 +1270,12 @@ Interactive prompts, same synthesizer, prints the YAML, asks before writing, exi
 | 2 | Chat + timeline UI, cost accounting (F3), cancellation (F4) | ~1200 LOC JS/CSS/HTML, ~400 LOC Java | Low — read-only against existing APIs |
 | 2A | Durable persistence (SQLite/H2), retention (F5), interrupted-run sweep | ✅ shipped — ~2400 LOC, 19 new classes, 351 → 542 tests | Medium — contract tests carried it |
 | 2B | Resume and re-run | ~600 LOC | Medium-high — the stage-index detail in §7.4.1 is the trap |
-| 3A | Config **write path** — `ConfigController`, validate/preview/schema, atomic write | ~400 LOC | Medium — atomic write, schema generation |
+| 3A | Config **write path** — `ConfigController`, validate/preview/schema, atomic write | ✅ shipped — ~1500 LOC, 9 new classes, 542 → 604 tests | Medium — atomic write, schema generation |
 | 3B | Manual four-tab editor UI | ~300 LOC | Low — **deferred indefinitely**, see §8 |
 | 4 | Hot reload | ~400 LOC, touches 10 classes | **High** — concurrency; do not start before Phase 2 is proven |
 | 5 | Requirement Advisor | ~800 LOC | Medium — synthesizer is pure and testable; LLM part is optional by design |
 
-**Adopted order: 0 → 1 → 2 → 2A → 3A → 5 → 2B.** Phases 0, 1, 2, and 2A are complete; **3A is next**. 3B and 4 are held back and built only if demand appears.
+**Adopted order: 0 → 1 → 2 → 2A → 3A → 5 → 2B.** Phases 0, 1, 2, 2A, and 3A are complete; **5 (the Advisor) is next**. 3B and 4 are held back and built only if demand appears.
 
 This supersedes the original `2A → 2B, then 3 → 4 → 5`. Two reasons for the change:
 

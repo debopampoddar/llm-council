@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.config.user;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.List;
@@ -53,7 +54,18 @@ public record UserConfigDocument(
         return new UserConfigDocument(SUPPORTED_VERSION, List.of(), Map.of(), Map.of(), Map.of(), null);
     }
 
-    /** @return {@code true} when the document declares nothing at all */
+    /**
+     * Whether the document declares nothing at all.
+     *
+     * <p>Ignored for serialisation because it is a derived answer about the
+     * document, not part of it. Jackson would otherwise write it out as a field
+     * named {@code empty}, which strict binding then rejects on the way back in —
+     * so a configuration saved through the API would fail to load and read as an
+     * empty one.
+     *
+     * @return {@code true} when the document declares nothing at all
+     */
+    @JsonIgnore
     public boolean isEmpty() {
         return models.isEmpty() && policies.isEmpty() && profiles.isEmpty()
                && protocols.isEmpty() && runtime == null;

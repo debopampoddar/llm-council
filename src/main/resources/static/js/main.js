@@ -23,6 +23,7 @@ import {
   splitDissent,
 } from "./trust.js";
 import { renderUsage } from "./usage.js";
+import { renderProviders } from "./providers.js";
 import { artifactsForStage, renderArtifact } from "./artifacts.js";
 import {
   isTestOnly,
@@ -40,6 +41,8 @@ const dom = {
   composerSlot: document.getElementById("composer-slot"),
   conn: document.getElementById("conn"),
   connLabel: document.getElementById("conn-label"),
+  providersPanel: document.getElementById("providers-panel"),
+  providersToggle: document.getElementById("providers-toggle"),
 };
 
 const state = {
@@ -67,6 +70,8 @@ const state = {
   artifacts: new Map(),
   // Sessions with a cancellation requested but not yet observed by the run.
   cancelling: new Set(),
+  // Provider availability, fetched the first time the panel is opened.
+  providers: null,
 };
 
 let stream = null;
@@ -501,9 +506,34 @@ function describe(error) {
   return error instanceof ApiError ? error.message : String(error);
 }
 
+// ── Providers
+//
+// Fetched on first open rather than at boot. Provider status is not needed to
+// send a question — the preflight check already reports when a profile's models
+// are unusable — and this panel is where a user goes once that has told them
+// something is wrong.
+
+async function toggleProviders() {
+  const open = dom.providersPanel.hidden;
+  dom.providersPanel.hidden = !open;
+  dom.providersToggle.setAttribute("aria-expanded", String(open));
+  if (!open) return;
+
+  renderProviders(dom.providersPanel, state.providers);
+  try {
+    state.providers = (await api.catalog("providers")).providers || [];
+  } catch (error) {
+    state.providers = [];
+    state.error = describe(error);
+    renderStream();
+  }
+  renderProviders(dom.providersPanel, state.providers);
+}
+
 // ── Boot
 
 document.getElementById("new-chat").addEventListener("click", newChat);
+dom.providersToggle.addEventListener("click", toggleProviders);
 document.getElementById("sidebar-toggle").addEventListener("click", () => {
   const sidebar = document.getElementById("sidebar");
   sidebar.dataset.open = sidebar.dataset.open === "true" ? "false" : "true";

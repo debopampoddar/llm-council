@@ -58,6 +58,7 @@ class StaticResourceTest {
             "/js/timeline.js",
             "/js/trust.js",
             "/js/artifacts.js",
+            "/js/providers.js",
             "/css/app.css"
     })
     void servesEveryModuleTheChatViewLoads(String path) throws Exception {
