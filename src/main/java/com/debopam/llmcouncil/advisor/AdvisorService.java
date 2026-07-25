@@ -10,7 +10,10 @@ import com.debopam.llmcouncil.config.user.UserConfigDocument;
 import com.debopam.llmcouncil.model.ModelRegistry;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The advisor, as a set of calls rather than as a set of endpoints.
@@ -35,6 +38,7 @@ public class AdvisorService {
     private final ConfigDraftService draftService;
     private final ConfigWriteService writeService;
     private final CouncilCatalogHolder catalogHolder;
+    private final ProposalStore proposalStore;
 
     /**
      * @param environmentService probes what this machine can run
@@ -43,19 +47,22 @@ public class AdvisorService {
      * @param draftService       reads, validates, and previews configuration
      * @param writeService       saves configuration
      * @param catalogHolder      resolves the model an extraction was asked for
+     * @param proposalStore      keeps a council somebody saved without applying
      */
     public AdvisorService(AdvisorEnvironmentService environmentService,
                           ConfigSynthesizer synthesizer,
                           RequirementExtractor extractor,
                           ConfigDraftService draftService,
                           ConfigWriteService writeService,
-                          CouncilCatalogHolder catalogHolder) {
+                          CouncilCatalogHolder catalogHolder,
+                          ProposalStore proposalStore) {
         this.environmentService = environmentService;
         this.synthesizer = synthesizer;
         this.extractor = extractor;
         this.draftService = draftService;
         this.writeService = writeService;
         this.catalogHolder = catalogHolder;
+        this.proposalStore = proposalStore;
     }
 
     /**
@@ -182,6 +189,186 @@ public class AdvisorService {
                                       AdvisorEnvironment environment,
                                       boolean shadowDefault) {
         return synthesizer.synthesize(requirement, environment, draftService.draft(), shadowDefault);
+    }
+
+    // ── Proposals ───────────────────────────────────────────────────────
+
+    /**
+     * Synthesise a council and save it without applying it.
+     *
+     * <p>Takes a requirement rather than a document, deliberately. There is
+     * therefore no path by which a hand-assembled configuration enters the
+     * proposal store: intent goes in, and the configuration that comes out is
+     * the one this application derived. Nothing is applied — the catalog is
+     * pinned at boot and this does not touch the overlay.
+     *
+     * @param requirement   what the user asked for
+     * @param shadowDefault whether the council should also become the default
+     * @return the saved proposal, re-checked as though it had just been read
+     * @throws AdvisorRequestException when there is no council to save
+     */
+    public StoredProposal saveProposal(CouncilRequirement requirement, boolean shadowDefault) {
+        return saveProposal(requirement, environment(), shadowDefault);
+    }
+
+    /**
+     * Save a proposal against an environment the caller already has.
+     *
+     * <p>Same reason as {@link #synthesize(CouncilRequirement, AdvisorEnvironment, boolean)}: a
+     * wizard that has just shown the user their installed models should not
+     * probe again, and what it saves should be what it showed.
+     *
+     * @param requirement   what the user asked for
+     * @param environment   what this machine can run
+     * @param shadowDefault whether the council should also become the default
+     * @return the saved proposal, re-checked as though it had just been read
+     * @throws AdvisorRequestException when there is no council to save
+     */
+    public StoredProposal saveProposal(CouncilRequirement requirement,
+                                       AdvisorEnvironment environment,
+                                       boolean shadowDefault) {
+        SynthesisResult result = synthesize(requirement, environment, shadowDefault);
+        if (!result.successful()) {
+            throw new AdvisorRequestException(
+                    result.issues().stream()
+                          .filter(issue -> issue.severity()
+                                  == com.debopam.llmcouncil.config.ConfigIssue.Severity.ERROR)
+                          .map(com.debopam.llmcouncil.config.ConfigIssue::message)
+                          .findFirst()
+                          .orElse("No council could be synthesised for this requirement."),
+                    result.issues().stream()
+                          .map(com.debopam.llmcouncil.config.ConfigIssue::remediation)
+                          .filter(java.util.Objects::nonNull)
+                          .findFirst()
+                          .orElse(null));
+        }
+
+        ValidationReportResponse validation = validate(result.document());
+        if (!validation.valid()) {
+            // Should not happen — the end-to-end sweep exists to keep it from
+            // happening — but saving something known to be unusable would turn a
+            // bug here into a broken council later.
+            throw new AdvisorRequestException(
+                    "The synthesised configuration did not validate, so it was not saved: "
+                    + validation.issues(),
+                    "Report this: a synthesised configuration should always validate.");
+        }
+
+        String location = proposalStore.save(
+                ProposalEnvelope.of(requirement, result, Instant.now()));
+        return proposal(location, environment);
+    }
+
+    /**
+     * Read the saved proposal, re-checking it against the machine as it is now.
+     *
+     * @return the proposal, or an absent one when nothing is saved
+     */
+    public StoredProposal proposal() {
+        return proposal(proposalStore.location(), environment());
+    }
+
+    /**
+     * Read the saved proposal, checking it against an environment already probed.
+     *
+     * <p>The environment is a parameter because staleness is a claim <em>about</em>
+     * it. A wizard showing the user their installed models and, next to that,
+     * "running the advisor again would pick differently" must have derived both
+     * from the same probe, or the two halves of the screen disagree.
+     *
+     * @param environment what this machine can run
+     * @return the proposal, or an absent one when nothing is saved
+     */
+    public StoredProposal proposal(AdvisorEnvironment environment) {
+        return proposal(proposalStore.location(), environment);
+    }
+
+    /**
+     * Discard the saved proposal.
+     *
+     * @return {@code true} when something was removed
+     */
+    public boolean discardProposal() {
+        return proposalStore.discard();
+    }
+
+    private StoredProposal proposal(String location, AdvisorEnvironment environment) {
+        ProposalEnvelope envelope = proposalStore.load().orElse(null);
+        if (envelope == null) {
+            return StoredProposal.absent(location);
+        }
+
+        String difference = resynthesisDifference(envelope, environment);
+        return new StoredProposal(
+                true, envelope.savedAt(), location, envelope.requirement(), envelope.document(),
+                envelope.rationale(), validate(envelope.document()), preview(envelope.document()),
+                difference != null, difference);
+    }
+
+    /**
+     * Describe how re-running the advisor today would differ from what was saved.
+     *
+     * <p>Reported rather than acted on. Re-synthesising silently would change
+     * what the user approved; ignoring the difference would let a proposal built
+     * before a model was pulled look like the best this machine can do.
+     *
+     * @param envelope    the saved proposal
+     * @param environment what this machine can run
+     * @return what would change, or null when nothing would
+     */
+    private String resynthesisDifference(ProposalEnvelope envelope, AdvisorEnvironment environment) {
+        if (envelope.requirement() == null) {
+            return null;
+        }
+        SynthesisResult fresh;
+        try {
+            fresh = synthesize(envelope.requirement(), environment, false);
+        } catch (RuntimeException ex) {
+            // Re-synthesis is advisory. Failing it must not stop a user reading
+            // the proposal they already have.
+            return null;
+        }
+        if (!fresh.successful()) {
+            // The strongest staleness signal there is, and one validation cannot
+            // give: a proposal naming built-in model ids still resolves after the
+            // models behind them have been deleted, because validation checks the
+            // catalog rather than the runtime.
+            return "This machine currently cannot seat any council — the models this proposal "
+                   + "needs may no longer be installed, or the local runtime may not be running. "
+                   + "Applying it would produce a council that cannot run.";
+        }
+        Set<String> saved = advisorEntityIds(envelope.document());
+        Set<String> now = advisorEntityIds(fresh.document());
+        if (saved.equals(now)) {
+            return null;
+        }
+        Set<String> added = new LinkedHashSet<>(now);
+        added.removeAll(saved);
+        Set<String> gone = new LinkedHashSet<>(saved);
+        gone.removeAll(now);
+        return "Running the advisor again on this machine would produce a different council"
+               + (added.isEmpty() ? "" : "; it would now use " + added)
+               + (gone.isEmpty() ? "" : "; it would no longer use " + gone)
+               + ". Applying this proposal applies what you approved, not what it would produce "
+               + "today.";
+    }
+
+    /** The advisor-owned entities of a document, as {@code type:id} keys. */
+    private Set<String> advisorEntityIds(UserConfigDocument document) {
+        Set<String> ids = new LinkedHashSet<>();
+        document.models().stream()
+                .map(UserConfigDocument.UserModel::id)
+                .filter(AdvisorIds::owns)
+                .forEach(id -> ids.add("model:" + id));
+        document.policies().forEach((id, policy) -> {
+            if (AdvisorIds.owns(id)) {
+                // The members matter as much as the id: the same policy id
+                // seating different models is exactly the drift being reported.
+                ids.add("policy:" + id + "=" + policy.memberModelIds() + "/"
+                        + policy.chairModelId() + "/" + policy.validatorModelId());
+            }
+        });
+        return ids;
     }
 
     /**

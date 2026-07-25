@@ -1,0 +1,16 @@
+# The proposal's inner document, written as a configuration overlay.
+#
+# The positive control: exactly the model the proposal fixture carries, in a
+# file the loader is meant to read. Without this, "the canary is absent" would
+# pass just as well if the overlay loader were broken outright.
+version: 1
+models:
+  - id: proposal-canary-model
+    provider: ollama
+    providerModelId: canary:1b
+    defaultOutputTokens: 1200
+    temperature: 0.3
+    timeoutSeconds: 240
+    role: MEMBER
+    councilRole: PROPOSER
+    modelFamily: canary
