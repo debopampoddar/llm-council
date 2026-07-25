@@ -129,9 +129,13 @@ public class UserConfigLoader {
     /**
      * Resolve the overlay location.
      *
+     * <p>Public because the configuration write path must write to exactly the
+     * file this reads. Two independent notions of "where the overlay lives" would
+     * let a save succeed and change nothing.
+     *
      * @return the path to read, or null when the configured path is unusable
      */
-    Path resolvePath() {
+    public Path resolvePath() {
         try {
             if (configuredPath != null && !configuredPath.isBlank()) {
                 return Path.of(configuredPath.trim());
