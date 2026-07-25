@@ -25,6 +25,8 @@ import {
 } from "./trust.js";
 import { renderUsage } from "./usage.js";
 import { renderProviders } from "./providers.js";
+import { renderProposalNotice } from "./proposal.js";
+import { advisorApi } from "./advisor-api.js";
 import { artifactsForStage, renderArtifact } from "./artifacts.js";
 import {
   isTestOnly,
@@ -44,6 +46,7 @@ const dom = {
   connLabel: document.getElementById("conn-label"),
   providersPanel: document.getElementById("providers-panel"),
   providersToggle: document.getElementById("providers-toggle"),
+  configNotice: document.getElementById("config-notice"),
 };
 
 const state = {
@@ -551,4 +554,30 @@ if (yearSlot) yearSlot.textContent = String(new Date().getFullYear());
   await refreshChats();
   render();
   await refreshHealth();
+  await refreshConfigNotice();
 })();
+
+/**
+ * Show an unapplied proposal, or point a fresh install at the wizard.
+ *
+ * Deliberately after the first render and never blocking it: neither answer is
+ * needed to run a council, and a slow probe must not delay the page. Failures
+ * are swallowed for the same reason — an installation whose advisor endpoint is
+ * unreachable still has a working chat, and a red banner about a notice would
+ * be worse than no notice.
+ */
+async function refreshConfigNotice() {
+  try {
+    const [proposal, draft] = await Promise.all([
+      advisorApi.proposal(),
+      api.configDraft(),
+    ]);
+    const hasUserConfiguration = Boolean(draft) && (
+      (draft.models || []).length > 0
+      || Object.keys(draft.profiles || {}).length > 0
+      || Object.keys(draft.policies || {}).length > 0);
+    renderProposalNotice(dom.configNotice, proposal, hasUserConfiguration);
+  } catch {
+    renderProposalNotice(dom.configNotice, null, true);
+  }
+}

@@ -102,21 +102,85 @@ public class UserConfigCodec {
      *                                     credential material
      */
     public String writeYaml(UserConfigDocument document) {
+        return render(document, HEADER);
+    }
+
+    /**
+     * Render a saved proposal as YAML.
+     *
+     * <p>A sibling of {@link #writeYaml(UserConfigDocument)} rather than a
+     * generic {@code writeYaml(Object)}, so no future caller can route an
+     * arbitrary object past the credential scan by widening a parameter. The
+     * scan is the same one, for the same reason: serialising is the last point
+     * at which something smuggled through a free-text field can be caught before
+     * it is written somewhere durable.
+     *
+     * @param proposal the proposal to render
+     * @return YAML text, headed with an explanation that it is not live config
+     * @throws UserConfigDocumentException when the rendered document carries
+     *                                     credential material
+     */
+    public String writeProposalYaml(Object proposal) {
+        return render(proposal, PROPOSAL_HEADER);
+    }
+
+    /**
+     * Parse a saved proposal.
+     *
+     * @param raw  the file's contents
+     * @param type the proposal type to bind to
+     * @param <T>  the proposal type
+     * @return the parsed proposal
+     * @throws UserConfigDocumentException when the text carries credential
+     *                                     material or cannot be parsed
+     */
+    public <T> T readProposalYaml(String raw, Class<T> type) {
+        if (raw == null || raw.isBlank()) {
+            throw new UserConfigDocumentException(List.of(new ConfigIssue(
+                    ConfigIssue.Severity.ERROR, "file", null, "The proposal file is empty.", null)));
+        }
+        List<ConfigIssue> issues = scan(raw, lenientYaml);
+        if (!issues.isEmpty()) {
+            throw new UserConfigDocumentException(issues);
+        }
+        try {
+            return yaml.readValue(raw, type);
+        } catch (Exception ex) {
+            throw new UserConfigDocumentException(List.of(new ConfigIssue(
+                    ConfigIssue.Severity.ERROR, "file", null,
+                    "The proposal could not be parsed: " + rootMessage(ex),
+                    "Discard it and run the advisor again.")));
+        }
+    }
+
+    private String render(Object value, String header) {
         String body;
         try {
-            body = yaml.writeValueAsString(document);
+            body = yaml.writeValueAsString(value);
         } catch (Exception ex) {
             throw new UserConfigDocumentException(List.of(new ConfigIssue(
                     ConfigIssue.Severity.ERROR, "file", null,
                     "The configuration could not be rendered: " + rootMessage(ex), null)));
         }
-        String rendered = HEADER + body;
+        String rendered = header + body;
         List<ConfigIssue> issues = scan(rendered, lenientYaml);
         if (!issues.isEmpty()) {
             throw new UserConfigDocumentException(issues);
         }
         return rendered;
     }
+
+    private static final String PROPOSAL_HEADER = """
+            # LLM Council saved proposal — NOT active configuration.
+            #
+            # A council the requirement advisor produced and nobody applied yet.
+            # Nothing here is in effect. This file is never read at startup, and
+            # the 'kind' field below means that copying it over council-user.yml
+            # does not quietly turn it into configuration: it is refused, and the
+            # reason is reported.
+            #
+            # Apply or discard it from the setup wizard.
+            """;
 
     private static final String HEADER = """
             # LLM Council user configuration.

@@ -55,8 +55,17 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - A trust strip above every answer carrying confidence with its independence tier, member roster, sycophancy findings, and preserved dissent.
 - Cancel a running council from the browser.
 
+### Requirement Advisor (Phase 5)
+- Setup wizard at `/setup.html`: describe the council you want in plain language, review what was understood, and get a configuration built from the models this machine can actually run.
+- **The model produces intent; deterministic Java produces configuration.** An LLM's only output is a small record of closed choices — it cannot emit a model id, a provider, or a stage type, because the record has nowhere to put one.
+- Nothing uncallable is ever proposed: an Ollama tag you have not pulled, a provider with no credential, and a mock model are all excluded before selection rather than configured and discovered at run time.
+- **Additive.** The advisor owns the `advisor-*` namespace and replaces its own previous output; everything else in your configuration is carried through untouched.
+- Extraction is optional. No model available, a provider that fails, or a reply it cannot read all fall back to the same form — with your typing still on screen.
+- Nothing is sent to a cloud provider until it is named and you confirm it, enforced on the server rather than in the page.
+- "Save for later" writes a proposal file that startup never reads, re-checked every time you come back to it.
+
 ### Testing
-- 274 JUnit tests: policy resolution, parsing, quorum, KS convergence math, sycophancy detection, all scoring strategies, retry logic, full protocol integration, the catalog and run-result endpoints, static resource serving, skipped-stage event contracts, score-pass labelling, and cancellation.
+- 776 JUnit tests: policy resolution, parsing, quorum, KS convergence math, sycophancy detection, all scoring strategies, retry logic, full protocol integration, durable stores against H2 and SQLite, the catalog, config-write and advisor endpoints, static resource serving, skipped-stage event contracts, score-pass labelling, cancellation, and configuration synthesis across every requirement combination.
 
 ## Runtime Requirements
 
@@ -243,10 +252,31 @@ ollama pull llama3.1:8b
 ollama pull mistral:7b
 ```
 
+### Building a council without writing YAML
+
+Open **<http://localhost:8080/setup.html>** and describe what you want in plain
+language. A local model reads that into a small set of choices, you correct
+anything it got wrong, and deterministic Java turns the result into
+configuration — choosing only from models that are installed here and providers
+that are actually configured.
+
+If no model is available to read your description, the wizard opens on the same
+choices as a form and says why. Extraction is a convenience, never a dependency.
+
+The wizard **only adds**. Anything already in your configuration is carried
+through unchanged, and the confirmation step shows you what would be removed
+before it writes anything — which should be nothing. You can also save a council
+for later; the proposal is kept in a separate file that is never read at startup,
+and is re-checked when you come back in case the models it names are gone.
+
+```bash
+curl localhost:8080/api/council/advisor/environment   # what this machine can run
+```
+
 ### Defining your own models, policies, and profiles
 
-Everything the council runs on is configuration. To add your own without editing
-the shipped `application.yml`, drop an overlay at
+The wizard writes the same file you can write yourself. To add your own without
+editing the shipped `application.yml`, drop an overlay at
 `~/.llm-council/council-user.yml`:
 
 ```bash
@@ -492,6 +522,44 @@ Common `failureCategory` values are:
 | `VALIDATION_FAILED` | The final validation stage rejected the answer. |
 | `QUORUM_NOT_MET` | Too few model calls succeeded for the selected policy. |
 
+### Requirement Advisor API
+
+The wizard is a client of these; nothing about them needs a browser.
+
+```bash
+# What can actually be seated here: installed models, provider states, remediation.
+curl localhost:8080/api/council/advisor/environment
+
+# Free text to a requirement. modelId must be one the environment offered, and a
+# non-local one is refused unless acknowledgeCloudProvider is true.
+curl -X POST localhost:8080/api/council/advisor/extract \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"a careful local council for reviewing code","modelId":"local-chair"}'
+
+# A requirement to configuration, with its rationale, validation, and diff.
+curl -X POST localhost:8080/api/council/advisor/synthesize \
+  -H 'Content-Type: application/json' \
+  -d '{"requirement":{"privacy":"LOCAL_ONLY","cost":"FREE_ONLY","rigor":"RIGOROUS",
+                      "councilSize":3,"adversarialEmphasis":true}}'
+
+# Save it without applying. Takes a requirement, never a document.
+curl -X PUT localhost:8080/api/council/advisor/proposal \
+  -H 'Content-Type: application/json' \
+  -d '{"requirement":{"privacy":"LOCAL_ONLY","rigor":"BALANCED"}}'
+
+curl localhost:8080/api/council/advisor/proposal            # re-checked on read
+curl -X DELETE localhost:8080/api/council/advisor/proposal  # discard it
+```
+
+Applying goes through the configuration write path that already exists —
+`PUT /api/council/config/draft` — so there is one place that touches the overlay
+file, one atomic rename, and one backup. Saved configuration takes effect at the
+next restart.
+
+Synthesis answers with `200` and a null `profileId` when this machine has nothing
+to seat, carrying the reason and the command that fixes it. That is an answer to a
+well-formed question, not a malformed request.
+
 ## Chat API V1
 
 Chat API V1 is a usability layer over the existing council engine. Each chat
@@ -581,6 +649,7 @@ Then call with:
 ## Key Package Layout
 
 ```text
+com.debopam.llmcouncil.advisor          requirement extraction, config synthesis, proposals
 com.debopam.llmcouncil.api              REST controller and DTOs
 com.debopam.llmcouncil.application      service, policy resolver, event publisher
 com.debopam.llmcouncil.chat             chat sessions, turns, async chat service, event broker
@@ -593,15 +662,21 @@ com.debopam.llmcouncil.persistence      in-memory sessions and local artifacts
 
 src/main/resources/static                web UI — vanilla HTML/CSS/JS, no build step
 ├── index.html                           chat view, served at /
+├── setup.html                           requirement advisor wizard
 ├── css/app.css                          single stylesheet, light and dark
 └── js/
     ├── api.js                           fetch wrapper over /api/council/**
+    ├── advisor-api.js                   fetch wrapper over /api/council/advisor/**
     ├── sse.js                           EventSource lifecycle, dedupe, backoff
     ├── chat.js                          chat list, composer, turn states
     ├── health.js                        preflight gate and independence tiers
     ├── timeline.js                      council stage timeline
     ├── trust.js                          trust strip, sycophancy, dissent
     ├── artifacts.js                     per-stage evidence panels
+    ├── providers.js                     read-only provider status panel
+    ├── proposal.js                      unapplied-proposal and first-run notices
+    ├── setup.js                         the five-step wizard
+    ├── requirement-form.js              the requirement as editable choices
     ├── dom.js                           node builders
     └── main.js                          app state and orchestration
 ```
