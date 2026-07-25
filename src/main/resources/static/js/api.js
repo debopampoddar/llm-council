@@ -69,6 +69,11 @@ export const api = {
   profileHealth: (profileId, depthMode) =>
     request("GET", `/profiles/${encodeURIComponent(profileId)}/health?depthMode=${depthMode}`),
 
+  // The overlay as it is on disk. Read only to answer "has this installation
+  // been configured at all?", which decides whether a first-run pointer to the
+  // setup wizard is a helpful nudge or noise on a screen somebody already set up.
+  configDraft: () => request("GET", "/config/draft"),
+
   // ── Chats
   listChats: () => request("GET", "/chats"),
   createChat: (profileId, depthMode) => request("POST", "/chats", { profileId, depthMode }),

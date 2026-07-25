@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LLM Council — Setup</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div class="wizard">
+    <header class="wz-head">
+      <a class="brand" href="/"><strong>LLM Council</strong><span>setup</span></a>
+      <nav class="wz-steps" id="wizard-steps" aria-label="Setup steps"></nav>
+    </header>
+
+    <div id="wizard-banner"></div>
+
+    <!-- Everything is rendered as nodes from js/setup.js. Model output and a
+         user's own description both reach this page, and neither is ever
+         parsed as markup. -->
+    <main class="wz-body" id="wizard-body"></main>
+
+    <footer class="wz-foot" id="wizard-footer"></footer>
+  </div>
+
+  <script type="module" src="/js/setup.js"></script>
+</body>
+</html>

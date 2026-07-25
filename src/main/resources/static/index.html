@@ -37,8 +37,14 @@
            offering somewhere to type one. -->
       <section class="providers" id="providers-panel" hidden aria-label="Provider status"></section>
 
+      <!-- An unapplied proposal, or a pointer to the setup wizard on a fresh
+           install. Outside .stream-inner deliberately: that element is replaced
+           wholesale on every render, and a notice that vanished on the next
+           keystroke would be worse than none. -->
+      <section class="config-notice" id="config-notice" aria-label="Configuration notice"></section>
+
       <div class="stream" id="stream">
-        <div class="stream-inner" id="stream-inner">
+        <div class="stream-inner" id="stream-inner"></div>
           <div class="empty">
             <h2>No chat selected</h2>
             <p>Create a chat to run the council. The <code>mock</code> profile runs the full
