@@ -47,6 +47,16 @@ public record StageOptionSpec(
     /** Value types a stage option may take. */
     public enum Type { INT, DOUBLE, BOOLEAN, STRING, ENUM }
 
+    /**
+     * The sycophancy threshold above which warnings are effectively suppressed.
+     *
+     * <p>Above this, a debate turn that merely restates the previous speaker
+     * passes unflagged. The setting is permitted — a user may be investigating
+     * false positives — but a run using it is not the same run as one that did
+     * not, and must not look like it.
+     */
+    public static final double SYCOPHANCY_SUPPRESSION_THRESHOLD = 0.85;
+
     /** Scoring strategies registered in the application. */
     private static final List<String> SCORING_STRATEGIES =
             List.of("median", "trimmed-mean", "confidence-weighted");
@@ -71,6 +81,41 @@ public record StageOptionSpec(
     /** @return every permitted option, in declaration order */
     public static List<StageOptionSpec> all() {
         return List.copyOf(SPECS.values());
+    }
+
+    /**
+     * Decide whether a chosen value actually weakens an anti-sycophancy guarantee.
+     *
+     * <p>{@link #integrityReducing()} says the option <em>can</em>; this says the
+     * value <em>does</em>. The two differ because a sycophancy threshold of 0.70
+     * is the shipped default and reduces nothing, while 0.90 hides the signal.
+     * The distinction lives here rather than in the validator so that the warning
+     * a user sees while editing, and the flag carried on a run, cannot disagree
+     * about what counts.
+     *
+     * <p>An integrity-reducing option this method does not recognise is treated as
+     * weakening whenever it is set. Under-claiming would be the wrong default: a
+     * silent run is indistinguishable from a clean one.
+     *
+     * @param value the configured value, as written
+     * @return {@code true} when this value weakens a guarantee
+     */
+    public boolean weakensIntegrity(Object value) {
+        if (!integrityReducing || value == null) {
+            return false;
+        }
+        String text = String.valueOf(value);
+        return switch (key) {
+            case "sycophancy-threshold" -> {
+                try {
+                    yield Double.parseDouble(text) > SYCOPHANCY_SUPPRESSION_THRESHOLD;
+                } catch (NumberFormatException ex) {
+                    yield false;
+                }
+            }
+            case "preserve-dissent" -> "false".equalsIgnoreCase(text);
+            default -> true;
+        };
     }
 
     /**

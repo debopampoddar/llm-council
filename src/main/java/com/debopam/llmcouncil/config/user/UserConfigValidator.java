@@ -299,7 +299,7 @@ public class UserConfigValidator {
                             spec.description()));
                     return;
                 }
-                warnIfIntegrityReducing(key, field, spec, number, issues);
+                warnIfIntegrityReducing(key, field, spec, value, issues);
             }
             case BOOLEAN -> {
                 if (!"true".equalsIgnoreCase(text) && !"false".equalsIgnoreCase(text)) {
@@ -307,7 +307,7 @@ public class UserConfigValidator {
                             "Option '" + spec.key() + "' must be true or false.", spec.description()));
                     return;
                 }
-                warnIfIntegrityReducing(key, field, spec, Boolean.parseBoolean(text) ? 1.0 : 0.0, issues);
+                warnIfIntegrityReducing(key, field, spec, value, issues);
             }
             case ENUM -> {
                 if (!spec.allowedValues().contains(text)) {
@@ -335,22 +335,27 @@ public class UserConfigValidator {
      * recorded and the run is flagged.
      */
     private void warnIfIntegrityReducing(String key, String field, StageOptionSpec spec,
-                                         double value, List<ConfigIssue> issues) {
-        if (!spec.integrityReducing()) {
+                                         Object value, List<ConfigIssue> issues) {
+        // Whether a value weakens a guarantee is decided by the option's own
+        // spec, so the warning shown while editing and the flag carried on a run
+        // cannot disagree about what counts.
+        if (!spec.weakensIntegrity(value)) {
             return;
         }
-        if (spec.key().equals("sycophancy-threshold") && value > 0.85) {
-            issues.add(warning(key, field,
-                    "sycophancy-threshold of " + format(value) + " suppresses most sycophancy warnings. "
+        switch (spec.key()) {
+            case "sycophancy-threshold" -> issues.add(warning(key, field,
+                    "sycophancy-threshold of " + value + " suppresses most sycophancy warnings. "
                     + "Debate turns that merely agree with the previous speaker will pass unflagged.",
-                    "Values above 0.85 hide the signal rather than improve it. Use 0.70 unless you "
+                    "Values above " + StageOptionSpec.SYCOPHANCY_SUPPRESSION_THRESHOLD
+                    + " hide the signal rather than improve it. Use 0.70 unless you "
                     + "are deliberately investigating false positives."));
-        }
-        if (spec.key().equals("preserve-dissent") && value == 0.0) {
-            issues.add(warning(key, field,
+            case "preserve-dissent" -> issues.add(warning(key, field,
                     "preserve-dissent is off, so the final answer will not report unresolved "
                     + "disagreement between council members.",
                     "The answer will read as more confident than the council actually was."));
+            default -> issues.add(warning(key, field,
+                    "Option '" + spec.key() + "' weakens an anti-sycophancy guarantee.",
+                    spec.description()));
         }
     }
 

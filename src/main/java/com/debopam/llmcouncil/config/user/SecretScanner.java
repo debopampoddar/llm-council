@@ -35,12 +35,25 @@ public class SecretScanner {
      * containing the same substrings — {@code defaultOutputTokens},
      * {@code contextWindowTokens} — are not flagged.
      */
-    private static final Pattern CREDENTIAL_KEY = Pattern.compile(
-            "(?im)^\\s*-?\\s*\"?("
-            + "api[_-]?key|apikey|secret[_-]?key|secret|password|passwd|pwd"
+    private static final String CREDENTIAL_NAMES =
+            "api[_-]?key|apikey|secret[_-]?key|secret|password|passwd|pwd"
             + "|credential[s]?|auth[_-]?token|access[_-]?token|refresh[_-]?token"
-            + "|bearer|private[_-]?key|client[_-]?secret|session[_-]?key"
-            + ")\"?\\s*:");
+            + "|bearer|private[_-]?key|client[_-]?secret|session[_-]?key";
+
+    private static final Pattern CREDENTIAL_KEY = Pattern.compile(
+            "(?im)^\\s*-?\\s*\"?(" + CREDENTIAL_NAMES + ")\"?\\s*:");
+
+    /**
+     * The same names, matched against a field name on its own.
+     *
+     * <p>Needed because {@link #CREDENTIAL_KEY} anchors at the start of a line,
+     * which is right for the YAML file on disk and wrong for a JSON request body
+     * where every field can sit on one line. Whole-match, so legitimate fields
+     * containing the same substrings — {@code defaultOutputTokens},
+     * {@code contextWindowTokens} — are not flagged.
+     */
+    private static final Pattern CREDENTIAL_FIELD_NAME =
+            Pattern.compile("(?i)^(" + CREDENTIAL_NAMES + ")$");
 
     /** Value shapes that are recognisably provider credentials. */
     private static final List<Pattern> CREDENTIAL_VALUES = List.of(
@@ -79,15 +92,35 @@ public class SecretScanner {
                     + "GET /api/council/catalog?include=providers."));
         }
 
+        issues.addAll(scanValues(rawYaml));
+        return issues;
+    }
+
+    /**
+     * Scan text for values shaped like provider credentials, ignoring field names.
+     *
+     * <p>Separate from {@link #scan} so a caller that already knows its field
+     * names — a parsed request body, say — can check them precisely with
+     * {@link #isCredentialFieldName} and still catch a key smuggled into a field
+     * that legitimately accepts free text.
+     *
+     * @param text the document as written
+     * @return one issue per recognisable credential shape, empty when clean
+     */
+    public List<ConfigIssue> scanValues(String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        List<ConfigIssue> issues = new ArrayList<>();
         for (Pattern valuePattern : CREDENTIAL_VALUES) {
-            Matcher valueMatcher = valuePattern.matcher(rawYaml);
+            Matcher valueMatcher = valuePattern.matcher(text);
             if (valueMatcher.find()) {
                 issues.add(new ConfigIssue(
                         ConfigIssue.Severity.ERROR,
                         "file",
                         null,
                         "User configuration contains what looks like a provider API key at line "
-                        + lineOf(rawYaml, valueMatcher.start())
+                        + lineOf(text, valueMatcher.start())
                         + ". The value has not been logged.",
                         "Remove it and set the provider's environment variable instead. "
                         + "Treat the key as compromised and rotate it: it has been written to disk "
@@ -95,6 +128,16 @@ public class SecretScanner {
             }
         }
         return issues;
+    }
+
+    /**
+     * Decide whether a field name is one credentials are written under.
+     *
+     * @param name the field name, without quotes or punctuation
+     * @return {@code true} when the name must never appear in configuration
+     */
+    public boolean isCredentialFieldName(String name) {
+        return name != null && CREDENTIAL_FIELD_NAME.matcher(name).matches();
     }
 
     private int lineOf(String text, int offset) {
