@@ -30,6 +30,9 @@ import java.util.Map;
  *                              called, for models not in the built-in catalog
  * @param catalogModels         every built-in model, with the availability of
  *                              the client that was built for it
+ * @param extractionModels      models that may be asked to read a description;
+ *                              see {@link #extractionModels()} for why this is a
+ *                              different list from {@link #catalogModels()}
  * @param defaultExtractionModelId the local model to pre-select for requirement
  *                              extraction, or null when none qualifies
  * @param probedAt              when this snapshot was taken
@@ -38,6 +41,7 @@ public record AdvisorEnvironment(
         List<String> installedOllamaTags,
         Map<String, ClientAvailability> providerAvailability,
         List<CandidateModel> catalogModels,
+        List<CandidateModel> extractionModels,
         String defaultExtractionModelId,
         Instant probedAt
 ) {
@@ -50,7 +54,40 @@ public record AdvisorEnvironment(
         installedOllamaTags = installedOllamaTags == null ? List.of() : List.copyOf(installedOllamaTags);
         providerAvailability = providerAvailability == null ? Map.of() : Map.copyOf(providerAvailability);
         catalogModels = catalogModels == null ? List.of() : List.copyOf(catalogModels);
+        extractionModels = extractionModels == null ? List.of() : List.copyOf(extractionModels);
         probedAt = probedAt == null ? Instant.now() : probedAt;
+    }
+
+    /**
+     * The models that may be asked to read a description.
+     *
+     * <p>Deliberately a different list from {@link #catalogModels()}, because it
+     * answers a different question. Synthesis candidates come from the shipped
+     * catalog, since a model that exists only because today's overlay defines it
+     * may not exist after the overlay is replaced. Extraction happens <em>now</em>,
+     * against the configuration that is running, so a model the user added by
+     * hand is as usable for it as a shipped one.
+     *
+     * <p>This is also the allowlist. The picker is built from it and the server
+     * validates a submitted id against it, so a description can never redirect
+     * extraction at a model the user was never shown.
+     *
+     * @return callable models, mock and unavailable ones excluded
+     */
+    public List<CandidateModel> extractionModels() {
+        return extractionModels;
+    }
+
+    /**
+     * Find a model a caller asked to extract with.
+     *
+     * @param modelId the id submitted; matched exactly, never interpreted
+     * @return the model, or empty when it is not one that may be used
+     */
+    public java.util.Optional<CandidateModel> extractionModel(String modelId) {
+        return extractionModels.stream()
+                               .filter(candidate -> candidate.id().equals(modelId))
+                               .findFirst();
     }
 
     /**
