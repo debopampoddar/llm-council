@@ -721,7 +721,7 @@ Two deviations from the sketch above, both to avoid reporting a number the run d
 
 ---
 
-## 6. Phase 2A — Durable persistence (SQLite / H2)
+## 6. Phase 2A — Durable persistence (SQLite / H2) ✅ IMPLEMENTED
 
 **Goal:** sessions, chats, and events survive a restart.
 **Depends on:** Phase 2 (the UI is what makes durability matter — chat history that vanishes on restart reads as broken rather than demo-grade).
@@ -798,6 +798,13 @@ CREATE INDEX IF NOT EXISTS idx_event_session ON council_event(session_id, seq);
 
 **Portability:** the DDL is the only engine-specific part — `TEXT` vs `LONGTEXT` vs `CLOB`. Use **Flyway** with vendor-specific migration locations (`db/migration/{vendor}`). With a JSON-column design the schema will almost never change, so Flyway is near-zero maintenance and far cheaper than retrofitting versioning onto databases that already hold user data.
 
+**As delivered, four differences from the sketch above.** Each was forced by the two engines disagreeing, or by the cursor design in §6.6:
+
+1. **Timestamps are `BIGINT` epoch milliseconds, not `TIMESTAMP`.** SQLite has no timestamp type and stores whatever the driver hands it, so the sub-second part is exactly what goes missing — and under virtual-thread fan-out most events in a run share a second. An integer sorts and compares identically on both engines and is `Instant.toEpochMilli()` at each end.
+2. **One migration directory, not `db/migration/{vendor}`.** The DDL is written to the intersection of the two engines and the tests run every migration on both, so the vendor split bought nothing. It stays available if that ever stops being true. The only engine-specific SQL is `SqlDialect`, and only for upsert: H2 has `MERGE` and no `ON CONFLICT`, SQLite the reverse.
+3. **`council_event` stores a `document` column, not `payload`.** Keeping the whole record in JSON matches V1 and means a new field on `CouncilEvent` needs no migration — the advantage §6.2 is built on. Scalar columns stay for filtering and ordering only.
+4. **There is a `chat_event` table, and `council_event` carries nullable `chat_id` / `chat_seq`.** See §6.6.
+
 ### 6.4 New files
 
 | File | Responsibility |
@@ -827,6 +834,8 @@ synchronized ChatSessionSnapshot toSnapshot() { ... }
 static ChatSession fromSnapshot(ChatSessionSnapshot snapshot) { ... }
 ```
 
+As delivered the record is **public**, not package-private: the JDBC store that serialises it lives in another package.
+
 **Do not add Jackson annotations to `ChatSession` itself.** Its synchronization is load-bearing — `handleCompletion` in `ChatCouncilService` mutates turns from virtual threads while SSE readers call `turns()`. `fromSnapshot` needs a constructor that accepts `createdAt`/`updatedAt` rather than calling `Instant.now()`, so add a private full constructor.
 
 ### 6.6 Split `EventPublisher` into store and broker
@@ -842,6 +851,38 @@ sources share one monotonic sequence. **Prefer the shared sequence** — a singl
 `seq` allocated per stream connection across all sources makes the cursor a
 single integer and keeps the client's dedupe as a backstop rather than the
 mechanism. Decide this before implementing `since(...)`, not after.
+
+**Decided and delivered — the shared sequence, but allocated at append time, not
+per stream connection.** Taken literally, "a single seq allocated per stream
+connection" does not work: a cursor is only usable if frame N means the same
+event on the reconnect as it did on the original connection, and a
+per-connection counter re-numbers a re-interleaved replay differently every
+time. The position is therefore allocated when the event is appended, by
+`ChatSequenceAllocator`.
+
+That needs **two** sequences, because a council session can exist with no chat at
+all — the direct `POST /sessions` → `/run` path, streamed by
+`GET /sessions/{id}/events`:
+
+- `council_event.seq` — per council session, as §6.3 specifies. An in-memory
+  counter seeded from `MAX(seq)`, because a run never spans a restart.
+- `chat_seq` — per chat, spanning `chat_event` **and** every `council_event`
+  belonging to that chat's turns. Durable, on `chat_session.next_seq`, because a
+  chat *does* span a restart; a counter that restarted at 1 would hand new events
+  positions already on disk.
+
+Council events outside a chat carry `seq` only, with `chat_id` and `chat_seq`
+**null** — not zero, which would place them inside the cursor's `chat_seq > ?`
+predicate.
+
+**A `chat_event` table was added**, which this section does not have: chat events
+lived only in `ChatEventBroker`'s in-memory map. Without the table the stream is
+half-durable — the chat and its turns persist, the event log describing them does
+not, and a cursor points into a history that no longer exists.
+
+A connection presenting **no** cursor still replays source by source rather than
+through the merged path. That path is lossless, where a merged replay cannot
+include an event whose position was never allocated.
 
 `EventPublisher` currently conflates two jobs: `publish`/`history` are persistence, `subscribe` is live pub/sub for SSE. A durable implementation still needs the in-memory subscriber fan-out — you cannot serve an SSE stream from a table.
 
@@ -860,7 +901,7 @@ Keep `EventPublisher` as a thin composite that appends then publishes, so **no e
 
 Event writes are on the hot path of every stage. Append synchronously (they are small, and SQLite handles thousands of inserts per second), but **never let an event-store failure fail a council run**: catch, log at `WARN`, and continue. Losing an observability record is acceptable; losing a 10-minute council run because a disk was full is not.
 
-### 6.8 Retention (fixes F5) ✅ IMPLEMENTED for the in-memory stores
+### 6.8 Retention (fixes F5) ✅ IMPLEMENTED
 
 Durability moves unbounded growth from RAM to disk; it does not remove it. Add `RetentionService` as a `@Scheduled` task (hourly) plus a one-shot run at boot:
 
@@ -884,9 +925,11 @@ Two deviations from the sketch above:
 - **Eviction runs on write, not on an hourly `@Scheduled` sweep.** The store is capped at a few hundred entries, so the sweep costs microseconds beside the model call that produced the entry, and the bound then holds continuously rather than up to an hour late. It also keeps `mvn test` free of a scheduler and of timing-dependent assertions. The durable stores in this phase still want the scheduled sweep — deleting rows and artifact directories is not something to do on the write path.
 - **`CREATED` and `RUNNING` protection is checked where the information lives.** `InMemorySessionStore` reads the status off the session directly, being the only store that holds one; the event and result stores ask `RunRegistry` whether the run is in flight, and the chat store asks the chat whether a turn is running. A `CREATED` session has produced no events and no result, so the other stores have nothing of its to protect.
 
-Still open for Phase 2A: cascading to artifact directories, and the same bounds applied to the durable stores.
+**Delivered — the durable half.** `RetentionService` runs the scheduled sweep this section asked for, and cascades. A session is three things on disk — a row, its events, and an artifact directory that dwarfs both — so deleting the row alone would leave the other two unreachable forever, since every read of them is scoped to a session that no longer exists: the store would look bounded while the disk kept filling. It reads the same `RetentionPolicy`, and asks *three* questions rather than one about whether a session is in use — `CREATED`, `RUNNING`, **and** present in `RunRegistry`, the last catching a run whose stored status has not caught up with reality. The first fire is one interval after startup, not at startup, because the sweep is destructive and must not run against half-loaded state. `LocalArtifactStore.deleteSession` is the only destructive operation in the codebase; it re-checks path containment and does not follow symlinks, because the session id reaching it has travelled through a database and a retention decision rather than straight from a request.
 
-### 6.9 Interrupted-run recovery
+One gap remains, deliberately: **in-memory eviction does not cascade to artifact directories.** The in-memory stores evict on write and then no longer know the session existed, so there is nothing left to cascade from. Under `type=memory` a session's artifacts outlive its history. Closing it would need either an eviction callback or an orphan-directory sweep, and the latter is destructive without a known owner — not worth the risk for the default profile, where artifacts are the inspectable development record.
+
+### 6.9 Interrupted-run recovery ✅ IMPLEMENTED
 
 Durable sessions make this possible for the first time, and it closes the "queued-run recovery" gap named in `CLAUDE.md`.
 
@@ -906,6 +949,10 @@ Durable sessions make this possible for the first time, and it closes the "queue
 - `InterruptedRunSweeperTest` — a `RUNNING` session at boot becomes `INTERRUPTED` and its chat turn becomes `FAILED`.
 
 **Done when:** with `LLM_COUNCIL_PERSISTENCE=jdbc`, a chat with three turns survives a restart, appears in `GET /api/council/chats`, and a run killed mid-flight shows as `INTERRUPTED` rather than spinning.
+
+✅ **Verified against the packaged jar on a real SQLite file.** All four migrations applied and were idempotent across five restarts; a three-turn chat survived `kill -9` with its answers intact and appeared in the listing; a run pointed at an unroutable model host was killed mid-flight and came back `INTERRUPTED`, with its chat turn `FAILED` carrying the same reason; the SSE cursor resumed correctly from both the `Last-Event-ID` header and the query parameter. Frame counts matched the database exactly.
+
+Driving the real binary is what caught the one defect the 542-test suite did not: a first SSE connection had stopped replaying council events entirely, because replaying chat history claimed each turn's council session as already-followed. Every cursor test asserted on what a *resume* contains; none asserted that a first connection contains council events at all. Worth remembering for later phases — store-level contract tests and MockMvc slices were each correct and collectively blind to it.
 
 ---
 
@@ -1208,14 +1255,14 @@ Interactive prompts, same synthesizer, prints the YAML, asks before writing, exi
 | 0 | Catalog seam, merged catalog endpoint, validator tiers (F1) | ~700 LOC, 6 changed classes | Low — mechanical, well covered by existing tests |
 | 1 | User config overlay, shipped-config fix (F1), prompt budget (F2) | ~1100 LOC, 7 new classes | Medium — §2 validation is the bulk |
 | 2 | Chat + timeline UI, cost accounting (F3), cancellation (F4) | ~1200 LOC JS/CSS/HTML, ~400 LOC Java | Low — read-only against existing APIs |
-| 2A | Durable persistence (SQLite/H2), retention (F5), interrupted-run sweep | ~700 LOC, 8 new classes | Medium — contract tests carry it |
+| 2A | Durable persistence (SQLite/H2), retention (F5), interrupted-run sweep | ✅ shipped — ~2400 LOC, 19 new classes, 351 → 542 tests | Medium — contract tests carried it |
 | 2B | Resume and re-run | ~600 LOC | Medium-high — the stage-index detail in §7.4.1 is the trap |
 | 3A | Config **write path** — `ConfigController`, validate/preview/schema, atomic write | ~400 LOC | Medium — atomic write, schema generation |
 | 3B | Manual four-tab editor UI | ~300 LOC | Low — **deferred indefinitely**, see §8 |
 | 4 | Hot reload | ~400 LOC, touches 10 classes | **High** — concurrency; do not start before Phase 2 is proven |
 | 5 | Requirement Advisor | ~800 LOC | Medium — synthesizer is pure and testable; LLM part is optional by design |
 
-**Adopted order: 0 → 1 → 2 → 2A → 3A → 5 → 2B.** Phases 0, 1, and 2 are complete. 3B and 4 are held back and built only if demand appears.
+**Adopted order: 0 → 1 → 2 → 2A → 3A → 5 → 2B.** Phases 0, 1, 2, and 2A are complete; **3A is next**. 3B and 4 are held back and built only if demand appears.
 
 This supersedes the original `2A → 2B, then 3 → 4 → 5`. Two reasons for the change:
 
