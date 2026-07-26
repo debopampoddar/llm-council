@@ -17,7 +17,7 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Chat API V1 with asynchronous council runs and server-sent progress events.
 - Anonymized draft IDs with private model mapping artifacts.
 - Structured JSON review parsing and per-draft scoring.
-- Debate trigger based on score variance.
+- Debate trigger based on reviewer disagreement about the same draft.
 - Chair synthesis with score and dissent context.
 - Fresh Eyes validation with structured JSON output.
 - In-memory session and event history.
@@ -25,7 +25,7 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 
 ### Anti-Sycophancy & Quality (Phase 3)
 - **Adversarial debate roles**: `PROPOSER`, `CRITIC`, and `SYNTHESIZER` council personas with role-specific system prompts. CRITIC models receive explicit instructions to challenge emerging consensus.
-- **Sycophancy detection**: per-round Jaccard word similarity plus confidence delta toward majority median. Models that shift opinion without changing their argument are flagged.
+- **Sycophancy detection**: a two-condition gate, each condition in its own unit. A member is flagged when its confidence moved at least `sycophancy-confidence-delta` points toward the majority **and** its reasoning stood still — either its own text barely changed, or its new text has migrated onto the other members' prior language (`alignmentToOthers`). Both components are reported whether or not the member was flagged.
 - **Post-debate draft revision** (`REVISE` stage): each model revises its draft incorporating debate arguments before re-scoring.
 - **Post-debate re-review** (`REVIEW_POST_DEBATE` stage): reviewers re-evaluate drafts considering debate transcript, so the second SCORE pass uses genuinely updated evidence.
 - **Model heterogeneity enforcement**: startup warning when all council members share the same `modelFamily`.
@@ -33,12 +33,14 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 ### Scoring & Resilience (Phases 1–2)
 - **Confidence-weighted scoring** (default): reviewer scores weighted by self-reported confidence.
 - **Pluggable scoring strategies**: `average`, `confidence-weighted`, `median`, `trimmed-mean` — selectable per protocol stage.
-- **Disagreement escalation**: `SYNTHESIZE_WITH_DISSENT` or `HALT_AND_ESCALATE` when post-debate score variance remains high.
+- **Disagreement escalation**: `SYNTHESIZE_WITH_DISSENT` or `HALT_AND_ESCALATE` when reviewers still disagree about the same draft after debate. Escalation is only claimed when that disagreement was measurable — it needs two reviewers on one draft, which a two-member council never has once self-review is excluded.
 - **Retry with exponential backoff**: `RetryableModelClient` decorator retries transient failures (`PROVIDER_UNAVAILABLE`, `MODEL_TIMEOUT`) with jitter.
-- **Robust confidence parsing**: multi-pattern extraction handles `Confidence: 85`, `confidence: 0.85`, `85%`, and more.
+- **Confidence parsing**: free-text confidence is captured once and normalised onto 0–100, so `Confidence: 85`, `confidence: 0.85`, `.7`, and `92%` all resolve correctly. A bare `0` or `1` is refused as ambiguous rather than guessed, and anything unreadable is reported as unreadable rather than defaulted — an unreadable round is excluded from convergence and sycophancy analysis and says so in the run warnings.
 - **JSON parsing resilience**: markdown fence stripping, trailing comma tolerance, lenient Jackson configuration.
 - **Token usage tracking**: Ollama (`prompt_eval_count`/`eval_count`) and Spring AI (`getUsage()`) token extraction.
 - **Minimum debate rounds**: prevents premature convergence from sycophantic first-round agreement.
+- **Convergence sized to the council**: debate stops early when every member's confidence moved less than `convergence-confidence-delta` points. The two-sample KS test is used only from 8 members up, where it is not quantised into uselessness — on a three-member council the statistic can only take the values 0, ⅓, ⅔ and 1.
+- **Council-composition warnings at boot**: two member ids resolving to one provider model, a chair seated as a member, or a `median`/`trimmed-mean` strategy on a council too small to aggregate.
 - **Immutable ModelRegistry**: constructor-injected via `@Bean` — no mutable post-construction registration.
 
 ### Multi-Provider Support
@@ -65,7 +67,7 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - "Save for later" writes a proposal file that startup never reads, re-checked every time you come back to it.
 
 ### Testing
-- 776 JUnit tests: policy resolution, parsing, quorum, KS convergence math, sycophancy detection, all scoring strategies, retry logic, full protocol integration, durable stores against H2 and SQLite, the catalog, config-write and advisor endpoints, static resource serving, skipped-stage event contracts, score-pass labelling, cancellation, and configuration synthesis across every requirement combination.
+- 823 JUnit tests: policy resolution, confidence parsing, quorum, KS convergence math, sycophancy detection at the shipped thresholds, council-composition warnings, the debate trigger, all scoring strategies, retry logic, full protocol integration, durable stores against H2 and SQLite, the catalog, config-write and advisor endpoints, static resource serving, skipped-stage event contracts, score-pass labelling, cancellation, and configuration synthesis across every requirement combination.
 
 ## Runtime Requirements
 
@@ -308,6 +310,7 @@ Then pull the local models:
 ```bash
 ollama pull llama3.1:8b
 ollama pull mistral:7b
+ollama pull qwen2.5:7b   # third distinct member for local-rigorous
 ```
 
 ### Building a council without writing YAML
@@ -417,6 +420,7 @@ Recommended M1 path when Ollama runs natively or separately:
 ```bash
 ollama pull llama3.1:8b
 ollama pull mistral:7b
+ollama pull qwen2.5:7b   # third distinct member for local-rigorous
 unset SPRING_AI_OLLAMA_BASE_URL
 docker compose -f docker-compose.m1-32gb-app-only.yml up --build
 ```
@@ -689,7 +693,7 @@ The `oci` profile uses logical models with provider `openai-compatible`. Configu
 ```bash
 export SPRING_AI_OPENAI_API_KEY="$OCA_LLM_API_TOKEN"
 export SPRING_AI_OPENAI_BASE_URL="$OCA_LLM_BASE_URL"
-export OCA_LLM_MODEL="gpt-5.4"
+export OCA_LLM_MODEL="gpt-4o"
 ```
 
 Without valid values, the service can still start, but `oci` and `hybrid` model calls will fail explicitly rather than silently falling back to mock output.
