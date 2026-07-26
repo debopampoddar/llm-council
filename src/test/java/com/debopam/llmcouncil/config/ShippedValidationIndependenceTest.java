@@ -52,8 +52,12 @@ class ShippedValidationIndependenceTest {
             // without leaving the provider.
             "gemini-balanced,   CORRELATED",
             "gemini-rigorous,   CORRELATED",
-            // OCA_LLM_REVIEW_MODEL defaults to the same model as OCA_LLM_MODEL.
-            // An operator fixes this by pointing them at different models.
+            // OCA_LLM_REVIEW_MODEL now defaults to a different model from
+            // OCA_LLM_MODEL — they were both gpt-5.4, a model that does not
+            // exist, which made chair and validator literally the same call.
+            // They remain CORRELATED because they still share a model family;
+            // an operator reaches INDEPENDENT by pointing the review model at
+            // another provider.
             "oci-balanced,      CORRELATED",
             "oci-rigorous,      CORRELATED"
     })
