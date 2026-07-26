@@ -87,7 +87,7 @@ public record CouncilRunResponse(
                 // looked up afterwards. Configuration can change between a run
                 // finishing and someone reading it, and a run is evidence: its
                 // trust signals must describe what it actually executed.
-                IntegrityAssessment.of(ctx.protocol())
+                IntegrityAssessment.of(ctx.protocol(), ctx.policy())
         );
     }
 

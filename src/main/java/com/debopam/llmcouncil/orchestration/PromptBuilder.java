@@ -61,7 +61,7 @@ public class PromptBuilder {
                 1. recommendation or answer
                 2. key reasons
                 3. uncertainties or assumptions
-                4. confidence from 0.0 to 1.0
+                4. End your response with: Confidence: NN  (where NN is 0-100)
                 """;
 
         String userContent = "<question>\n" + question + "\n</question>";
@@ -80,7 +80,7 @@ public class PromptBuilder {
         return List.of(ChatMessage.system(systemPrompt), ChatMessage.user(userContent));
     }
 
-    // ── Aggregation (MoA second layer) 
+    // ── Aggregation (MoA second layer)
 
     /**
      * Aggregation prompt: refine using all other models' initial drafts.
@@ -510,7 +510,7 @@ public class PromptBuilder {
                     2. Alternative perspectives and counterarguments
                     3. Edge cases and failure modes
                     4. Your own position accounting for these criticisms
-                    5. Confidence from 0.0 to 1.0
+                    5. End your response with: Confidence: NN  (where NN is 0-100)
                     """;
 
             // SYNTHESIZER: bridge-builder — integrate diverse perspectives
@@ -526,7 +526,7 @@ public class PromptBuilder {
                     2. Legitimate tensions between viewpoints
                     3. A synthesized position that respects multiple perspectives
                     4. Remaining unresolved disagreements
-                    5. Confidence from 0.0 to 1.0
+                    5. End your response with: Confidence: NN  (where NN is 0-100)
                     """;
 
             // PROPOSER (default): same as existing generationMessagesWithCoT
@@ -539,7 +539,7 @@ public class PromptBuilder {
                     1. recommendation or answer
                     2. key reasons
                     3. uncertainties or assumptions
-                    4. confidence from 0.0 to 1.0
+                    4. End your response with: Confidence: NN  (where NN is 0-100)
                     """;
         };
 

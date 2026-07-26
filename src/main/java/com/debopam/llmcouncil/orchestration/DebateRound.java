@@ -28,4 +28,18 @@ public record DebateRound(int roundNumber, List<DebateContribution> contribution
                             .map(c -> (double) c.confidence())
                             .toList();
     }
+
+    /**
+     * How many contributions in this round reported no readable confidence.
+     *
+     * <p>Excluding these from {@link #confidenceScores()} keeps the convergence
+     * and sycophancy maths honest, but silently narrowing the sample is its own
+     * misreport: a round where four of five members were unreadable converges
+     * trivially. The count exists so the run can say so.
+     *
+     * @return the number of contributions carrying the {@code -1} sentinel
+     */
+    public int unreadableConfidenceCount() {
+        return (int) contributions.stream().filter(c -> c.confidence() < 0).count();
+    }
 }

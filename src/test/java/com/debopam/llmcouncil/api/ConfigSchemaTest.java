@@ -50,7 +50,7 @@ class ConfigSchemaTest {
      * else would keep both sides equal. This number failing is the reminder to
      * look at the UI.
      */
-    private static final int EXPECTED_STAGE_OPTIONS = 12;
+    private static final int EXPECTED_STAGE_OPTIONS = 14;
 
     /** Entities the overlay can carry. A new one must be described here. */
     private static final int EXPECTED_ENTITIES = 6;

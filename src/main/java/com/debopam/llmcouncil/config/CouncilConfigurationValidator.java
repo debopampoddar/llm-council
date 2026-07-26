@@ -116,7 +116,129 @@ public class CouncilConfigurationValidator {
 
             // Warn when the chair cannot physically hold the evidence it must synthesise.
             warnSynthesisWillNotFit(policyId, policy, modelsById, props.getProtocols().get(policy.getProtocolId()));
+
+            // Warn when the council is smaller, or less independent, than its
+            // roster makes it look.
+            warnCouncilComposition(policyId, policy, modelsById,
+                                   props.getProtocols().get(policy.getProtocolId()));
         });
+    }
+
+    /**
+     * Warn (do not fail) when a council's composition undercuts what it reports.
+     *
+     * <p>Three distinct ways a roster overstates itself:
+     *
+     * <ol>
+     *   <li><b>The same model seated twice.</b> Two member ids resolving to one
+     *       {@code providerModelId} are one set of weights sampled twice, not two
+     *       opinions. Deliberate resampling is legitimate, so this stays quiet
+     *       when the two entries differ in temperature — that is the difference
+     *       between an accident and a choice.</li>
+     *   <li><b>The chair sitting as a member.</b> The chair then synthesises a
+     *       pool containing its own draft. Anonymisation cannot help: a model
+     *       recognises its own writing, and self-preference is the specific bias
+     *       the anonymised review stage exists to remove.</li>
+     *   <li><b>A scoring strategy that cannot run.</b> {@code median} and
+     *       {@code trimmed-mean} need three reviews per draft to do anything a
+     *       plain average would not. Self-review is excluded, so reviews per
+     *       draft is members minus one, and below three the strategy silently
+     *       degrades to averaging while the configuration still names it.</li>
+     * </ol>
+     *
+     * <p>All three are warnings. A one-model machine must still be able to run a
+     * council; what it must not do is present that council as something wider.
+     *
+     * @param policyId   the policy being validated
+     * @param policy     the policy configuration
+     * @param modelsById all configured models, keyed by id
+     * @param protocol   the protocol this policy runs, used for its stage options
+     */
+    private void warnCouncilComposition(String policyId,
+                                        CouncilProperties.PolicyProps policy,
+                                        Map<String, CouncilProperties.ModelProps> modelsById,
+                                        CouncilProperties.ProtocolProps protocol) {
+        List<CouncilProperties.ModelProps> members = policy.getMemberModelIds().stream()
+                                                          .map(modelsById::get)
+                                                          .filter(Objects::nonNull)
+                                                          .toList();
+
+        // (1) Two member ids, one underlying model.
+        for (int i = 0; i < members.size(); i++) {
+            for (int j = i + 1; j < members.size(); j++) {
+                CouncilProperties.ModelProps left = members.get(i);
+                CouncilProperties.ModelProps right = members.get(j);
+                if (!resolvesToSameModel(left, right)) {
+                    continue;
+                }
+                if (left.getTemperature() != right.getTemperature()) {
+                    continue; // deliberate resampling of one model at two temperatures
+                }
+                log.warn("Policy {} seats '{}' and '{}' as separate members, but both resolve to "
+                         + "provider model '{}' at the same temperature. That is one model sampled "
+                         + "twice, not two opinions: it inflates the apparent council size, and its "
+                         + "two drafts will review and score each other. Use a different model for "
+                         + "one of them, or vary their temperature if the resampling is deliberate.",
+                         policyId, left.getId(), right.getId(), left.getProviderModelId());
+            }
+        }
+
+        // (2) The chair is also a member.
+        if (policy.getMemberModelIds().contains(policy.getChairModelId())) {
+            log.warn("Policy {} seats its chair '{}' as a council member. The chair will synthesise "
+                     + "a pool of drafts containing one it wrote itself, which anonymisation cannot "
+                     + "correct for. Remove it from memberModelIds unless the self-preference is "
+                     + "understood and accepted.",
+                     policyId, policy.getChairModelId());
+        }
+
+        // (3) A scoring strategy with nothing to work on.
+        String strategy = scoringStrategy(protocol);
+        int reviewsPerDraft = Math.max(0, policy.getMemberModelIds().size() - 1);
+        if (reviewsPerDraft < 3 && ("median".equals(strategy) || "trimmed-mean".equals(strategy))) {
+            log.warn("Policy {} selects the '{}' scoring strategy, but its {} members produce only "
+                     + "{} review(s) per draft once self-review is excluded. The strategy needs "
+                     + "three to behave differently from a plain average and will silently fall "
+                     + "back to one. Seat more members or select 'average'.",
+                     policyId, strategy, policy.getMemberModelIds().size(), reviewsPerDraft);
+        }
+    }
+
+    /**
+     * Whether two model entries are the same underlying model.
+     *
+     * <p>Compares the resolved {@code providerModelId}, the same basis
+     * {@link ValidationIndependence} uses for chair and validator, so the two
+     * checks cannot disagree about what "the same model" means.
+     *
+     * @param left  one model entry
+     * @param right another model entry
+     * @return {@code true} when both name the same provider model on the same provider
+     */
+    private boolean resolvesToSameModel(CouncilProperties.ModelProps left,
+                                        CouncilProperties.ModelProps right) {
+        String leftModel = left.getProviderModelId();
+        String rightModel = right.getProviderModelId();
+        return hasText(leftModel) && hasText(rightModel)
+               && leftModel.equalsIgnoreCase(rightModel)
+               && Objects.equals(left.getProvider(), right.getProvider());
+    }
+
+    /**
+     * The scoring strategy a protocol's SCORE stage will use.
+     *
+     * @param protocol the protocol, may be null
+     * @return the configured strategy, or the shipped default when unset
+     */
+    private String scoringStrategy(CouncilProperties.ProtocolProps protocol) {
+        if (protocol == null) {
+            return "confidence-weighted";
+        }
+        Map<String, Object> scoreOptions = protocol.getStageOptions().get("SCORE");
+        if (scoreOptions == null || scoreOptions.get("scoring-strategy") == null) {
+            return "confidence-weighted";
+        }
+        return String.valueOf(scoreOptions.get("scoring-strategy"));
     }
 
     /**

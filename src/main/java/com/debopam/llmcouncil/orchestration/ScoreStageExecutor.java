@@ -80,6 +80,13 @@ public class ScoreStageExecutor implements StageExecutor {
 
         List<ScoreArtifact> stageScores = new ArrayList<>();
 
+        // Inter-rater disagreement: how far apart two reviewers were about the
+        // SAME draft. This is the quantity that means "the council disagrees";
+        // variance across drafts means the opposite. Needs two reviewers on one
+        // draft to exist at all, which a two-member council never has.
+        double reviewerDisagreement = 0.0;
+        boolean disagreementMeasurable = false;
+
         for (Draft draft : ctx.drafts()) {
             // Collect all reviews that target this specific draft.
             List<ReviewArtifact> reviews = ctx.reviews().stream()
@@ -94,6 +101,11 @@ public class ScoreStageExecutor implements StageExecutor {
                 events.publish(ctx.session().id(), stage().name(), "SCORE_SKIPPED", null,
                         Map.of("draftId", draft.draftId(), "reason", warning));
                 continue;
+            }
+
+            if (reviews.size() >= 2) {
+                disagreementMeasurable = true;
+                reviewerDisagreement = Math.max(reviewerDisagreement, interRaterVariance(reviews));
             }
 
             // Delegate dimension aggregation and overall score calculation
@@ -120,7 +132,9 @@ public class ScoreStageExecutor implements StageExecutor {
         EscalationPolicy escalationPolicy = parseEscalationPolicy(policyStr);
         boolean isPostDebate = !firstPass;
 
-        ScoreSummary summary = summarize(stageScores, isPostDebate, escalationThreshold, escalationPolicy);
+        ScoreSummary summary = summarize(stageScores, isPostDebate, escalationThreshold,
+                                         escalationPolicy, reviewerDisagreement,
+                                         disagreementMeasurable);
         ctx.setScoreSummary(summary);
         artifactStore.writeJson(ctx.session().id(), "normalized/scores-" + label + ".json", summary);
 
@@ -133,7 +147,8 @@ public class ScoreStageExecutor implements StageExecutor {
         // If escalation was triggered and policy is HALT_AND_ESCALATE,
         // mark the context as failed to prevent synthesis from proceeding.
         if (summary.escalated()) {
-            String escalationWarning = "Post-debate score variance " + String.format("%.2f", summary.variance())
+            String escalationWarning = "Post-debate reviewer disagreement "
+                    + String.format("%.2f", summary.reviewerDisagreement())
                     + " exceeds escalation threshold " + escalationThreshold
                     + "; escalation policy: " + summary.escalationPolicy();
             ctx.addWarning(escalationWarning);
@@ -241,7 +256,9 @@ public class ScoreStageExecutor implements StageExecutor {
      */
     private ScoreSummary summarize(List<ScoreArtifact> scores, boolean isPostDebate,
                                    double escalationThreshold,
-                                   EscalationPolicy escalationPolicy) {
+                                   EscalationPolicy escalationPolicy,
+                                   double reviewerDisagreement,
+                                   boolean disagreementMeasurable) {
         // The winning draft is the one with the highest weighted total score.
         String winner = scores.stream()
                 .max(Comparator.comparingDouble(ScoreArtifact::weightedTotal))
@@ -253,18 +270,41 @@ public class ScoreStageExecutor implements StageExecutor {
                 .average()
                 .orElse(0.0);
 
-        // Population variance: measures disagreement between drafts.
-        // High variance triggers debate in the rigorous protocol.
+        // Population variance across drafts: how decisively the council ranked
+        // them. This is NOT disagreement — it peaks when reviewers agree which
+        // draft wins. Retained because it is a useful description of the ranking,
+        // and reported under its own meaning.
         double variance = scores.stream()
                 .mapToDouble(s -> Math.pow(s.weightedTotal() - avg, 2))
                 .average()
                 .orElse(0.0);
 
-        // Only trigger escalation on post-debate scoring.
-        // Pre-debate high variance is expected and handled by the DEBATE stage.
-        boolean escalated = isPostDebate && variance >= escalationThreshold;
+        // Escalation is a claim that the council could not agree, so it is keyed
+        // to inter-rater disagreement and only made when that was measurable.
+        // Only post-debate: pre-debate disagreement is what DEBATE exists for.
+        boolean escalated = isPostDebate
+                            && disagreementMeasurable
+                            && reviewerDisagreement >= escalationThreshold;
 
         return new ScoreSummary(scores, variance, winner,
-                escalated, escalated ? escalationPolicy : null);
+                escalated, escalated ? escalationPolicy : null,
+                reviewerDisagreement, disagreementMeasurable);
+    }
+
+    /**
+     * Population variance of reviewers' overall scores for one draft.
+     *
+     * @param reviews the reviews targeting a single draft, at least two of them
+     * @return how far apart the reviewers were, in squared score points
+     */
+    private double interRaterVariance(List<ReviewArtifact> reviews) {
+        double mean = reviews.stream()
+                .mapToInt(ReviewArtifact::overallScore)
+                .average()
+                .orElse(0.0);
+        return reviews.stream()
+                .mapToDouble(r -> Math.pow(r.overallScore() - mean, 2))
+                .average()
+                .orElse(0.0);
     }
 }

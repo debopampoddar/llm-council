@@ -57,6 +57,18 @@ public record StageOptionSpec(
      */
     public static final double SYCOPHANCY_SUPPRESSION_THRESHOLD = 0.85;
 
+    /**
+     * The required confidence movement above which capitulation warnings are
+     * effectively suppressed.
+     *
+     * <p>Detection needs a member's confidence to move at least this far toward
+     * the majority. Demanding more than 40 points of a 100-point scale means
+     * ordinary capitulation — the kind that actually happens — passes unflagged.
+     * Permitted, for the same reason the similarity ceiling is, and reported for
+     * the same reason too.
+     */
+    public static final double SYCOPHANCY_DELTA_SUPPRESSION_THRESHOLD = 40.0;
+
     /** Scoring strategies registered in the application. */
     private static final List<String> SCORING_STRATEGIES =
             List.of("median", "trimmed-mean", "confidence-weighted");
@@ -113,6 +125,13 @@ public record StageOptionSpec(
                     yield false;
                 }
             }
+            case "sycophancy-confidence-delta" -> {
+                try {
+                    yield Double.parseDouble(text) > SYCOPHANCY_DELTA_SUPPRESSION_THRESHOLD;
+                } catch (NumberFormatException ex) {
+                    yield false;
+                }
+            }
             case "preserve-dissent" -> "false".equalsIgnoreCase(text);
             default -> true;
         };
@@ -138,12 +157,24 @@ public record StageOptionSpec(
                 intSpec(StageType.DEBATE, "max-rounds", 1, 5, 3,
                         "Maximum debate rounds. Must be at least min-rounds."),
                 doubleSpec(StageType.DEBATE, "ks-convergence-threshold", 0.01, 0.50, 0.10, false,
-                           "Kolmogorov-Smirnov distance below which positions count as converged."),
+                           "Kolmogorov-Smirnov distance below which positions count as converged. "
+                           + "Only consulted for councils of at least "
+                           + com.debopam.llmcouncil.orchestration.DebateConvergenceDetector.KS_MINIMUM_SAMPLE
+                           + " members; below that the statistic is too coarse and the "
+                           + "per-model confidence delta decides."),
+                doubleSpec(StageType.DEBATE, "convergence-confidence-delta", 1.0, 50.0, 5.0, false,
+                           "Points of per-model confidence movement below which a small council "
+                           + "counts as settled and debate can stop early."),
                 doubleSpec(StageType.DEBATE, "debate-trigger-score-variance", 0.0, 1000.0, 120.0, false,
-                           "Score variance above which a debate is triggered."),
+                           "Reviewer disagreement about the same draft, above which a debate is "
+                           + "triggered."),
                 doubleSpec(StageType.DEBATE, "sycophancy-threshold", 0.30, 0.95, 0.70, true,
-                           "Similarity above which a debate turn is flagged as sycophantic agreement. "
+                           "Similarity above which a debate turn's reasoning counts as unchanged. "
                            + "Raising it suppresses warnings rather than the behaviour."),
+                doubleSpec(StageType.DEBATE, "sycophancy-confidence-delta", 1.0, 100.0, 15.0, true,
+                           "Points a member's confidence must move toward the majority before "
+                           + "capitulation is considered. Raising it suppresses warnings rather "
+                           + "than the behaviour."),
                 booleanSpec(StageType.DEBATE, "force-run", false, false,
                             "Run the debate even when scores already agree."),
                 enumSpec(StageType.SCORE, "scoring-strategy", SCORING_STRATEGIES, "confidence-weighted",
@@ -151,7 +182,8 @@ public record StageOptionSpec(
                 stringSpec(StageType.SCORE, "artifact-label", "^[a-z0-9-]{1,32}$", null,
                            "Label distinguishing this stage's score artifacts from another pass."),
                 doubleSpec(StageType.SCORE, "escalation-variance-threshold", 0.0, 1000.0, 120.0, false,
-                           "Score variance above which the escalation policy applies."),
+                           "Reviewer disagreement about the same draft, above which the escalation "
+                           + "policy applies after debate."),
                 enumSpec(StageType.SCORE, "escalation-policy", ESCALATION_POLICIES, "SYNTHESIZE_WITH_DISSENT",
                          "What to do when reviewers disagree beyond the variance threshold."),
                 booleanSpec(StageType.SYNTHESIZE, "preserve-dissent", true, true,

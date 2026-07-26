@@ -350,6 +350,13 @@ public class UserConfigValidator {
                     "Values above " + StageOptionSpec.SYCOPHANCY_SUPPRESSION_THRESHOLD
                     + " hide the signal rather than improve it. Use 0.70 unless you "
                     + "are deliberately investigating false positives."));
+            case "sycophancy-confidence-delta" -> issues.add(warning(key, field,
+                    "sycophancy-confidence-delta of " + value + " requires a member to swing its "
+                    + "confidence that far toward the majority before capitulation is considered. "
+                    + "Ordinary capitulation moves far less and will pass unflagged.",
+                    "Values above " + StageOptionSpec.SYCOPHANCY_DELTA_SUPPRESSION_THRESHOLD
+                    + " points hide the signal rather than improve it. Use 15 unless you are "
+                    + "deliberately investigating false positives."));
             case "preserve-dissent" -> issues.add(warning(key, field,
                     "preserve-dissent is off, so the final answer will not report unresolved "
                     + "disagreement between council members.",

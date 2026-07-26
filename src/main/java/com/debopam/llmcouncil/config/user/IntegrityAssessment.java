@@ -35,12 +35,16 @@ import java.util.Optional;
  * @param sycophancyThreshold effective detection threshold, or null when the
  *                           protocol has no debate stage and therefore never
  *                           measures sycophancy
+ * @param reviewsPerDraft    how many peers reviewed each draft, or null when the
+ *                           protocol has no review stage. One is not a mistake,
+ *                           but it is not an aggregate either
  * @param notes              one plainly-worded line per weakened guarantee
  */
 public record IntegrityAssessment(
         boolean reduced,
         Boolean preserveDissent,
         Double sycophancyThreshold,
+        Integer reviewsPerDraft,
         List<String> notes
 ) {
 
@@ -61,10 +65,43 @@ public record IntegrityAssessment(
      * @return what it gave up, and the effective values behind the answer
      */
     public static IntegrityAssessment of(ProtocolDefinition protocol) {
+        return of(protocol, null);
+    }
+
+    /**
+     * Assess a resolved protocol together with the policy that staffed it.
+     *
+     * <p>The policy is what makes {@code reviewsPerDraft} knowable. Self-review
+     * is excluded, so each draft is reviewed by every <em>other</em> member: a
+     * two-member council produces exactly one review per draft, and the
+     * median, trimmed-mean and confidence-weighted strategies are all computing
+     * over a sample of one. That is a legitimate way to run a small council and
+     * a misleading thing to leave unstated, since the answer carries a score
+     * that looks aggregated.
+     *
+     * <p>It deliberately does <b>not</b> set {@link #reduced()}. A small council
+     * has not weakened a guarantee — nobody turned anything off — and conflating
+     * "few members" with "integrity reduced" would make the flag useless for the
+     * thing it exists to report.
+     *
+     * @param protocol the protocol this run executed
+     * @param policy   the policy that staffed it, may be null
+     * @return what it gave up, the effective values behind the answer, and how
+     *         many peers actually reviewed each draft
+     */
+    public static IntegrityAssessment of(ProtocolDefinition protocol,
+                                         com.debopam.llmcouncil.model.CouncilPolicy policy) {
         if (protocol == null) {
-            return new IntegrityAssessment(false, null, null, List.of());
+            return new IntegrityAssessment(false, null, null, null, List.of());
         }
         List<String> notes = new ArrayList<>();
+
+        Integer reviewsPerDraft = null;
+        boolean reviews = protocol.orderedStages().contains(StageType.REVIEW)
+                          || protocol.orderedStages().contains(StageType.REVIEW_POST_DEBATE);
+        if (reviews && policy != null) {
+            reviewsPerDraft = Math.max(0, policy.memberModelIds().size() - 1);
+        }
 
         Boolean preserveDissent = null;
         if (protocol.orderedStages().contains(StageType.SYNTHESIZE)) {
@@ -105,7 +142,8 @@ public record IntegrityAssessment(
                       + ", which weakens an anti-sycophancy guarantee for this run.");
         }));
 
-        return new IntegrityAssessment(!notes.isEmpty(), preserveDissent, sycophancyThreshold, notes);
+        return new IntegrityAssessment(!notes.isEmpty(), preserveDissent, sycophancyThreshold,
+                                       reviewsPerDraft, notes);
     }
 
     /**
