@@ -432,7 +432,7 @@ Policies are the business contract for one profile/depth pair:
 hybrid-balanced:
   protocolId: balanced
   memberModelIds: [local-llama3, local-mistral, oci-reviewer]
-  chairModelId: oci-gpt-5-4
+  chairModelId: oci-primary
   validatorModelId: oci-reviewer
   minimumSuccessfulDrafts: 2
   minimumReviewsPerDraft: 1
@@ -801,6 +801,7 @@ mvn test
 ```bash
 ollama pull llama3.1:8b
 ollama pull mistral:7b
+ollama pull qwen2.5:7b   # third distinct member for local-rigorous
 ```
 
 ### 3. Run Service
@@ -965,7 +966,7 @@ Configure your OpenAI-compatible runtime externally:
 ```bash
 export SPRING_AI_OPENAI_API_KEY="$OCA_LLM_API_TOKEN"
 export SPRING_AI_OPENAI_BASE_URL="$OCA_LLM_BASE_URL"
-export OCA_LLM_MODEL="gpt-5.4"
+export OCA_LLM_MODEL="gpt-4o"
 ```
 
 If these values are missing, the application still boots for local and mock use, but OCI model calls fail explicitly.

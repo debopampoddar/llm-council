@@ -120,6 +120,7 @@ In another terminal, pull the models:
 ```bash
 ollama pull "${LLM_COUNCIL_LOCAL_MODEL:-llama3.1:8b}"
 ollama pull "${LLM_COUNCIL_LOCAL_ALT_MODEL:-mistral:7b}"
+ollama pull "${LLM_COUNCIL_LOCAL_THIRD_MODEL:-qwen2.5:7b}"
 ```
 
 Confirm host Ollama is reachable:

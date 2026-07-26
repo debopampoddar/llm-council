@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
@@ -40,18 +41,15 @@ import java.util.regex.Pattern;
 public class DebateStageExecutor implements StageExecutor {
     private static final Logger log = LoggerFactory.getLogger(DebateStageExecutor.class);
 
-    // Multiple patterns to handle varying LLM output formats 
-    // Order matters: more specific patterns are tried first.
-    private static final Pattern[] CONFIDENCE_PATTERNS = {
-        // "Confidence: 85" or "confidence: 85%"
-        Pattern.compile("(?i)confidence:?\\s*(\\d{1,3})\\s*%?"),
-        // "Confidence: 0.85" or "confidence: .7" (decimal scale)
-        Pattern.compile("(?i)confidence:?\\s*0?\\.(\\d{1,2})"),
-        // "confidence score: 85" / "confidence level: 85" / "confidence is: 85"
-        Pattern.compile("(?i)confidence\\s+(?:score|level|is):?\\s*(\\d{1,3})"),
-        // "my confidence is 85" / "my confidence is: 90"
-        Pattern.compile("(?i)my\\s+confidence\\s+is:?\\s*(\\d{1,3})"),
-    };
+    // One pattern captures the whole numeric token; scale is decided afterwards
+    // by NORMALISATION, not by pattern ordering. The previous implementation
+    // used an ordered array whose first entry, "confidence:?\s*(\d{1,3})",
+    // matched the leading "0" of "Confidence: 0.85" and returned 0 — a
+    // *successful* parse, so it bypassed the -1 sentinel and silently fed a
+    // maximally-unconfident value into the majority median, the convergence
+    // check, and the sycophancy index.
+    private static final Pattern CONFIDENCE_PATTERN = Pattern.compile(
+            "(?i)confidence\\s*(?:score|level)?\\s*(?:is\\s*)?:?\\s*([0-9]*\\.?[0-9]+)\\s*(%?)");
 
     private final ModelRegistry registry;
     private final PromptBuilder promptBuilder;
@@ -74,16 +72,45 @@ public class DebateStageExecutor implements StageExecutor {
         // too early, which mitigates sycophantic "instant agreement" in round 1.
         int minRounds = opts.getInt("min-rounds", 2);
 
-        if (!forceRun && ctx.scoreSummary().map(ScoreSummary::variance).orElse(0.0) < varianceTrigger) {
+        // Debate is triggered by reviewers disagreeing about the same draft, not
+        // by the drafts scoring far apart — the latter is high exactly when the
+        // council agrees on a winner, which is the least reason to debate.
+        //
+        // When disagreement was never measurable (a two-member council reviews
+        // each draft once, since self-review is excluded) the run must say so
+        // rather than report the same "below threshold" as a council that looked.
+        Optional<ScoreSummary> summary = ctx.scoreSummary();
+        boolean measurable = summary.map(ScoreSummary::disagreementMeasurable).orElse(false);
+        double disagreement = summary.map(ScoreSummary::reviewerDisagreement).orElse(0.0);
+
+        if (!forceRun && !measurable) {
+            String warning = "Debate was skipped without measuring disagreement: no draft had two "
+                             + "reviewers, so reviewer disagreement does not exist for this council. "
+                             + "Seat a third member to make it measurable, or set force-run.";
+            ctx.addWarning(warning);
             events.publish(ctx.session().id(), stage().name(), "DEBATE_SKIPPED", null,
-                           Map.of("reason", "score variance below threshold",
-                                  "variance", ctx.scoreSummary().map(ScoreSummary::variance).orElse(0.0),
+                           Map.of("reason", "reviewer disagreement not measurable",
+                                  "measurable", false,
+                                  "variance", summary.map(ScoreSummary::variance).orElse(0.0),
                                   "threshold", varianceTrigger));
             return ctx;
         }
 
-        DebateConvergenceDetector convergence = new DebateConvergenceDetector(ksThreshold);
-        List<Double> prevScores = null;
+        if (!forceRun && disagreement < varianceTrigger) {
+            events.publish(ctx.session().id(), stage().name(), "DEBATE_SKIPPED", null,
+                           Map.of("reason", "reviewer disagreement below threshold",
+                                  "measurable", true,
+                                  "reviewerDisagreement", disagreement,
+                                  "variance", summary.map(ScoreSummary::variance).orElse(0.0),
+                                  "threshold", varianceTrigger));
+            return ctx;
+        }
+
+        double confidenceDelta = opts.getDouble("convergence-confidence-delta",
+                                                DebateConvergenceDetector.DEFAULT_CONFIDENCE_DELTA);
+        DebateConvergenceDetector convergence =
+                new DebateConvergenceDetector(ksThreshold, confidenceDelta);
+        DebateRound prevRound = null;
 
         for (int round = 0; round < maxRounds; round++) {
             events.publish(ctx.session().id(), stage().name(), "DEBATE_ROUND_STARTED", null,
@@ -91,34 +118,51 @@ public class DebateStageExecutor implements StageExecutor {
             DebateRound debateRound = runRound(ctx, round);
             ctx.addDebateRound(debateRound);
 
-            // Detect sycophantic behavior from round 1 onward.
-            // High text similarity + high confidence shift toward majority
-            // signals opinion change without substantive argument change.
-            if (round > 0) {
-                double sycophancyThreshold = opts.getDouble("sycophancy-threshold", 0.70);
-                SycophancyDetector sycophancyDetector = new SycophancyDetector(sycophancyThreshold);
-                DebateRound prevRound = ctx.debateRounds().get(ctx.debateRounds().size() - 2);
-                SycophancyDetector.SycophancyReport report = sycophancyDetector.analyze(prevRound, debateRound);
-                if (report.sycophancyDetected()) {
-                    for (var score : report.scores()) {
-                        if (score.flagged()) {
-                            String warning = "Sycophancy detected for model " + score.modelId()
-                                    + ": index=" + String.format("%.3f", score.sycophancyIndex())
-                                    + " (textSim=" + String.format("%.2f", score.textSimilarity())
-                                    + ", confDelta=" + String.format("%.1f", score.confidenceDelta()) + ")";
-                            ctx.addSycophancyWarning(warning);
-                            events.publish(ctx.session().id(), stage().name(),
-                                    "DEBATE_SYCOPHANCY_WARNING", score.modelId(),
-                                    Map.of("sycophancyIndex", score.sycophancyIndex(),
-                                           "textSimilarity", score.textSimilarity(),
-                                           "confidenceDelta", score.confidenceDelta(),
-                                           "threshold", sycophancyThreshold));
-                        }
-                    }
-                }
+            // A narrowed sample is not a clean one. Convergence and sycophancy
+            // both read confidenceScores(), which drops unreadable entries, so a
+            // round that lost most of its members would otherwise stabilise for
+            // the wrong reason and report nothing about it.
+            int unreadable = debateRound.unreadableConfidenceCount();
+            if (unreadable > 0) {
+                ctx.addWarning("Confidence was unreadable for " + unreadable + " of "
+                               + debateRound.contributions().size()
+                               + " members in debate round " + round
+                               + "; they are excluded from convergence and sycophancy analysis.");
             }
 
-            List<Double> currScores = debateRound.confidenceScores();
+            // Detect capitulation from round 1 onward: confidence moved toward
+            // the majority while the reasoning behind it stood still, either
+            // because the member's own argument barely changed or because its
+            // new argument is the others' prior language.
+            if (round > 0) {
+                double similarityThreshold = opts.getDouble("sycophancy-threshold", 0.70);
+                double sycophancyDelta = opts.getDouble("sycophancy-confidence-delta",
+                                                        SycophancyDetector.DEFAULT_CONFIDENCE_DELTA);
+                SycophancyDetector sycophancyDetector =
+                        new SycophancyDetector(similarityThreshold, sycophancyDelta);
+                DebateRound priorRound = ctx.debateRounds().get(ctx.debateRounds().size() - 2);
+                SycophancyDetector.SycophancyReport report =
+                        sycophancyDetector.analyze(priorRound, debateRound);
+                for (var score : report.scores()) {
+                    if (!score.flagged()) {
+                        continue;
+                    }
+                    String warning = "Sycophancy detected for model " + score.modelId()
+                            + ": confidence moved " + String.format("%.1f", score.confidenceDelta())
+                            + " points toward the majority while its reasoning did not"
+                            + " (self-similarity " + String.format("%.2f", score.textSimilarity())
+                            + ", alignment to others "
+                            + String.format("%.2f", score.alignmentToOthers()) + ")";
+                    ctx.addSycophancyWarning(warning);
+                    events.publish(ctx.session().id(), stage().name(),
+                            "DEBATE_SYCOPHANCY_WARNING", score.modelId(),
+                            Map.of("confidenceDelta", score.confidenceDelta(),
+                                   "textSimilarity", score.textSimilarity(),
+                                   "alignmentToOthers", score.alignmentToOthers(),
+                                   "similarityThreshold", similarityThreshold,
+                                   "confidenceDeltaThreshold", sycophancyDelta));
+                }
+            }
 
             // Only check convergence after the minimum number of
             // rounds have completed. This ensures the debate has progressed
@@ -130,14 +174,18 @@ public class DebateStageExecutor implements StageExecutor {
                                Map.of("round", round,
                                       "minRounds", minRounds,
                                       "reason", "minimum rounds not yet reached"));
-            } else if (convergence.hasConverged(prevScores, currScores)) {
+            } else if (convergence.hasConverged(prevRound, debateRound)) {
                 events.publish(ctx.session().id(), stage().name(), "DEBATE_CONVERGED", null,
                                Map.of("round", round,
+                                      "criterion", debateRound.contributions().size()
+                                                   >= DebateConvergenceDetector.KS_MINIMUM_SAMPLE
+                                                   ? "ks-distance" : "confidence-delta",
                                       "ksThreshold", ksThreshold,
+                                      "confidenceDelta", confidenceDelta,
                                       "minRounds", minRounds));
                 break;
             }
-            prevScores = currScores;
+            prevRound = debateRound;
         }
         return ctx;
     }
@@ -194,33 +242,76 @@ public class DebateStageExecutor implements StageExecutor {
     }
 
     /**
-     * Parse confidence from model debate output using multiple regex patterns.
+     * Parse a free-text confidence declaration into the 0–100 scale.
      *
-     * <p><b>Gap 4.4:</b> Returns {@link OptionalInt#empty()} when no pattern
-     * matches, rather than injecting a hard-coded default (previously 70) that
-     * would pollute convergence detection with synthetic agreement signals.
+     * <p>The prompts ask every model to end its contribution with
+     * {@code Confidence: NN}, so when several matches appear the <em>last</em>
+     * one wins: prose earlier in the argument ("confidence level 3 of the
+     * cited study") must not outrank the model's own closing declaration.
+     *
+     * <p>Scale is decided by normalisation rather than by which pattern matched:
+     * <ul>
+     *   <li>an explicit {@code %} is already 0–100;</li>
+     *   <li>a decimal at or below 1.0 is the 0.0–1.0 scale and is multiplied up;</li>
+     *   <li>a decimal above 1.0 is already 0–100;</li>
+     *   <li>a bare integer in 2–100 is already 0–100.</li>
+     * </ul>
+     *
+     * <p>A bare {@code 0} or {@code 1} is <b>rejected as ambiguous</b> rather
+     * than guessed: on one scale a bare 1 means near-certainty and on the other
+     * it means near-zero, and guessing between them is what the previous
+     * implementation did wrong. Values outside 0–100 are rejected for the same
+     * reason — a clamp presents a number the model never stated.
      *
      * @param text The full debate contribution text from a model.
-     * @return The parsed confidence value (0–100), or empty if not found.
+     * @return The parsed confidence value (0–100), or empty when absent or ambiguous.
      */
-    private OptionalInt parseConfidence(String text) {
-        for (int i = 0; i < CONFIDENCE_PATTERNS.length; i++) {
-            Pattern pattern = CONFIDENCE_PATTERNS[i];
-            Matcher m = pattern.matcher(text);
-            if (m.find()) {
-                String value = m.group(1);
-                int raw = Integer.parseInt(value);
-
-                // The second pattern (index 1) captures digits after the
-                // decimal point, e.g. "0.85" captures "85", "0.7" captures "7".
-                // A single-digit capture like "7" means 70%, not 7%.
-                if (i == 1) {
-                    raw = value.length() == 1 ? raw * 10 : raw;
-                }
-
-                return OptionalInt.of(Math.min(100, Math.max(0, raw)));
+    static OptionalInt parseConfidence(String text) {
+        if (text == null || text.isBlank()) {
+            return OptionalInt.empty();
+        }
+        Matcher m = CONFIDENCE_PATTERN.matcher(text);
+        OptionalInt last = OptionalInt.empty();
+        while (m.find()) {
+            OptionalInt candidate = normalise(m.group(1), "%".equals(m.group(2)));
+            if (candidate.isPresent()) {
+                last = candidate;
             }
         }
-        return OptionalInt.empty();
+        return last;
+    }
+
+    /**
+     * Convert one captured numeric token to the 0–100 scale.
+     *
+     * @param token   the raw numeric text, e.g. {@code "0.85"}, {@code ".7"}, {@code "85"}
+     * @param percent whether the token was followed by a {@code %} sign
+     * @return the normalised value, or empty when the token is ambiguous or out of range
+     */
+    private static OptionalInt normalise(String token, boolean percent) {
+        double value;
+        try {
+            value = Double.parseDouble(token);
+        } catch (NumberFormatException ex) {
+            return OptionalInt.empty();
+        }
+        boolean decimal = token.contains(".");
+
+        if (percent || decimal) {
+            // "0.85" on the 0.0–1.0 scale; "85.5%" and "8.5" already on 0–100.
+            double scaled = (decimal && value <= 1.0) ? value * 100.0 : value;
+            return inRange(Math.round(scaled));
+        }
+        long integral = (long) value;
+        if (integral == 0 || integral == 1) {
+            // Unrecoverably either "1%" or "100%". Report nothing rather than a guess.
+            return OptionalInt.empty();
+        }
+        return inRange(integral);
+    }
+
+    /** Accept a normalised value only if it is a confidence at all. */
+    private static OptionalInt inRange(long value) {
+        return (value < 0 || value > 100) ? OptionalInt.empty() : OptionalInt.of((int) value);
     }
 }
