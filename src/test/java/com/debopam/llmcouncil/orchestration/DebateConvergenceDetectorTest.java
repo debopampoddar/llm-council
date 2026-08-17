@@ -158,6 +158,20 @@ class DebateConvergenceDetectorTest {
         assertFalse(detector.hasConverged(roundOfSize(0, n, 20), roundOfSize(1, n, 90)));
     }
 
+    @Test
+    @DisplayName("large-council KS ignores members that cannot be paired")
+    void largeCouncilKsUsesOnlyPairedMembers() {
+        int n = DebateConvergenceDetector.KS_MINIMUM_SAMPLE;
+        List<DebateContribution> before = new ArrayList<>(roundOfSize(0, n, 80).contributions());
+        List<DebateContribution> after = new ArrayList<>(roundOfSize(1, n, 80).contributions());
+        before.add(new DebateContribution("dropout", "old", 0));
+        after.add(new DebateContribution("newcomer", "new", 100));
+
+        assertTrue(detector.hasConverged(
+                new DebateRound(0, before), new DebateRound(1, after)),
+                "unpaired extremes carry no between-round evidence");
+    }
+
     // ── Null and empty handling
 
     @Test

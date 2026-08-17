@@ -64,6 +64,30 @@ class CouncilRunResponseTest {
         assertEquals(1, response.sycophancyWarnings().size());
     }
 
+    @Test
+    void reportsPartialWhenSynthesisExistsButALaterStageFails() {
+        CouncilContext ctx = context();
+        ctx.setSynthesisResult("usable but unvalidated answer");
+        ctx.markFailed(StageType.VALIDATE, new IllegalStateException("validation failed"));
+
+        CouncilRunResponse response = CouncilRunResponse.from("session-1", ctx);
+
+        assertEquals("PARTIAL", response.status());
+        assertEquals("usable but unvalidated answer", response.answer());
+        assertEquals("validation failed", response.failureReason());
+    }
+
+    @Test
+    void cancellationIsNotMisreportedAsSuccess() {
+        CouncilContext ctx = context();
+        ctx.cancel();
+
+        CouncilRunResponse response = CouncilRunResponse.from("session-1", ctx);
+
+        assertEquals("CANCELLED", response.status());
+        assertEquals("Cancelled by user", response.failureReason());
+    }
+
     private CouncilContext context() {
         CouncilSession session = CouncilSession.create("session-1", "q", null,
                                                        DepthMode.RIGOROUS, "local");

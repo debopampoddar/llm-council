@@ -59,9 +59,17 @@ public record CouncilRunResponse(
         IntegrityAssessment integrity
 ) {
     public static CouncilRunResponse from(String sessionId, CouncilContext ctx) {
+        String status = ctx.isCancelled()
+                ? "CANCELLED"
+                : ctx.isTerminal()
+                        ? (ctx.synthesisResult().isPresent() ? "PARTIAL" : "FAILED")
+                        : "COMPLETED";
+        String failureReason = ctx.isCancelled()
+                ? "Cancelled by user"
+                : ctx.failureMessage().orElse(null);
         return new CouncilRunResponse(
                 sessionId,
-                ctx.isTerminal() ? "FAILED" : "COMPLETED",
+                status,
                 ctx.profile().id(),
                 ctx.session().depthMode().name(),
                 ctx.policy().id(),
@@ -75,7 +83,7 @@ public record CouncilRunResponse(
                 ctx.scoreSummary().orElse(null),
                 ctx.validation().orElse(null),
                 validationIndependence(ctx),
-                ctx.failureMessage().orElse(null),
+                failureReason,
                 failureCategory(ctx),
                 ctx.modelFailures().stream()
                         .map(ModelFailureResponse::from)

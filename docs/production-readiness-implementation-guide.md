@@ -1,12 +1,14 @@
 # Production Readiness Implementation Guide
 
-This document turns the merged production-readiness recommendations into
-concrete implementation guidance. It is intentionally detailed so the work can
-be resumed later without reconstructing the design from conversation history.
+This document records the implementation sequence and the design reasoning that
+led to the current system. It is retained as historical reference.
 
-The code below is proposed implementation code, not currently applied runtime
-code. Treat it as a staged roadmap. Apply one section at a time, run the listed
-tests, and keep the blast radius small.
+> **As-built warning (audited 2026-08-17):** most code below is an old design
+> sketch, not drop-in code for the current repository. Do not copy it over the
+> current implementation. Use the status matrix below and
+> [production-readiness-plan.md](production-readiness-plan.md) for current work.
+> In particular, the old queued-executor sample uses `Future.cancel`, which is
+> not the lifecycle authority in the corrected implementation.
 
 ## Current Baseline
 
@@ -18,10 +20,32 @@ tests, and keep the blast radius small.
   `http://host.rancher-desktop.internal:11434`.
 - Docker Desktop remains supported with
   `SPRING_AI_OLLAMA_BASE_URL=http://host.docker.internal:11434`.
-- Sessions and events are in memory.
-- Artifacts are written to local disk.
+- Bounded memory stores are the default; optional JDBC stores persist sessions,
+  chats, events, and sequence state on H2 or SQLite.
+- Artifacts are written to local disk, including the terminal result DTO at
+  `final/result.json`.
+- Health preflight, categorized failures, retries, timeouts, asynchronous chat,
+  cancellation, SSE cursors, retention, restart recovery, and deletion cascade
+  are implemented.
 
-## Recommended Implementation Order
+## As-built status
+
+| Original section | Current status |
+|---|---|
+| 1. Provider/model health | Implemented |
+| 2. Failure categorization | Implemented |
+| 3. Provider factory cleanup | Still open; current wiring remains centralized |
+| 4. Retry/timeout/circuit breaker | Retry and timeout implemented; circuit breaker open |
+| 5. Configuration validation | Implemented and expanded |
+| 6. Observability | Partial: events, artifacts, usage, health, Actuator; dedicated metrics open |
+| 7. Runtime controls | Partial: async permit, cancellation, bounded retention; durable queue/distributed admission open |
+| 8. SSE | Implemented with durable cursor replay when JDBC is selected |
+| 9. Prompt/security boundary | Prompt boundaries implemented; API authentication/ownership open |
+| 10. Quality/calibration | Partially implemented; production policy quality and empirical calibration remain open |
+| 11. Tests | 887 deterministic tests; live-provider/browser/load/fault suites open |
+| 12. Chat API | Implemented, including optional durability, cancellation, cursor replay, and deletion cascade |
+
+## Original implementation order (historical)
 
 1. Provider/model health endpoint.
 2. Clear failure categories in run responses.
@@ -34,9 +58,9 @@ tests, and keep the blast radius small.
 9. Expanded integration tests.
 10. Chat API.
 
-The most practical next step is provider/model health plus clearer failure
-categories. It directly addresses the runtime pain from Ollama, model names,
-Rancher, Docker Desktop, and Docker networking.
+Health and failure categorization are complete. The current priority order is
+authentication/ownership, production policy quality, live-provider contract
+tests, and pull-request CI; see the current production-readiness plan.
 
 ---
 
@@ -1336,7 +1360,8 @@ Add tests for:
 
 - async start returns accepted;
 - second run is rejected when permits are exhausted;
-- cancel calls `Future.cancel(true)`;
+- cancellation persists the requested/terminal state through `RunRegistry` and
+  does not rely on `Future.cancel(true)` as the lifecycle authority;
 - request size limits reject oversized input.
 
 ---
@@ -2125,7 +2150,7 @@ The flow is:
 ```text
 POST /api/council/chats
   -> ChatCouncilService.createChat
-  -> InMemoryChatSessionStore.save
+  -> configured ChatSessionStore.save
   -> ChatEventBroker publishes CHAT_CREATED
 
 POST /api/council/chats/{chatId}/messages
@@ -2157,21 +2182,23 @@ CouncilRunExecutor completion callback
 - It keeps traceability: every chat turn has a `councilSessionId`.
 - It limits local model overload with a simple process-local semaphore.
 
-### Intentional Demo Limitations
+### Current limitations after subsequent implementation
 
-These are acceptable for the demo but not enough for production:
-
-- Chat state is in memory.
-- Chat event history is in memory.
-- Async runs are not recovered after process restart.
-- Run cancellation is not implemented.
+- Memory remains the default persistence mode; JDBC durability is opt-in.
 - A saturated executor rejects new turns instead of queueing them.
 - There is no user/account ownership on chats.
-- SSE has no durable event cursor or `Last-Event-ID` recovery.
-- Chat summary is deterministic and compact, not model-generated or token-aware.
-- Runtime concurrency is global, not per profile/provider/model.
+- Chat summary is deterministic and compact, not model-generated or fully
+  token-aware.
+- Runtime concurrency is global, not per profile/provider/model, and the
+  synchronous run endpoint bypasses the async permit.
+- Cancellation is cooperative at stage/model-call boundaries; a transport that
+  ignores interruption may continue briefly.
 
-## Remaining Work Package A: Durable Chat And Event Persistence
+Durable JDBC chat/event state, interrupted-run recovery, cancellation, shared
+SSE sequencing, `Last-Event-ID` replay, and deletion cascade were implemented
+after the original demo.
+
+## Completed Work Package A: Durable Chat And Event Persistence
 
 ### Reason
 
@@ -2343,13 +2370,14 @@ constructor sets timestamps to `now`, so a production persistence pass should ad
 a rehydration constructor/factory that accepts stored timestamps instead of
 mutating audit data during reads.
 
-## Remaining Work Package B: Queued Runs And Cancellation
+## Partially Completed Work Package B: Queued Runs And Cancellation
 
 ### Reason
 
-The demo executor rejects when concurrency is full. Production should expose
-`QUEUED`, `RUNNING`, `CANCELLED`, and queue position. Users also need a way to
-cancel slow local or remote model runs.
+Cancellation is implemented through the run registry and orchestration context.
+The executor still rejects when concurrency is full. A production scheduler
+should add durable `QUEUED` state and queue position without replacing the run
+registry with `Future.cancel`.
 
 ### Suggested API
 
@@ -2359,7 +2387,7 @@ DELETE /api/council/chats/{chatId}/turns/{turnId}/run
 GET    /api/council/runs/{sessionId}
 ```
 
-### Executor Shape
+### Historical executor sketch — do not copy into current code
 
 ```java
 package com.debopam.llmcouncil.application;
@@ -2449,14 +2477,15 @@ Additional production work:
 - cancellation should publish a terminal event;
 - queued run state should be persisted if queue durability is required.
 
-## Remaining Work Package C: Production SSE Recovery
+## Completed Work Package C: Production SSE Recovery
 
 ### Reason
 
-The demo SSE stream is live and replayable from memory, but production clients
-need reconnection support. The server should honor `Last-Event-ID`.
+The current controller honors `Last-Event-ID` and a query cursor, and uses one
+monotonic sequence across chat and linked council events. JDBC persistence makes
+that cursor durable across restart; memory mode remains process-local.
 
-### Suggested Controller Shape
+### Historical controller sketch
 
 ```java
 @GetMapping(path = "/{chatId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

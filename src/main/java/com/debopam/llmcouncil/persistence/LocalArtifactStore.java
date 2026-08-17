@@ -56,12 +56,13 @@ public class LocalArtifactStore implements ArtifactStore {
 
     @Override
     public List<String> listArtifacts(String sessionId) {
-        Path sessionPath = basePath.resolve(sessionId).normalize();
+        Path sessionPath = sessionPath(sessionId);
         if (!Files.exists(sessionPath)) {
             return List.of();
         }
+        rejectSymbolicLinks(sessionPath, sessionPath);
         try (var stream = Files.walk(sessionPath)) {
-            return stream.filter(Files::isRegularFile)
+            return stream.filter(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
                          .map(sessionPath::relativize)
                          .map(Path::toString)
                          .sorted()
@@ -133,11 +134,43 @@ public class LocalArtifactStore implements ArtifactStore {
      * @throws IllegalArgumentException if the resolved path escapes the session directory
      */
     private Path resolve(String sessionId, String relativePath) {
-        Path sessionPath = basePath.resolve(sessionId).toAbsolutePath().normalize();
+        Path sessionPath = sessionPath(sessionId);
         Path target = sessionPath.resolve(relativePath).toAbsolutePath().normalize();
         if (!target.startsWith(sessionPath)) {
             throw new IllegalArgumentException("Artifact path escapes session directory: " + relativePath);
         }
+        rejectSymbolicLinks(sessionPath, target);
         return target;
+    }
+
+    /** Resolve and validate the session directory itself against a crafted id. */
+    private Path sessionPath(String sessionId) {
+        Path root = basePath.toAbsolutePath().normalize();
+        Path sessionPath = root.resolve(sessionId).toAbsolutePath().normalize();
+        if (!sessionPath.startsWith(root) || sessionPath.equals(root)) {
+            throw new IllegalArgumentException(
+                    "Session directory escapes the artifact root: " + sessionId);
+        }
+        return sessionPath;
+    }
+
+    /**
+     * Reject any existing symbolic link below the session root. Lexical
+     * normalisation stops {@code ..}; this stops a link such as
+     * {@code session/private -> /etc} from escaping during a read or write.
+     */
+    private void rejectSymbolicLinks(Path sessionPath, Path target) {
+        Path current = sessionPath;
+        if (Files.isSymbolicLink(current)) {
+            throw new IllegalArgumentException("Artifact session directory must not be a symbolic link");
+        }
+        Path relative = sessionPath.relativize(target);
+        for (Path component : relative) {
+            current = current.resolve(component);
+            if (Files.isSymbolicLink(current)) {
+                throw new IllegalArgumentException(
+                        "Artifact path must not traverse a symbolic link: " + relative);
+            }
+        }
     }
 }

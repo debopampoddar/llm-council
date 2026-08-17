@@ -110,6 +110,7 @@ export function renderTopbarConfig(container, state, handlers) {
 // while the user is mid-sentence. The textarea is therefore created once and
 // reused, so a re-render never eats focus or half-typed text.
 let composerInput = null;
+let composerSubmitting = false;
 
 /** Render the composer, including the preflight gate. */
 export function renderComposer(container, state, handlers) {
@@ -135,11 +136,17 @@ export function renderComposer(container, state, handlers) {
     onClick: () => submit(),
   }, [busy ? "Running…" : "Send"]);
 
-  function submit() {
+  async function submit() {
     const text = input.value.trim();
-    if (!text || !sendable || busy) return;
+    if (!text || !sendable || busy || composerSubmitting) return;
+    composerSubmitting = true;
     input.value = "";
-    handlers.onSend(text);
+    try {
+      const sent = await handlers.onSend(text);
+      if (sent === false && !input.value) input.value = text;
+    } finally {
+      composerSubmitting = false;
+    }
   }
 
   // A test-only profile returns deterministic fabricated text. Saying so before

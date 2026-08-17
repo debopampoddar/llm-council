@@ -32,11 +32,13 @@ services:
       OLLAMA_HOST: http://ollama:11434
       LLM_COUNCIL_LOCAL_MODEL: ${LLM_COUNCIL_LOCAL_MODEL:-llama3.2:3b}
       LLM_COUNCIL_LOCAL_ALT_MODEL: ${LLM_COUNCIL_LOCAL_ALT_MODEL:-qwen2.5:3b}
+      LLM_COUNCIL_LOCAL_THIRD_MODEL: ${LLM_COUNCIL_LOCAL_THIRD_MODEL:-qwen2.5:7b}
       LLM_COUNCIL_LOCAL_CHAIR_MODEL: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}
     command: >
       sh -c '
         ollama pull "${LLM_COUNCIL_LOCAL_MODEL:-llama3.2:3b}" &&
         ollama pull "${LLM_COUNCIL_LOCAL_ALT_MODEL:-qwen2.5:3b}" &&
+        ollama pull "${LLM_COUNCIL_LOCAL_THIRD_MODEL:-qwen2.5:7b}" &&
         if [ "${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}" != "${LLM_COUNCIL_LOCAL_MODEL:-llama3.2:3b}" ] &&
            [ "${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}" != "${LLM_COUNCIL_LOCAL_ALT_MODEL:-qwen2.5:3b}" ]; then
           ollama pull "${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}";
@@ -66,7 +68,11 @@ services:
       SPRING_AI_OLLAMA_KEEP_ALIVE: 10m
       LLM_COUNCIL_LOCAL_MODEL: ${LLM_COUNCIL_LOCAL_MODEL:-llama3.2:3b}
       LLM_COUNCIL_LOCAL_ALT_MODEL: ${LLM_COUNCIL_LOCAL_ALT_MODEL:-qwen2.5:3b}
+      LLM_COUNCIL_LOCAL_THIRD_MODEL: ${LLM_COUNCIL_LOCAL_THIRD_MODEL:-qwen2.5:7b}
       LLM_COUNCIL_LOCAL_CHAIR_MODEL: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}
+      # The Intel profile overrides the built-in Mistral alternate with Qwen;
+      # override the family too so diversity diagnostics describe reality.
+      LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY: qwen
       LLM_COUNCIL_LOCAL_OUTPUT_TOKENS: "700"
       LLM_COUNCIL_LOCAL_ALT_OUTPUT_TOKENS: "700"
       LLM_COUNCIL_LOCAL_CHAIR_OUTPUT_TOKENS: "900"

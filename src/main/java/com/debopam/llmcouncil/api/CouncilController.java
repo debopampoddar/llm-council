@@ -10,6 +10,7 @@ import com.debopam.llmcouncil.application.CatalogService;
 import com.debopam.llmcouncil.application.CouncilService;
 import com.debopam.llmcouncil.application.EventPublisher;
 import com.debopam.llmcouncil.application.CouncilRunExecutor;
+import com.debopam.llmcouncil.application.CouncilRunStateException;
 import com.debopam.llmcouncil.application.ProfileHealthService;
 import com.debopam.llmcouncil.application.RunResultStore;
 import com.debopam.llmcouncil.domain.CouncilEvent;
@@ -256,5 +257,11 @@ public class CouncilController {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<String> handleBadRequest(IllegalArgumentException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ex.getMessage());
+    }
+
+    /** A session is single-use; duplicate or out-of-order run requests conflict. */
+    @ExceptionHandler(CouncilRunStateException.class)
+    public ResponseEntity<String> handleConflict(CouncilRunStateException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getMessage());
     }
 }

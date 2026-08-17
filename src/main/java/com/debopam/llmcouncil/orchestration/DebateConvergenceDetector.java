@@ -85,14 +85,18 @@ public class DebateConvergenceDetector {
         if (previous == null || current == null) {
             return false;
         }
-        Map<String, Double> paired = pairedConfidences(previous, current);
-        if (paired.isEmpty()) {
+        PairedConfidences paired = pairedConfidences(previous, current);
+        if (paired.movements().isEmpty()) {
             return false;
         }
-        if (paired.size() >= KS_MINIMUM_SAMPLE) {
-            return hasConverged(previous.confidenceScores(), current.confidenceScores());
+        if (paired.movements().size() >= KS_MINIMUM_SAMPLE) {
+            // Dropouts and unreadable confidences are excluded from both
+            // samples. Feeding the full round lists here lets an unpaired model
+            // change the KS result despite carrying no between-round evidence.
+            return hasConverged(paired.previousScores(), paired.currentScores());
         }
-        return paired.values().stream().allMatch(movement -> movement <= confidenceDelta);
+        return paired.movements().values().stream()
+                .allMatch(movement -> movement <= confidenceDelta);
     }
 
     /**
@@ -122,7 +126,7 @@ public class DebateConvergenceDetector {
      * @param current  round t+1
      * @return model id to absolute confidence change, in points
      */
-    private Map<String, Double> pairedConfidences(DebateRound previous, DebateRound current) {
+    private PairedConfidences pairedConfidences(DebateRound previous, DebateRound current) {
         Map<String, Integer> before = new LinkedHashMap<>();
         for (DebateContribution c : previous.contributions()) {
             if (c.confidence() >= 0) {
@@ -130,13 +134,22 @@ public class DebateConvergenceDetector {
             }
         }
         Map<String, Double> movement = new LinkedHashMap<>();
+        List<Double> previousScores = new java.util.ArrayList<>();
+        List<Double> currentScores = new java.util.ArrayList<>();
         for (DebateContribution c : current.contributions()) {
             Integer prior = before.get(c.modelId());
             if (prior != null && c.confidence() >= 0) {
                 movement.put(c.modelId(), Math.abs((double) c.confidence() - prior));
+                previousScores.add(prior.doubleValue());
+                currentScores.add((double) c.confidence());
             }
         }
-        return movement;
+        return new PairedConfidences(movement, previousScores, currentScores);
+    }
+
+    private record PairedConfidences(Map<String, Double> movements,
+                                     List<Double> previousScores,
+                                     List<Double> currentScores) {
     }
 
     /**

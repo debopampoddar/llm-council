@@ -49,6 +49,10 @@ public class CouncilContext {
     // concurrent from virtual threads in GENERATE, AGGREGATE, and DEBATE stages.
     private final List<Draft> drafts = new CopyOnWriteArrayList<>();
     private final List<ReviewArtifact> reviews = new CopyOnWriteArrayList<>();
+    // Kept separately as well as in reviews so the second SCORE pass evaluates
+    // the post-debate evidence, rather than averaging it with the evidence that
+    // triggered the debate in the first place.
+    private final List<ReviewArtifact> postDebateReviews = new CopyOnWriteArrayList<>();
     private final List<ScoreArtifact> scores = new CopyOnWriteArrayList<>();
     private final List<DebateRound> debateRounds = new CopyOnWriteArrayList<>();
     private final List<String> excludedModels = new CopyOnWriteArrayList<>();
@@ -163,8 +167,17 @@ public class CouncilContext {
     /** Add a review artifact. */
     public void addReview(ReviewArtifact review) { reviews.add(review); }
 
+    /** Add a post-debate review to both the full audit trail and the latest pass. */
+    public void addPostDebateReview(ReviewArtifact review) {
+        reviews.add(review);
+        postDebateReviews.add(review);
+    }
+
     /** @return Snapshot of review artifacts. Thread-safe via CopyOnWriteArrayList. */
     public List<ReviewArtifact> reviews() { return List.copyOf(reviews); }
+
+    /** @return Only reviews produced after debate, for the second scoring pass. */
+    public List<ReviewArtifact> postDebateReviews() { return List.copyOf(postDebateReviews); }
 
     // ── Scores 
 

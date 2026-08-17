@@ -6,13 +6,19 @@ using `docker-compose.intel-2019-32gb.yml`.
 This machine class is CPU-bound for local LLM inference. Start with mock and
 `QUICK` local tests. Run `BALANCED` only after the quick path is reliable.
 
+> **Security:** the compose app binds `0.0.0.0` so Docker port publishing works,
+> and the API has no authentication. Run this only on a trusted local network,
+> restrict the published port with host/firewall controls, and do not expose
+> port 8080 to the internet. Raw prompts and model output are stored in the
+> artifact volume.
+
 ## Files Used
 
 ```text
 Dockerfile
 docker-compose.intel-2019-32gb.yml
 src/main/resources/application.yml
-docs/enhancement-implementation-sequences.md
+docs/library-flow-guide.md
 ```
 
 ## Hardware Assumptions
@@ -37,8 +43,14 @@ The Intel compose file defaults to smaller models:
 ```text
 LLM_COUNCIL_LOCAL_MODEL=llama3.2:3b
 LLM_COUNCIL_LOCAL_ALT_MODEL=qwen2.5:3b
+LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.2:3b
 ```
+
+The alternate is explicitly declared as family `qwen` in this compose file so
+the catalog's diversity diagnostics match the overridden model. The full stack
+also pulls the third member required by the rigorous local policy. Expect that
+7B model to be slow on CPU; use mock rigorous mode when testing protocol shape.
 
 These defaults are chosen for practical testing on CPU. For higher quality, you
 can override them, but expect longer runs:
@@ -46,6 +58,8 @@ can override them, but expect longer runs:
 ```bash
 export LLM_COUNCIL_LOCAL_MODEL=llama3.1:8b
 export LLM_COUNCIL_LOCAL_ALT_MODEL=mistral:7b
+export LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY=mistral
+export LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 export LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.1:8b
 ```
 
@@ -54,7 +68,7 @@ export LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.1:8b
 From the project root:
 
 ```bash
-cd "/Users/depoddar/Documents/docs/personal/LLM Council/code/llm-council-full"
+cd /path/to/llm-council
 uname -m
 docker version
 docker compose version
@@ -84,6 +98,7 @@ Expected result:
 
 ```text
 BUILD SUCCESS
+Tests run: 887, Failures: 0, Errors: 0, Skipped: 0
 ```
 
 If Java 25 is not available on the Intel machine, rely on the Docker build path:
@@ -320,7 +335,9 @@ Mitigations:
 
 - Use `QUICK` instead of `BALANCED`.
 - Keep `LLM_COUNCIL_LOCAL_OUTPUT_TOKENS` low.
-- Keep `SPRING_AI_OLLAMA_NUM_CTX` at `3072` or lower.
+- Keep the shipped `SPRING_AI_OLLAMA_NUM_CTX=8192` for rigorous prompt fit. If
+  memory pressure forces a smaller value, expect prompt truncation warnings and
+  reduce output-token budgets or use `QUICK` rather than assuming 3072 is enough.
 - Use smaller models.
 - Use `oci` or `hybrid` for real runs.
 
@@ -345,6 +362,8 @@ Expected:
 SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434
 LLM_COUNCIL_LOCAL_MODEL=llama3.2:3b
 LLM_COUNCIL_LOCAL_ALT_MODEL=qwen2.5:3b
+LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
+LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY=qwen
 LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.2:3b
 ```
 
@@ -365,6 +384,8 @@ If Docker Desktop swaps heavily or containers exit, lower model size and context
 docker compose -f docker-compose.intel-2019-32gb.yml down
 export LLM_COUNCIL_LOCAL_MODEL=llama3.2:3b
 export LLM_COUNCIL_LOCAL_ALT_MODEL=qwen2.5:3b
+export LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY=qwen
+export LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 export LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.2:3b
 docker compose -f docker-compose.intel-2019-32gb.yml up --build
 ```

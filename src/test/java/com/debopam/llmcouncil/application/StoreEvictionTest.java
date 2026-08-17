@@ -17,16 +17,22 @@ import com.debopam.llmcouncil.orchestration.CouncilContext;
 import com.debopam.llmcouncil.orchestration.ProtocolDefinition;
 import com.debopam.llmcouncil.orchestration.StageType;
 import com.debopam.llmcouncil.persistence.InMemorySessionStore;
+import com.debopam.llmcouncil.persistence.ArtifactStore;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 /**
  * Eviction in the four in-memory stores (F5).
@@ -209,6 +215,27 @@ class StoreEvictionTest {
         assertEquals(2, store.retainedCount());
     }
 
+    @Test
+    void terminalResultCanBeRecoveredFromItsArtifactAfterMemoryIsLost() throws Exception {
+        ArtifactStore artifacts = mock(ArtifactStore.class);
+        ObjectMapper mapper = new ObjectMapper();
+        AtomicReference<String> persisted = new AtomicReference<>();
+        doAnswer(invocation -> {
+            persisted.set(mapper.writeValueAsString(invocation.getArgument(2)));
+            return null;
+        }).when(artifacts).writeJson(eq("r1"), eq("final/result.json"), any());
+        when(artifacts.readArtifact("r1", "final/result.json"))
+                .thenAnswer(ignored -> Optional.ofNullable(persisted.get()));
+
+        CouncilRunResponse expected = result("r1");
+        new InMemoryRunResultStore(policy(10, 90), new RunRegistry(), artifacts, mapper)
+                .save("r1", expected);
+        InMemoryRunResultStore restarted = new InMemoryRunResultStore(
+                policy(10, 90), new RunRegistry(), artifacts, mapper);
+
+        assertEquals(expected, restarted.findById("r1").orElseThrow());
+    }
+
     // ── Chats
 
     @Test
@@ -238,6 +265,8 @@ class StoreEvictionTest {
                    "a run is still writing into this chat; evicting it leaves the answer with "
                    + "nowhere to land");
         assertTrue(store.findById("done").isEmpty());
+        assertTrue(store.findById("newest").isEmpty(),
+                "the protected live chat consumes the only retained slot");
     }
 
     @Test

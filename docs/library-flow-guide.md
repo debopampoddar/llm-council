@@ -91,7 +91,7 @@ Code path:
 CouncilController.createSession()
   -> CouncilSession.create()
   -> CouncilService.createSession()
-  -> InMemorySessionStore.save()
+  -> configured SessionStore.save()
 ```
 
 Important class:
@@ -162,8 +162,8 @@ Code path:
 ```text
 ChatController.create()
   -> ChatCouncilService.createChat()
-  -> ChatSession.create in memory
-  -> InMemoryChatSessionStore.save()
+  -> ChatSession.create
+  -> configured ChatSessionStore.save()
   -> ChatEventBroker publishes CHAT_CREATED
 ```
 
@@ -238,7 +238,7 @@ Code path:
 ```text
 ChatController.events()
   -> sends current ChatResponse snapshot
-  -> replays ChatEventBroker history
+  -> replays configured ChatEventStore history after the requested cursor
   -> subscribes to future chat events
   -> subscribes to linked council session events
   -> streams everything as server-sent events
@@ -287,7 +287,7 @@ spring:
       chat:
         options:
           model: ${LLM_COUNCIL_LOCAL_MODEL:llama3.1:8b}
-          num-ctx: ${SPRING_AI_OLLAMA_NUM_CTX:4096}
+          num-ctx: ${SPRING_AI_OLLAMA_NUM_CTX:16384}
           num-thread: ${SPRING_AI_OLLAMA_NUM_THREAD:0}
           keep_alive: ${SPRING_AI_OLLAMA_KEEP_ALIVE:10m}
 ```
@@ -304,7 +304,7 @@ LLM Council supports multiple LLM providers. Each cloud provider **auto-activate
 
 | Provider | Config Value | Credential | How It Activates |
 |---|---|---|---|
-| Ollama | `ollama` | None (local) | Always available |
+| Ollama | `ollama` | None (local) | Client is configured; daemon/model availability requires health preflight |
 | OpenAI | `openai` | `SPRING_AI_OPENAI_API_KEY` | Auto-detects real key (not a placeholder) |
 | Anthropic | `anthropic` | `SPRING_AI_ANTHROPIC_API_KEY` | Auto-detects real key (not a placeholder) |
 | Gemini / Vertex AI | `gemini` | `GOOGLE_CLOUD_PROJECT` + ADC or SA | Auto-detects real project ID |
@@ -324,8 +324,8 @@ The startup banner shows what was detected:
 ║  OpenAI             ⬚  NOT CONFIGURED            ║
 ║  Anthropic          ⬚  NOT CONFIGURED            ║
 ║  Gemini             ✅ DETECTED (auto)           ║
-║  Ollama .............. ✅ ALWAYS AVAILABLE       ║
-║  Mock ................ ✅ ALWAYS AVAILABLE       ║
+║  Ollama .............. ⬚  LOCAL — CHECK HEALTH   ║
+║  Mock ................ ✅ TEST-ONLY READY         ║
 ╚══════════════════════════════════════════════════╝
 ```
 
@@ -417,11 +417,12 @@ Profiles can be local-only, OCI/OpenAI-compatible only, hybrid, Gemini-only, or 
 
 | Profile | Purpose |
 |---|---|
+| `default` | Alias of the shipped local policy mapping, defaulting to BALANCED. |
 | `local` | Ollama-only local council. Private or offline-capable runs. |
 | `oci` | OCI/OpenAI-compatible council. Oracle Code Assist, OCI, or another endpoint. |
 | `hybrid` | Local models for draft diversity plus OCI/OpenAI-compatible chair and validator. |
-| `gemini` | Google Gemini (Vertex AI) only. Requires `COUNCIL_GEMINI_ENABLED=true`. |
-| `multi-cloud` | Maximum diversity: Ollama + Gemini + Anthropic/OpenAI. Requires enabled providers. |
+| `gemini` | Google Gemini (Vertex AI) only. Auto-activates from `GOOGLE_CLOUD_PROJECT` plus ADC/service-account credentials. |
+| `multi-cloud` | Maximum diversity: Ollama + Gemini + Anthropic/OpenAI. Health preflight reports the providers required by the selected depth. |
 | `mock` | Test-only deterministic profile. Use for smoke tests, not real answers. |
 
 ### Policies
@@ -491,7 +492,7 @@ GENERATE -> ANONYMIZE -> REVIEW -> SCORE -> DEBATE -> REVISE -> REVIEW_POST_DEBA
 
 Use this for architecture, risk, or design decisions where the extra cost is justified.
 
-The `REVISE` stage lets each model incorporate debate arguments into a revised draft. The `REVIEW_POST_DEBATE` stage asks reviewers to re-evaluate with debate context, so the second `SCORE` pass operates on genuinely updated evidence.
+The `REVISE` stage lets each model incorporate debate arguments into a revised draft. The `REVIEW_POST_DEBATE` stage asks reviewers to re-evaluate with debate context, so the second `SCORE` pass operates on genuinely updated evidence. If debate does not trigger, all three post-debate stages are explicitly skipped and the initial score remains authoritative.
 
 ## Stage Details
 
@@ -653,8 +654,11 @@ What it does:
 
 1. Reviewers re-evaluate drafts considering the debate transcript.
 2. Uses `postDebateReviewMessages()` — the prompt includes debate history alongside drafts.
-3. Post-debate reviews are added to context, so the second SCORE pass uses genuinely updated evidence.
+3. Post-debate reviews are kept separately from initial reviews, so the second
+   SCORE pass uses only genuinely updated evidence.
 4. System prompt: "Do not simply copy your pre-debate review."
+5. If debate did not run, this stage and the second SCORE pass are explicitly
+   skipped; the initial score remains authoritative.
 
 ### SYNTHESIZE
 
@@ -755,8 +759,11 @@ events:
 curl -N http://localhost:8080/api/council/chats/{chatId}/events
 ```
 
-The current implementation stores session events, chat events, and chat state in
-memory. Restarting the app clears them.
+The default implementation stores session events, chat events, chat state, and
+terminal results in bounded memory. With `council.persistence.type=jdbc`, H2 or
+SQLite persists sessions, chats, event history, and the shared chat event
+sequence. Terminal result DTOs are also written to `final/result.json`, allowing
+result recovery after the in-memory cache is lost.
 
 ## Artifact Flow
 
@@ -778,6 +785,7 @@ normalized/scores-initial.json
 private/anonymization-map.json
 final/answer.md
 final/validation.json
+final/result.json
 ```
 
 List artifacts:
@@ -852,8 +860,15 @@ curl -X POST http://localhost:8080/api/council/sessions/{sessionId}/run
 
 ```bash
 curl http://localhost:8080/api/council/sessions/{sessionId}
+curl http://localhost:8080/api/council/sessions/{sessionId}/result
 curl http://localhost:8080/api/council/sessions/{sessionId}/events
 curl http://localhost:8080/api/council/sessions/{sessionId}/artifacts
+```
+
+Cancel an active run at an orchestration boundary:
+
+```bash
+curl -X DELETE http://localhost:8080/api/council/sessions/{sessionId}/run
 ```
 
 ## How To Use The Chat API
@@ -895,6 +910,13 @@ the underlying council run.
 
 ```bash
 curl -s "http://localhost:8080/api/council/chats/$CHAT_ID" | jq
+```
+
+Delete the chat and all linked council sessions, events, result-cache entries,
+and artifact directories:
+
+```bash
+curl -X DELETE "http://localhost:8080/api/council/chats/$CHAT_ID"
 ```
 
 Each turn contains:
@@ -987,7 +1009,9 @@ Add a model:
 
 1. Add model under `council.models` with the appropriate provider name.
 2. Add it to a policy's `memberModelIds`, `chairModelId`, or `validatorModelId`.
-3. Ensure the provider is activated (`council.providers.<name>.enabled=true`).
+3. For a cloud provider, supply its credential/environment configuration; there
+   are no `council.providers.*.enabled` flags. For Ollama, pull the configured
+   model and verify profile health.
 4. Set the model's `councilRole` for debate persona (PROPOSER, CRITIC, SYNTHESIZER).
 5. Set `modelFamily` for heterogeneity validation.
 
@@ -995,9 +1019,11 @@ Add a provider:
 
 1. Add the Spring AI starter dependency to `pom.xml`.
 2. Inject the `ChatModel` bean in `CouncilConfig` with `@Autowired(required = false)`.
-3. Add a case to `buildClient()` gated by `isProviderActive()`.
-4. Add a provider activation flag under `council.providers` in `application.yml`.
-5. Add model entries with the new provider name.
+3. Add a case to `buildClient()` with explicit credential/bean availability
+   checks and an actionable `UnavailableModelClient` fallback.
+4. Extend provider health checking and the startup/catalog status information.
+5. Add model entries with the new provider name and contract tests for the
+   adapter.
 
 Add a protocol:
 
@@ -1013,16 +1039,22 @@ Add a stage:
 
 ## Current Limitations
 
-- Events, sessions, and chats are in memory.
-- Artifact storage is local file only.
+- Persistence defaults to bounded memory. JDBC durability is optional rather
+  than the default, and the live subscriber brokers remain process-local.
+- Artifact storage is local filesystem only; there is no object-store backend
+  or application-provided encryption at rest.
 - Spring AI provider-specific option support is intentionally conservative.
 - Review repair prompts are not implemented yet; malformed review JSON excludes that reviewer.
 - Authentication and authorization are not implemented on the API.
-- Chat API V1 and live SSE exist, but they are demo-grade: no durable chat
-  store, no cancellation, no queued run recovery, no SSE reconnect cursor, and
-  no user ownership.
-- Durable history, structured-output repair, model-call metrics, cancellation,
-  and production chat persistence remain next implementation sequences in
-  [production-readiness-implementation-guide.md](production-readiness-implementation-guide.md).
+- Chat cancellation, deletion cascade, durable JDBC history, interrupted-run
+  recovery, and `Last-Event-ID`/query cursor replay are implemented. There is no
+  durable queued scheduler, cross-process coordination, or user ownership.
+- The synchronous one-shot run endpoint is not governed by the asynchronous
+  executor's global concurrency permit.
+- Chat renders a cancelled turn as failed; the persisted council result still
+  correctly reports `CANCELLED`.
+- Structured-output repair, model-call metrics, browser E2E, and live-provider
+  contract tests remain open; see
+  [production-readiness-plan.md](production-readiness-plan.md).
 
 These are deliberate next steps, not reasons to reintroduce user-selected protocol IDs or silent mock fallback.

@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RunRegistry {
 
     private final Map<String, CouncilContext> running = new ConcurrentHashMap<>();
+    private final java.util.Set<String> pendingCancellations = ConcurrentHashMap.newKeySet();
 
     /**
      * Record a run as started.
@@ -31,6 +32,9 @@ public class RunRegistry {
      */
     public void register(String sessionId, CouncilContext context) {
         running.put(sessionId, context);
+        if (pendingCancellations.remove(sessionId)) {
+            context.cancel();
+        }
     }
 
     /**
@@ -40,6 +44,12 @@ public class RunRegistry {
      */
     public void unregister(String sessionId) {
         running.remove(sessionId);
+        pendingCancellations.remove(sessionId);
+    }
+
+    /** Clear a request that arrived around a run's terminal persistence window. */
+    public void clearPendingCancellation(String sessionId) {
+        pendingCancellations.remove(sessionId);
     }
 
     /**
@@ -53,6 +63,10 @@ public class RunRegistry {
     public boolean cancel(String sessionId) {
         CouncilContext context = running.get(sessionId);
         if (context == null) {
+            // The async task may have been accepted but not reached the
+            // orchestrator yet. Remember the request so register() cannot lose
+            // a cancellation in that small but real window.
+            pendingCancellations.add(sessionId);
             return false;
         }
         context.cancel();

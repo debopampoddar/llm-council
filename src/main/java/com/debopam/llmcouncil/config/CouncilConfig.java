@@ -426,7 +426,8 @@ public class CouncilConfig {
         // Build the raw provider-specific client.
         // Each cloud provider is auto-detected by inspecting its API key or
         // project ID. If the credential is a placeholder, the model falls
-        // through to UnavailableModelClient. Ollama is always available.
+        // through to UnavailableModelClient. Ollama needs no credential, but
+        // its actual daemon/model availability is reported by health checks.
         ModelClient raw = switch (mp.getProvider().toLowerCase()) {
             case "openai" -> hasRealCredential(openAiApiKey) && openAiChatModel != null
                              ? new SpringAiModelClient(mp.getId(), ChatClient.create(openAiChatModel))

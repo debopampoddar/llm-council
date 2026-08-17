@@ -20,7 +20,8 @@ import org.springframework.context.annotation.Configuration;
  *   <li><b>Gemini (Vertex AI)</b>: set {@code GOOGLE_CLOUD_PROJECT=my-project}
  *       and authenticate via {@code gcloud auth application-default login}
  *       or {@code GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json}</li>
- *   <li><b>Ollama</b>: always available (local, no credentials needed)</li>
+ *   <li><b>Ollama</b>: needs no credential, but its local daemon and model tags
+ *       are checked separately at run time</li>
  * </ul>
  */
 @Configuration
@@ -51,8 +52,8 @@ public class ProviderAutoConfiguration {
         appendStatus(sb, "OpenAI",    openAi,    "SPRING_AI_OPENAI_API_KEY");
         appendStatus(sb, "Anthropic", anthropic,  "SPRING_AI_ANTHROPIC_API_KEY");
         appendStatus(sb, "Gemini",    gemini,     "GOOGLE_CLOUD_PROJECT");
-        sb.append("║  Ollama .............. ✅ ALWAYS AVAILABLE       ║\n");
-        sb.append("║  Mock ................ ✅ ALWAYS AVAILABLE       ║\n");
+        sb.append("║  Ollama .............. ⬚  LOCAL — CHECK HEALTH   ║\n");
+        sb.append("║  Mock ................ ✅ TEST-ONLY READY         ║\n");
         sb.append("╚══════════════════════════════════════════════════╝");
 
         String banner = sb.toString();

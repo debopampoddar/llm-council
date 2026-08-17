@@ -5,6 +5,7 @@ import com.debopam.llmcouncil.application.CouncilRunCompletion;
 import com.debopam.llmcouncil.application.CouncilRunExecutor;
 import com.debopam.llmcouncil.application.CouncilRunSubmission;
 import com.debopam.llmcouncil.application.CouncilService;
+import com.debopam.llmcouncil.application.CouncilSessionCleanup;
 import com.debopam.llmcouncil.application.RunResultStore;
 import com.debopam.llmcouncil.config.CouncilCatalogHolder;
 import com.debopam.llmcouncil.domain.CouncilSession;
@@ -30,6 +31,7 @@ public class ChatCouncilService {
     private final ChatEventBroker chatEvents;
     private final RunResultStore runResultStore;
     private final ChatTurnAttribution attribution;
+    private final CouncilSessionCleanup sessionCleanup;
     private final int recentTurnCount;
 
     public ChatCouncilService(ChatSessionStore chatStore,
@@ -38,6 +40,7 @@ public class ChatCouncilService {
                               ChatEventBroker chatEvents,
                               RunResultStore runResultStore,
                               ChatTurnAttribution attribution,
+                              CouncilSessionCleanup sessionCleanup,
                               CouncilCatalogHolder catalogHolder) {
         int recentTurnCount = catalogHolder.get().runtime().chatRecentTurnCount();
         this.chatStore = chatStore;
@@ -46,6 +49,7 @@ public class ChatCouncilService {
         this.chatEvents = chatEvents;
         this.runResultStore = runResultStore;
         this.attribution = attribution;
+        this.sessionCleanup = sessionCleanup;
         this.recentTurnCount = Math.max(1, recentTurnCount);
     }
 
@@ -62,8 +66,12 @@ public class ChatCouncilService {
         return chat;
     }
 
-    public ChatSession ask(String chatId, String userMessage) {
+    public synchronized ChatSession ask(String chatId, String userMessage) {
         ChatSession chat = getChat(chatId);
+        if (chat.hasRunningTurn()) {
+            throw new IllegalStateException(
+                    "Chat " + chatId + " already has a running turn. Wait for it to finish or cancel it first.");
+        }
         String sessionId = UUID.randomUUID().toString();
         String turnId = UUID.randomUUID().toString();
         String context = buildCouncilContext(chat);
@@ -128,17 +136,21 @@ public class ChatCouncilService {
      * @throws NoSuchElementException if no chat has that id
      * @throws IllegalStateException  if the chat has a running turn
      */
-    public void deleteChat(String chatId) {
+    public synchronized void deleteChat(String chatId) {
         ChatSession chat = getChat(chatId);
         if (chat.hasRunningTurn()) {
             throw new IllegalStateException(
                     "Chat " + chatId + " has a running turn and cannot be deleted until it finishes.");
         }
+        chat.turns().stream()
+                .map(ChatTurn::councilSessionId)
+                .forEach(sessionCleanup::delete);
         chatStore.delete(chatId);
         chatEvents.forgetChat(chatId);
     }
 
-    private void handleCompletion(String chatId, String turnId, CouncilRunCompletion completion) {
+    private synchronized void handleCompletion(String chatId, String turnId,
+                                               CouncilRunCompletion completion) {
         attribution.unlink(completion.sessionId());
         ChatSession chat = chatStore.findById(chatId).orElse(null);
         if (chat == null) {
@@ -157,26 +169,30 @@ public class ChatCouncilService {
         String answer = completion.session().finalAnswer();
         String failure = completion.failureReason();
         ChatTurn updated;
+        String eventType;
         if (completion.session().status() == CouncilStatus.CANCELLED) {
             // Checked before the answer heuristic below: a run cancelled after
             // synthesis has an answer, and would otherwise be reported as a
             // PARTIAL result rather than as the stop the user asked for.
             updated = current.failed(CouncilService.CANCELLED_BY_USER);
-            publishTurn(chatId, "TURN_FAILED", updated);
+            eventType = "TURN_FAILED";
         } else if (!blank(answer) && blank(failure)) {
             updated = current.completed(answer);
-            publishTurn(chatId, "TURN_COMPLETED", updated);
+            eventType = "TURN_COMPLETED";
         } else if (!blank(answer)) {
             updated = current.partial(answer, failure);
-            publishTurn(chatId, "TURN_PARTIAL", updated);
+            eventType = "TURN_PARTIAL";
         } else {
             updated = current.failed(blank(failure) ? "Council run failed" : failure);
-            publishTurn(chatId, "TURN_FAILED", updated);
+            eventType = "TURN_FAILED";
         }
 
         chat.replaceTurn(updated);
         chat.replaceSummary(updateSummary(chat));
         chatStore.save(chat);
+        // Publish only after the aggregate is durable. A client reacts to this
+        // event by fetching the chat; publishing first exposes stale RUNNING state.
+        publishTurn(chatId, eventType, updated);
     }
 
     /**

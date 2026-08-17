@@ -69,6 +69,15 @@ public class ScoreStageExecutor implements StageExecutor {
         // when scores already agree, and the second pass still scores against
         // post-debate reviews, so it is genuinely a different result.
         boolean firstPass = ctx.scores().isEmpty();
+        List<ReviewArtifact> scoringReviews = firstPass
+                ? ctx.reviews()
+                : ctx.postDebateReviews();
+
+        if (!firstPass && scoringReviews.isEmpty() && ctx.debateRounds().isEmpty()) {
+            events.publish(ctx.session().id(), stage().name(), "SCORE_SKIPPED", null,
+                    Map.of("reason", "No debate or post-debate review evidence was produced"));
+            return ctx;
+        }
 
         String label = uniqueLabel(
                 opts.getString("artifact-label", firstPass ? "initial" : "post-debate"), ctx);
@@ -89,7 +98,7 @@ public class ScoreStageExecutor implements StageExecutor {
 
         for (Draft draft : ctx.drafts()) {
             // Collect all reviews that target this specific draft.
-            List<ReviewArtifact> reviews = ctx.reviews().stream()
+            List<ReviewArtifact> reviews = scoringReviews.stream()
                     .filter(r -> r.draftId().equals(draft.draftId()))
                     .toList();
 
