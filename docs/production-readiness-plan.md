@@ -1,282 +1,157 @@
 # LLM Council Production Readiness Plan
 
-This document captures the recommended next steps after the local Docker,
-Rancher Desktop, and Ollama integration fixes. The application is now much more
-usable for local council runs, but production readiness still needs focused work
-around provider contracts, failure handling, health checks, observability,
-runtime safety, and API ergonomics.
-
-## Current State
-
-- Java 25 Spring Boot API with configurable profiles, policies, and protocols.
-- Local Ollama, OCI/OpenAI-compatible, hybrid, and explicit test-only mock
-  profiles.
-- Direct Ollama `/api/chat` adapter for local models.
-- Rancher Desktop app-only compose path using native Ollama through
-  `host.rancher-desktop.internal`.
-- Docker Desktop can still be used by overriding
-  `SPRING_AI_OLLAMA_BASE_URL=http://host.docker.internal:11434`.
-- In-memory session and event handling.
-- Local artifact writing for run outputs and debug material.
-- Basic unit coverage for policy resolution, structured parsing, quorum, and
-  Ollama client request/response behavior.
-
-## 1. Provider Abstraction Cleanup
-
-Move provider construction out of `CouncilConfig` into a dedicated
-`ModelClientFactory`.
-
-Why:
-
-- `CouncilConfig` currently owns too much provider-specific wiring.
-- Provider behavior will diverge as retries, health checks, metrics, auth, and
-  streaming evolve.
-- A factory makes it easier to add real OCI/OpenAI-compatible clients without
-  weakening local Ollama behavior.
-
-Recommended shape:
-
-```java
-public interface ModelClientFactory {
-    ModelClient create(ModelProfile profile);
-}
-```
-
-Provider-specific factories can then own adapter details:
-
-```java
-public final class OllamaModelClientFactory implements ModelClientFactory {
-    @Override
-    public ModelClient create(ModelProfile profile) {
-        return new OllamaDirectModelClient(...);
-    }
-}
-```
+Status: current as of 2026-08-17. This is the authoritative forward-looking
+plan. The longer [implementation guide](production-readiness-implementation-guide.md)
+contains historical design sketches; its status matrix, not the old snippets,
+determines what is still open.
+
+## Current baseline
+
+The application already provides:
+
+- Java 25, Spring Boot, Spring AI, direct Ollama, OpenAI-compatible, Anthropic,
+  and Gemini/Vertex integrations;
+- configuration-owned profiles, policies, and protocols with fail-fast built-in
+  validation and fail-soft user overlays;
+- provider/model health preflight and explicit failure categories;
+- retries for transient failures and bounded model-call timeouts;
+- QUICK, BALANCED, and RIGOROUS orchestration with anonymized review, quorum,
+  scoring, optional debate, revision, dissent, synthesis, and Fresh Eyes
+  validation;
+- bounded in-memory stores by default and optional JDBC persistence on H2 or
+  SQLite for sessions, chats, and events;
+- asynchronous chat runs, cancellation, SSE replay cursors, restart interruption
+  recovery, retention, and chat deletion cascade;
+- local artifact storage with path containment and a durable terminal result at
+  `final/result.json`;
+- a static browser UI, health gate, stage timeline, trust signals, and a
+  requirement-to-configuration advisor;
+- 887 deterministic JUnit tests in the clean reviewed baseline.
+
+This is a capable local/personal application. It is not ready for untrusted or
+shared network deployment.
+
+## Status matrix
+
+| Capability | Status | Direct assessment |
+|---|---|---|
+| Provider/model health | Implemented | Preflight resolves the selected profile and depth and checks callability. |
+| Failure categories | Implemented | Provider, timeout, output, quorum, validation, cancellation, partial, and configuration outcomes are distinct. |
+| Startup/config validation | Implemented | Built-ins fail fast; user overlay errors are reported without taking down valid configuration. |
+| Retry and timeout | Implemented with transport qualification | The terminal Spring AI call is timed and transient categories retry. Underlying transports still need their own timeouts because interrupt cancellation is best effort. |
+| Session/chat persistence | Implemented, opt-in | Memory is the default. JDBC supports H2 and SQLite; artifacts remain filesystem-backed. |
+| SSE recovery | Implemented | A shared per-chat sequence supports `Last-Event-ID` and query cursor replay. Live fan-out remains process-local. |
+| Cancellation | Implemented at orchestration boundaries | Provider work may continue briefly if its transport ignores interruption. Chat currently presents cancellation as failure. |
+| Concurrency control | Partial | Async chat uses a global permit and rejects saturation. The synchronous run endpoint bypasses that permit; there is no durable queue or distributed lease. |
+| Observability | Partial | Events, artifacts, usage, health, and Actuator exist. Dedicated latency/failure/queue metrics and production dashboards do not. |
+| API security | Not implemented | No authentication, authorization, ownership, rate limiting, or application-managed TLS. Default loopback binding is the only safe boundary. |
+| Structured output recovery | Partial | Parsers are tolerant, but malformed review/validation output is not repaired with a bounded retry prompt. |
+| Real-provider verification | Not implemented | The normal suite is hermetic. There is no opt-in provider-contract Maven profile. |
+| Browser/load/fault testing | Not implemented | No browser E2E, load/soak, database contention, or network fault-injection suite. |
+
+## Must have before shared or public deployment
+
+### 1. Authentication, authorization, and ownership
+
+Add an authenticated principal and persist owner identity on chats, sessions,
+artifacts, and event streams. Enforce ownership in every read, write, cancel,
+delete, and SSE path. Add CSRF protection where cookie authentication is used,
+rate limits, request-size limits, and explicit CORS policy.
+
+Acceptance criteria:
+
+- one user cannot enumerate, read, cancel, or delete another user's data;
+- artifact access is authorized by session ownership, not merely by path safety;
+- Docker/shared deployments fail closed when authentication is absent;
+- security tests cover horizontal access attempts and SSE reconnects.
+
+### 2. Production policy quality
+
+Remove or demote shipped policies that seat the chair as a voting member, reuse
+the same provider model under different logical IDs, or label correlated
+validation as independent. Keep startup warnings, but do not treat warnings as a
+substitute for honest defaults.
+
+Acceptance criteria:
+
+- every profile marketed as rigorous has review disagreement that is measurable;
+- validation independence labels match provider and model-family reality;
+- a profile that cannot meet its declared quality tier is blocked or explicitly
+  downgraded in API/UI output.
+
+### 3. Real-provider contract tests
+
+Add an opt-in `provider-contracts` Maven profile. Cover Ollama, Spring AI
+OpenAI-compatible, Anthropic, and Gemini adapters with minimal live calls and
+assert timeout, usage extraction, structured output, model-not-found, auth, and
+transient failure mapping.
+
+The default `mvn test` must stay hermetic. Credentials must come only from the
+environment or CI secrets.
+
+### 4. CI on pull requests
+
+The release publish workflow runs `mvn verify`, but there is no pull-request
+workflow. Add a required PR check for a clean Java 25 build, the full hermetic
+suite, and documentation-link validation. Keep live-provider contracts opt-in or
+scheduled.
+
+## Should have
+
+### 5. Unified run admission and durable scheduling
+
+Route both synchronous and chat runs through one admission policy. Add bounded
+queue state, queue position, cancellation before start, per-provider/model
+limits, and a durable lease if more than one application instance is supported.
+Do not use raw `Future.cancel` as the lifecycle authority; the run registry and
+persisted state must remain authoritative.
 
-## 2. Resilience And Failure Semantics
-
-Add explicit resilience policies per provider and per stage.
-
-Recommended behavior:
-
-- Bounded retry for transient failures such as connection reset, timeout, and
-  temporary 5xx responses.
-- No retry for deterministic failures such as unknown model, invalid API key, or
-  malformed request.
-- Separate connect timeout, read timeout, and model execution timeout.
-- Return clearer failure categories in API responses:
-  - `PROVIDER_UNAVAILABLE`
-  - `MODEL_NOT_FOUND`
-  - `MODEL_TIMEOUT`
-  - `QUORUM_NOT_MET`
-  - `INVALID_MODEL_OUTPUT`
-  - `VALIDATION_FAILED`
+### 6. Consistent API and chat status contracts
 
-Why:
+Return one machine-readable error envelope across validation, conflict,
+capacity, provider, and orchestration failures. Add a first-class `CANCELLED`
+chat turn state instead of rendering cancellation as generic failure. Expose
+retryability and safe operator guidance without leaking credentials or prompts.
 
-- Today, infrastructure failures still bubble up into quorum failures at the
-  protocol level.
-- That is technically true but operationally misleading.
-- Operators need to know whether to fix configuration, restart Ollama, lower the
-  depth mode, or inspect model output quality.
+### 7. Metrics and operational limits
 
-## 3. Provider And Model Health Checks
+Add Micrometer metrics for stage/model latency, retries, categorized failures,
+quorum loss, validation rejection, queue pressure, cancellation, prompt
+truncation, token usage, and artifact/storage failures. Define cardinality-safe
+tags and alert thresholds before adding dashboards.
 
-Add provider health checks before a user runs a session.
+### 8. Structured-output repair
 
-For Ollama:
+For malformed review and validation JSON, allow one bounded repair request that
+contains only the invalid response and schema instructions. Record the original
+and repaired evidence, cost, and failure category. Never silently invent missing
+scores or confidence.
 
-- Check `/api/tags`.
-- Confirm configured `providerModelId` exists.
-- Return the resolved base URL, reachable status, and known model list.
+### 9. Browser, load, and fault testing
 
-Potential endpoint:
+Add browser E2E for send/retry/cancel/delete/reconnect, load tests for admission
+and SSE fan-out, and fault tests for slow transports, callback failure, database
+locks, filesystem errors, and restart during each lifecycle window.
 
-```http
-GET /api/council/profiles/local/health
-```
+## Nice to have
 
-Example response:
+- Token-aware multi-turn summarization rather than recent-turn/character bounds.
+- Object-store artifact backend with encryption and lifecycle policy.
+- Resume or re-run as a new immutable session, guarded by catalog generation.
+- Hot reload using an immutable catalog generation per run.
+- Per-profile cost budgets and optional user approval before expensive runs.
+- Better semantic sycophancy/calibration evaluation based on measured datasets.
 
-```json
-{
-  "profileId": "local",
-  "runnable": true,
-  "models": [
-    {
-      "modelId": "local-llama3",
-      "providerModelId": "llama3.1:8b",
-      "available": true
-    }
-  ]
-}
-```
+## Release gates
 
-Why:
+For local loopback/personal use:
 
-- Most local setup failures should be found before a council run starts.
-- This avoids confusing `Draft quorum not met` responses for simple
-  configuration or networking issues.
+- `mvn clean test` passes;
+- provider health passes for the selected profile/depth;
+- the user understands that prompts, raw model output, and results are written
+  to the artifact directory;
+- non-loopback binding is not used without an external trusted access boundary.
 
-## 4. Observability
-
-Add structured operational signals around each council run.
-
-Recommended metrics:
-
-- Stage duration.
-- Model call latency.
-- Model failure count by provider and model.
-- Quorum failures by policy.
-- Validation failures by validator model.
-- Debate trigger count.
-- Estimated token usage where provider usage is unavailable.
-
-Recommended logging:
-
-- Include `sessionId`, `profileId`, `policyId`, `protocolId`, `stage`, and
-  logical `modelId` in every orchestration log.
-- Keep prompt and response body logging disabled by default.
-- Add a safe debug mode that logs prompt sizes, response sizes, provider URL,
-  resolved host, status code, and root cause.
-
-Why:
-
-- Debugging multi-agent systems without correlated logs is slow.
-- Prompt body logging is useful locally but risky in shared environments.
-
-## 5. Configuration Robustness
-
-Harden startup validation.
-
-Recommended checks:
-
-- A non-test profile must not reference a test-only model.
-- A policy must have at least one member model.
-- `minimumSuccessfulDrafts` must be positive and cannot exceed member count
-  unless partial quorum behavior is deliberately allowed.
-- `chairModelId` must reference a model with role `CHAIR` or a compatible role.
-- `validatorModelId`, when present, should reference a validator-capable model.
-- Profile/depth policy mappings must cover the supported public depth modes.
-
-Why:
-
-- Configuration is now the primary control plane.
-- Invalid config should fail at boot instead of during a user request.
-
-## 6. Session Runtime Controls
-
-The in-memory session model is useful for local development, but the runtime
-needs lifecycle and concurrency controls.
-
-Recommended controls:
-
-- Maximum concurrent runs.
-- Per-profile concurrency limits.
-- Session expiration.
-- Run cancellation.
-- Request body size limits.
-- Maximum prompt/context length.
-- Async run mode with polling or server-sent events.
-
-Why:
-
-- A rigorous local run can occupy several model calls.
-- Without concurrency control, one user can exhaust local model capacity.
-
-## 7. Prompt-Injection And Data Boundaries
-
-Strengthen prompt construction around untrusted user content.
-
-Recommended changes:
-
-- Wrap user content in explicit delimiters.
-- Tell models that user content is data, not instructions to alter the council
-  process.
-- Keep system policy, rubric, and user content visibly separated.
-- Avoid exposing hidden model identities or policy internals unless a stage
-  requires them.
-- Add a validation pass that detects instruction leakage or attempts to override
-  the protocol.
-
-Why:
-
-- Council systems are especially vulnerable because one model output can become
-  another model's input.
-- The protocol should remain controlled by the application, not by user content
-  or member-model responses.
-
-## 8. Council Quality Improvements
-
-Improve answer quality and confidence reporting.
-
-Recommended enhancements:
-
-- Calibrated rubric scoring instead of relying heavily on model-stated
-  confidence.
-- Explicit dissent extraction.
-- Convergence summary after review/debate.
-- "Insufficient evidence" or "needs clarification" outcome where appropriate.
-- Judge prompt variants by domain, such as architecture review, code review,
-  incident analysis, design decision, and risk assessment.
-
-Why:
-
-- A council should not always force a confident answer.
-- The useful output is often the tradeoff analysis, dissent, and uncertainty,
-  not only the final recommendation.
-
-## 9. Testing Strategy
-
-Add tests around the failure modes already encountered.
-
-Recommended tests:
-
-- Ollama unavailable.
-- Ollama model missing.
-- Provider URL unreachable.
-- Provider URL resolves but refuses connection.
-- Streaming Ollama response aggregation.
-- Malformed streaming JSON chunk.
-- Partial quorum success and failure.
-- Balanced review returns invalid JSON.
-- Validation model returns a rejection.
-- Real profile references test-only model.
-- Rancher Desktop and Docker Desktop compose configuration validation.
-
-Why:
-
-- Local LLM development fails in predictable ways.
-- Tests should lock down the diagnostics so future changes do not regress into
-  ambiguous `Draft quorum not met` responses.
-
-## 10. API Ergonomics
-
-Introduce chat without replacing council runs.
-
-Recommended split:
-
-- Chat API for iterative user interaction.
-- Council API for deeper deliberation.
-- A chat conversation can trigger a council run using recent turns as context.
-- Council results can be appended back into the chat timeline.
-
-Why:
-
-- One-shot council execution is useful for analysis.
-- Users often need clarification, follow-up questions, and incremental context.
-
-## Suggested Next Implementation Order
-
-1. Provider/model health endpoint.
-2. Better failure categories in run responses.
-3. Config validation hardening.
-4. Provider retry and timeout policies.
-5. Metrics and correlated structured logs.
-6. Async run plus event streaming.
-7. Chat API backed by the same council orchestration.
-8. Prompt-injection hardening and rubric calibration.
-
-The most practical next step is the provider/model health endpoint. It directly
-addresses the recent local setup pain and gives users a fast preflight check
-before running expensive or slow council protocols.
+For shared/public use, all four must-have items above are release gates. Until
+then, the direct recommendation is **do not expose this service to an untrusted
+network**.

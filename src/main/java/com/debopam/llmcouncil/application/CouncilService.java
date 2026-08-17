@@ -9,6 +9,8 @@ import com.debopam.llmcouncil.persistence.SessionStore;
 import org.springframework.stereotype.Service;
 
 import java.util.NoSuchElementException;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Application service that orchestrates session lifecycle and delegates to
@@ -24,6 +26,7 @@ public class CouncilService {
     private final SessionStore sessionStore;
     private final CouncilPolicyResolver policyResolver;
     private final RunRegistry runRegistry;
+    private final Set<String> activeSessionIds = ConcurrentHashMap.newKeySet();
 
     public CouncilService(ProtocolOrchestrator orchestrator,
                           SessionStore sessionStore,
@@ -49,7 +52,9 @@ public class CouncilService {
      */
     public CouncilStatus cancelRun(String sessionId) {
         CouncilSession session = getSession(sessionId);
-        runRegistry.cancel(sessionId);
+        if (session.status() == CouncilStatus.CREATED || session.status() == CouncilStatus.RUNNING) {
+            runRegistry.cancel(sessionId);
+        }
         return session.status();
     }
 
@@ -68,40 +73,57 @@ public class CouncilService {
     public CouncilContext runCouncil(String sessionId) {
         CouncilSession session = sessionStore.findById(sessionId)
                                              .orElseThrow(() -> new NoSuchElementException("Session not found: " + sessionId));
-        CouncilPolicyResolver.ResolvedCouncilPolicy resolved =
-                policyResolver.resolve(session.profileId(), session.depthMode());
-        CouncilPolicy policy = resolved.policy();
-
-        session = session.withResolution(policy.id(), policy.protocolId())
-                         .withStatus(CouncilStatus.RUNNING);
-        sessionStore.save(session);
-
-        CouncilContext ctx;
-        try {
-            ctx = orchestrator.run(session, resolved.profile(), policy, resolved.catalog());
-        } catch (Exception ex) {
-            CouncilSession failed = session.withStatus(CouncilStatus.FAILED)
-                                           .withFailureReason(ex.getMessage());
-            sessionStore.save(failed);
-            throw ex;
+        if (session.status() != CouncilStatus.CREATED) {
+            throw new CouncilRunStateException(
+                    "Session " + sessionId + " cannot be run from status " + session.status());
+        }
+        if (!activeSessionIds.add(sessionId)) {
+            throw new CouncilRunStateException("Session " + sessionId + " is already running");
         }
 
-        // A cancelled run is not a failure and not a success. It gets its own
-        // status so a partial answer produced before the stop is not presented
-        // as a council that finished its protocol.
-        CouncilStatus finalStatus = ctx.isCancelled()
-                                    ? CouncilStatus.CANCELLED
-                                    : ctx.isTerminal()
-                                      ? (ctx.synthesisResult().isPresent() ? CouncilStatus.PARTIAL : CouncilStatus.FAILED)
-                                      : CouncilStatus.COMPLETED;
-        String failureReason = ctx.isCancelled()
-                               ? CANCELLED_BY_USER
-                               : ctx.failureMessage().orElse(null);
-        CouncilSession completed = session.withStatus(finalStatus)
-                                          .withFinalAnswer(ctx.synthesisResult().orElse(null))
-                                          .withFailureReason(failureReason);
-        sessionStore.save(completed);
-        return ctx;
+        try {
+            CouncilPolicyResolver.ResolvedCouncilPolicy resolved =
+                    policyResolver.resolve(session.profileId(), session.depthMode());
+            CouncilPolicy policy = resolved.policy();
+
+            session = session.withResolution(policy.id(), policy.protocolId())
+                             .withStatus(CouncilStatus.RUNNING);
+            sessionStore.save(session);
+
+            CouncilContext ctx = orchestrator.run(session, resolved.profile(), policy, resolved.catalog());
+
+            // A cancelled run is not a failure and not a success. It gets its own
+            // status so a partial answer produced before the stop is not presented
+            // as a council that finished its protocol.
+            CouncilStatus finalStatus = ctx.isCancelled()
+                                        ? CouncilStatus.CANCELLED
+                                        : ctx.isTerminal()
+                                          ? (ctx.synthesisResult().isPresent() ? CouncilStatus.PARTIAL : CouncilStatus.FAILED)
+                                          : CouncilStatus.COMPLETED;
+            String failureReason = ctx.isCancelled()
+                                   ? CANCELLED_BY_USER
+                                   : ctx.failureMessage().orElse(null);
+            CouncilSession completed = session.withStatus(finalStatus)
+                                              .withFinalAnswer(ctx.synthesisResult().orElse(null))
+                                              .withFailureReason(failureReason);
+            sessionStore.save(completed);
+            return ctx;
+        } catch (Exception ex) {
+            // Resolution errors happen before RUNNING is persisted, but they are
+            // still terminal run failures. Leaving the session CREATED makes it
+            // look retryable forever and exempts it from retention.
+            CouncilSession latest = sessionStore.findById(sessionId).orElse(session);
+            CouncilSession failed = latest.withStatus(CouncilStatus.FAILED)
+                                          .withFailureReason(messageOf(ex));
+            sessionStore.save(failed);
+            throw ex;
+        } finally {
+            activeSessionIds.remove(sessionId);
+            // ProtocolOrchestrator unregisters before this service persists the
+            // final status. A cancellation in that tiny interval can otherwise
+            // leave a pending tombstone for a session that will never run again.
+            runRegistry.clearPendingCancellation(sessionId);
+        }
     }
 
     /** Retrieve a session by ID. */
@@ -117,6 +139,12 @@ public class CouncilService {
                                        .withFailureReason(reason);
         sessionStore.save(failed);
         return failed;
+    }
+
+    private String messageOf(Exception ex) {
+        return ex.getMessage() == null || ex.getMessage().isBlank()
+                ? ex.getClass().getSimpleName()
+                : ex.getMessage();
     }
 
 }

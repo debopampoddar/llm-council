@@ -25,9 +25,10 @@ import java.util.stream.Collectors;
  * after considering debate arguments, so the second scoring pass operates on
  * genuinely updated evidence.
  *
- * <p>Post-debate reviews are ADDED to the context (not replacing pre-debate
- * reviews). The SCORE stage filters reviews by draftId, so both pre- and
- * post-debate reviews contribute to the final score — more data is better.
+ * <p>Post-debate reviews are retained alongside the pre-debate audit trail, but
+ * the second SCORE pass uses this pass alone. Blending old and new reviews would
+ * dilute the very change the debate is intended to measure and could hide
+ * persistent post-debate disagreement.
  */
 @Component
 public class ReviewPostDebateStageExecutor implements StageExecutor {
@@ -55,6 +56,13 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
 
     @Override
     public CouncilContext execute(CouncilContext ctx, ProtocolStageOptions opts) {
+        if (ctx.debateRounds().isEmpty()) {
+            events.publish(ctx.session().id(), stage().name(),
+                    "POST_DEBATE_REVIEW_SKIPPED", null,
+                    Map.of("reason", "No debate occurred; initial reviews remain current"));
+            return ctx;
+        }
+
         Set<String> validDraftIds = ctx.drafts().stream()
                 .map(Draft::draftId).collect(Collectors.toSet());
 
@@ -92,8 +100,7 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
                                                           result.text()))
                         .toList();
 
-                // ADD new reviews to context (don't replace pre-debate reviews)
-                parsed.forEach(ctx::addReview);
+                parsed.forEach(ctx::addPostDebateReview);
 
                 events.publish(ctx.session().id(), stage().name(),
                                "POST_DEBATE_REVIEW_COMPLETED", modelId,
@@ -111,7 +118,8 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
             }
         }
 
-        artifactStore.writeJson(ctx.session().id(), "normalized/reviews-post-debate.json", ctx.reviews());
+        artifactStore.writeJson(ctx.session().id(), "normalized/reviews-post-debate.json",
+                                ctx.postDebateReviews());
         return ctx;
     }
 

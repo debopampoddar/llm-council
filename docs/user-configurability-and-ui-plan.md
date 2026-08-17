@@ -1,18 +1,30 @@
 # User Configurability, Web UI, and Requirement Advisor — Implementation Plan
 
-**Status:** proposed
-**Target version:** 2.1.0 → 2.4.0 (one minor per phase group)
-**Audience:** an implementing engineer or LLM agent with no prior context on this repo beyond `CLAUDE.md`
+**Status:** historical implementation plan; audited against the as-built code on 2026-08-17
+**Original target:** 2.1.0 → 2.4.0 (one minor per phase group)
+**Audience:** an implementing engineer or LLM agent using the repository README
+and current production-readiness plan
+
+> Sections describing what “currently” exists are snapshots from before their
+> phase was implemented. As built: phases 0, 1, 2, 2A, 3A, and 5 are complete;
+> cancellation, JDBC persistence, SSE cursors, retention, config write APIs, the
+> browser UI, and the Advisor all exist. Phase 2B resume/re-run, 3B manual editor,
+> and 4 hot reload remain unimplemented. The reviewed baseline has 887 tests.
+> Current production priorities are in
+> [production-readiness-plan.md](production-readiness-plan.md).
 
 ---
 
 ## 0. Purpose and decisions already made
 
-This plan covers three enhancements to LLM Council:
+The original plan covered three enhancements to LLM Council:
 
-1. **User-defined models, profiles, and policies** — today everything is fixed in `src/main/resources/application.yml`.
-2. **A web UI** for chat and council observation, served by the existing Spring Boot app.
-3. **A requirement-driven configuration generator** (UI wizard + CLI) so non-technical users never hand-write YAML.
+1. **User-defined models, profiles, and policies** — delivered through the user
+   overlay and configuration APIs; hot reload remains deferred.
+2. **A web UI** for chat and council observation — delivered from the existing
+   Spring Boot app.
+3. **A requirement-driven configuration generator** — the UI wizard is
+   delivered; the optional CLI was not built.
 
 The following decisions are **settled**. Do not relitigate them during implementation.
 
@@ -21,16 +33,16 @@ The following decisions are **settled**. Do not relitigate them during implement
 | D1 | Config gains a **user overlay layer** delivered in two steps: a file overlay merged at boot (Phase 1), then live hot-reload via a swappable catalog (Phase 4). | Ships value before the refactor lands; the refactor is designed for from Phase 0 so nothing is thrown away. |
 | D2 | **Credentials are never accepted, stored, or echoed by the app.** API keys stay in the environment / `.env`. The UI reports which providers are active and names the exact environment variable to set for the inactive ones. | Keeps `CouncilConfig.hasRealCredential` the single source of truth and guarantees no secret ever lands in an overlay file, artifact, export, or log. |
 | D3 | UI is **vanilla HTML/CSS/JS** under `src/main/resources/static/`, consuming the existing REST + SSE endpoints. No Node, no npm, no bundler, no `frontend-maven-plugin`. | `mvn package` stays a single self-contained jar with zero JS toolchain. The only non-trivial UI work is an `EventSource` stage timeline, which is ~150 lines of DOM code. |
-| D4 | Users **tune** built-in protocols within validated clamps. They **cannot** reorder, add, or remove stages. `ANONYMIZE` and `REVIEW` can never be removed from a protocol a user can select. | Anonymized peer review and adversarial roles are the product, not a default. A user must not be able to silently produce a sycophantic council that still reports as healthy. |
+| D4 | Users **tune** built-in protocols within validated clamps. They **cannot** reorder, add, or remove stages. The shipped `quick` protocol intentionally has no review; users cannot create another unreviewed protocol, and every synthesized profile also maps BALANCED and RIGOROUS. | Anonymized peer review and adversarial roles are quality controls, while QUICK remains an explicit latency tradeoff. |
 | D5 | Single user, localhost, **no authentication**. | Personal-use tool. Every endpoint below assumes a trusted local caller. If this ever becomes multi-user, the config-write endpoints in Phases 3–5 are the ones that need authorization first. |
-| D6 | Durable persistence targets **SQLite (default) and H2** through one JDBC implementation. A filesystem store may be added later; artifacts stay on the filesystem regardless. | One `JdbcSessionStore` plus a driver on the classpath covers both engines — and MySQL/Postgres later — without a third implementation to maintain. |
+| D6 | Durable persistence targets **SQLite and H2** through JDBC; bounded memory remains the application default for backward compatibility. A filesystem store may be added later; artifacts stay on the filesystem regardless. | One JDBC implementation covers both supported engines without a third store implementation. |
 | D7 | The Phase 0 catalog reads are **one endpoint** (`GET /api/council/catalog?include=…`), not six. Runtime data (chats, sessions, artifacts) stays on its own resources. | Under Phase 4 hot reload, six separate fetches can straddle a swap and produce an internally inconsistent view. One request returns one snapshot with one `generation`. |
 | D8 | There is **no such thing as a UI-only endpoint** without authentication, and the plan will not pretend otherwise. Protection is: bind to loopback, no permissive CORS, and a namespace split that signals API *stability*, not access control. | Anything a browser can call, `curl` can call. `Referer`/`X-Requested-With` checks are trivially forged and buy false confidence. See §3.6. |
 | D9 | "Resume" means three different things and each is scoped separately: **continue a chat**, **re-run a question**, and **resume an interrupted run from a stage checkpoint**. | Only the third is hard. Conflating them leads to building the expensive one when the cheap two were what was actually wanted. See Phase 2B. |
 
 ---
 
-## 1. Current architecture — the seams that matter
+## 1. Pre-implementation architecture snapshot — the seams that mattered
 
 Read this section before writing code. Three properties of the existing design drive every decision below.
 
@@ -70,7 +82,8 @@ It is **wrong for user config**. A typo in a user-defined policy must not brick 
 - No `GET /api/council/profiles` (only `GET /api/council/profiles/{id}/health`).
 - No `GET /api/council/chats` listing and no `ChatSessionStore.findAll()`.
 - `GET /api/council/sessions/{id}/artifacts` returns **paths only**, no content — the UI cannot render drafts, reviews, or scores.
-- No run cancellation, no SSE reconnect cursor (both called out as known gaps in `CLAUDE.md`).
+- No run cancellation and no SSE reconnect cursor (both were known gaps at the
+  time this snapshot was written).
 - All four stores (`InMemorySessionStore`, `InMemoryChatSessionStore`, `InMemoryEventPublisher`, and the chat broker) are `ConcurrentHashMap`s with **no eviction and no durability**. Restart clears everything.
 
 ### 1.5 Pre-existing defects folded into this plan
@@ -80,9 +93,9 @@ These were found while surveying the code for this plan. They are not new work i
 | # | Finding | Evidence | Assigned |
 |---|---|---|---|
 | F1 | **"Fresh Eyes" validation is not independent in 5 of 7 shipped profiles.** `local-balanced`, `local-rigorous`, `gemini-balanced`, `gemini-rigorous` set `validatorModelId == chairModelId` (identical model id). `oci-*` and `hybrid-*` use two ids that both default to `${OCA_LLM_MODEL:gpt-5.4}`. Only `multi-cloud-*` is genuinely independent. `CouncilConfigurationValidator` checks *member* diversity but never compares chair to validator. | `application.yml` policies; `CouncilConfigurationValidator.warnLowDiversity` | Phase 0 (§3.9) + Phase 1 (§4.7) |
-| F2 | **Prompts are never length-bounded.** `PromptBuilder` contains no truncation of any kind; `synthesisMessages` concatenates every draft, review, score line, and debate round. Ollama ships `num-ctx: 4096` while local models are configured for 1200–1800 output tokens each, so a 3-member rigorous synthesis prompt exceeds the window and Ollama silently discards context. Gets worse under §2.2, which permits 8-member policies. | `PromptBuilder`; `application.yml` `num-ctx` | Phase 1 (§4.8) |
+| F2 ✅ | **Prompts were not length-bounded.** The original 4096-token local window could silently discard rigorous evidence. | `PromptBuilder`; `application.yml` `num-ctx` | Phase 1 (§4.8) — **fixed with prompt budgeting and a 16384 default** |
 | F3 ✅ | **Token counts are captured then discarded.** `OllamaDirectModelClient` parses `prompt_eval_count`/`eval_count` and `SpringAiModelClient` reads usage metadata into `ModelCallResult`, but all 8 executor call sites use only `.text()`. Nothing aggregates, so a `multi-cloud-rigorous` run (30–40 cloud calls) reports no cost signal. | `ModelCallResult`; the 8 `.call(` sites | Phase 2 (§5.6) — **fixed** |
-| F4 | **No run cancellation.** `CouncilRunExecutor.submit` discards the `Future`. With `max-concurrent-runs` defaulting to 1, one long run blocks all others with no way to stop it. | `CouncilRunExecutor` | Phase 2 (§5.7) |
+| F4 ✅ | **No run cancellation.** `CouncilRunExecutor.submit` discarded the run handle. | `CouncilRunExecutor` | Phase 2 (§5.7) — **fixed through `RunRegistry`; cancellation does not use a `Future` as lifecycle authority** |
 | F5 ✅ | **Unbounded in-memory growth.** No eviction anywhere; events are the highest-cardinality data at dozens per run. | `InMemoryEventPublisher.eventsBySession` | Phase 2A (§6.8) — **fixed for the in-memory stores** |
 
 ---
@@ -554,7 +567,7 @@ Deviations from this section as originally written:
 3. **The context window derivation is shared** via `ModelContextWindows`, used by both `CouncilConfig` and the validator. The first implementation had the validator read the raw configured value, which meant it silently skipped every model relying on the provider default — that is, all the local models the check exists for.
 4. **Six prompts are budgeted, not four**: synthesis, review, post-debate review, debate, aggregation, and revision. Each keeps an unbudgeted overload so existing callers and tests are unchanged.
 
-**What the warning reports on the shipped local config** (`num-ctx: 4096`):
+**What the warning reported on the pre-1D local config** (`num-ctx: 4096`):
 
 | Policy | Chair prompt room | Evidence produced | Overrun |
 |---|---|---|---|
@@ -681,7 +694,13 @@ Two product rules for this view: **sycophancy warnings and preserved dissent are
 
 ### 5.4 SSE robustness
 
-`ChatController.events` currently replays full history on connect and has no cursor. For Phase 2, handle it client-side: track the highest-seen event sequence per stream and drop duplicates on reconnect. Reconnect with exponential backoff capped at 30s. A server-side `Last-Event-ID` cursor is deferred; note it in the code as a known limitation matching `CLAUDE.md`.
+At the time of this phase, `ChatController.events` replayed full history on
+connect and had no cursor. The interim client design tracked the highest-seen
+sequence and dropped duplicates on reconnect.
+
+**Delivered in Phase 2A.** The server now accepts `Last-Event-ID` and a query
+cursor and replays from one shared per-chat sequence across chat and council
+events. JDBC mode preserves that sequence across restart.
 
 ### 5.6 Token and cost accounting (fixes F3) ✅ IMPLEMENTED
 
@@ -701,6 +720,12 @@ Two deviations from the sketch above, both to avoid reporting a number the run d
 - **The pre-send estimate is not built.** It needs a token model for a prompt that has not been assembled yet, and an estimate that is wrong in the reassuring direction is worse than none. The post-run figure ships; the pre-send one is still open.
 
 ### 5.7 Run cancellation (fixes F4)
+
+**Delivered, with a safer design than the original sketch below.** The current
+`RunRegistry` applies pending cancellation across acceptance/registration races,
+the orchestrator stops at safe boundaries, terminal state is persisted, and the
+async executor does not use `Future.cancel` as lifecycle authority. Treat the
+following bullets as historical requirements, not current code instructions.
 
 - `CouncilRunExecutor.submit` currently discards the `Future`. Retain it in a `ConcurrentHashMap<String, Future<?>>` keyed by session id, removed in the existing `finally` block alongside the permit release.
 - Add `volatile boolean cancelled` plus `cancel()` / `isCancelled()` to `CouncilContext`.
@@ -893,7 +918,9 @@ public interface EventBroker { void publish(CouncilEvent e); AutoCloseable subsc
 
 Keep `EventPublisher` as a thin composite that appends then publishes, so **no existing caller changes**. `InMemoryEventPublisher` becomes `InMemoryEventStore` + `InMemoryEventBroker`; the broker is always in-memory regardless of `persistence.type`.
 
-`since(sessionId, seq)` is what finally allows a proper server-side `Last-Event-ID` cursor, closing the SSE reconnect gap named in `CLAUDE.md`. Wire it into `ChatController.events` in this phase: read the `Last-Event-ID` header, replay from `since(...)` instead of full `history(...)`, then subscribe.
+`since(sessionId, seq)` is what finally allowed a proper server-side
+`Last-Event-ID` cursor. It is wired into `ChatController.events`: the controller
+reads the cursor, replays from `since(...)`, then subscribes.
 
 ### 6.7 Write path and ordering
 
@@ -916,7 +943,12 @@ council:
 
 Delete sessions exceeding either bound, oldest first, and cascade to their events and artifact directories. **Never delete a session in `RUNNING` or `CREATED` status** regardless of age. The in-memory stores get the same caps so the eviction gap is closed for `type: memory` users too.
 
-**Delivered — the in-memory half.** All four stores evict: `InMemoryEventPublisher`, `InMemoryRunResultStore`, `InMemorySessionStore`, and `InMemoryChatSessionStore`. Note that `InMemoryRunResultStore` is not in the list above, which predates it — it arrived with Phase 2 and holds the largest payload of the four, a full `CouncilRunResponse` per run.
+**Delivered — the in-memory half.** All four stores evict:
+`InMemoryEventStore`, `InMemoryRunResultStore`, `InMemorySessionStore`, and
+`InMemoryChatSessionStore`. (`InMemoryEventPublisher` from the original sketch
+was split into `DefaultEventPublisher`, `InMemoryEventStore`, and the live
+broker.) `InMemoryRunResultStore` holds the largest payload: a full
+`CouncilRunResponse` per run.
 
 `RetentionPolicy` owns the decision so "oldest first" and "never evict something still in use" are each written once rather than four times. Bounds are carried on `CouncilRuntimeSettings`, not read via `@Value`, for the reason recorded in the runtime-overlay fix: a `@Value` read cannot be overridden by the user overlay, so the overlay's `retention:` section would validate cleanly and then do nothing.
 
@@ -931,7 +963,8 @@ One gap remains, deliberately: **in-memory eviction does not cascade to artifact
 
 ### 6.9 Interrupted-run recovery ✅ IMPLEMENTED
 
-Durable sessions make this possible for the first time, and it closes the "queued-run recovery" gap named in `CLAUDE.md`.
+Durable sessions made this possible for the first time and closed the original
+queued-run recovery gap.
 
 - Add `INTERRUPTED` to `CouncilStatus`.
 - `InterruptedRunSweeper` runs as an `ApplicationRunner` at boot: every session in `RUNNING` status is by definition orphaned, because no run survives a restart. Transition each to `INTERRUPTED` with `failureReason: "Run was interrupted by an application restart"`, and mark any owning chat turn `FAILED` with the same reason.
@@ -939,7 +972,7 @@ Durable sessions make this possible for the first time, and it closes the "queue
 
 ### 6.10 Tests — keep `mvn test` hermetic
 
-`CLAUDE.md` promises the suite is fast and hermetic with no network. Preserve that.
+The default suite must remain fast and hermetic with no network. Preserve that.
 
 - Write one **abstract contract test per interface** — `SessionStoreContractTest`, `ChatSessionStoreContractTest`, `EventStoreContractTest` — with an abstract `createStore()` factory. Subclass once per implementation. This is the pattern that keeps the in-memory and JDBC stores behaviourally identical.
 - Run the JDBC subclasses against **in-process H2 and SQLite only**, on a temp-file database per test via `@TempDir`. Both are ordinary jars — no daemon, no container, no network.
@@ -1367,7 +1400,10 @@ modules behind `setup.html`.
 | 4 | Hot reload | ~400 LOC, touches 10 classes | **High** — concurrency; do not start before Phase 2 is proven |
 | 5 | Requirement Advisor | ✅ shipped — ~2100 LOC Java + ~900 LOC JS/CSS/HTML, 21 new classes, 621 → 776 tests | Medium — synthesizer is pure and testable; LLM part is optional by design |
 
-**Adopted order: 0 → 1 → 2 → 2A → 3A → 5 → 2B.** Phases 0, 1, 2, 2A, 3A, and 5 are complete; **2B is next**. 3B and 4 are held back and built only if demand appears — and 3B is now further redundant, since the Advisor is the configuration surface in practice.
+**Delivered order: 0 → 1 → 2 → 2A → 3A → 5.** Those phases are complete.
+Phase 2B is still unimplemented, but it is not the next production release gate:
+authentication/ownership, honest production policy quality, real-provider
+contracts, and pull-request CI take priority. Phases 3B and 4 remain deferred.
 
 This supersedes the original `2A → 2B, then 3 → 4 → 5`. Two reasons for the change:
 
@@ -1398,8 +1434,12 @@ Verify each before declaring any phase done:
 8. Every new public type and method carries Javadoc with `@param`/`@return`, matching the existing files.
 9. `mvn test` stays hermetic: no network, no containers, no daemon. Durable-store tests run against in-process H2/SQLite only; real-engine coverage lives behind `-Pintegration`.
 10. `council.persistence.type` defaults to `memory`, so an existing user who pulls these changes sees no behaviour change until they opt in.
-11. No endpoint is ever described as private, internal-only, or UI-only unless it is actually authenticated. `/api/ui/**` is a stability contract, not an access boundary (D8).
-12. A council run resolves its catalog snapshot once and never re-reads it — true for hot reload (Phase 4) and for resume, where the checkpoint's `catalogGeneration` guards against config drift.
+11. No endpoint is ever described as private, internal-only, or UI-only unless
+    it is actually authenticated. The implemented browser uses the public
+    `/api/council/**` surface; no `/api/ui/**` namespace was introduced.
+12. A council run resolves its catalog snapshot once and never re-reads it.
+    Any future hot reload or resume implementation must preserve that invariant
+    and guard resume with the checkpoint's `catalogGeneration`.
 13. Re-running or resuming never mutates the original session. Council runs are evidence; the artifact trail must stay intact.
 
 ---

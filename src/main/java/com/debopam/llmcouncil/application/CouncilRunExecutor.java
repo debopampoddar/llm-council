@@ -4,13 +4,15 @@ import com.debopam.llmcouncil.config.CouncilCatalogHolder;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.orchestration.CouncilContext;
 import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 
@@ -25,10 +27,13 @@ import java.util.function.Consumer;
 @Service
 public class CouncilRunExecutor {
 
+    private static final Logger log = LoggerFactory.getLogger(CouncilRunExecutor.class);
+
     private final CouncilService councilService;
     private final Semaphore runPermits;
-    // Futures of submitted runs, so a queued run can be stopped before it starts.
-    private final Map<String, Future<?>> inFlight = new ConcurrentHashMap<>();
+    // Inserted before execution, avoiding a fast-task race where finally removes
+    // an entry before submit() has stored it and a stale handle remains forever.
+    private final Map<String, Boolean> inFlight = new ConcurrentHashMap<>();
     private final ExecutorService executor;
 
     /**
@@ -50,26 +55,48 @@ public class CouncilRunExecutor {
                     sessionId,
                     "Too many council runs are already active. Try again after the current run completes.");
         }
+        if (inFlight.putIfAbsent(sessionId, Boolean.TRUE) != null) {
+            runPermits.release();
+            return CouncilRunSubmission.rejected(sessionId, "This council session is already running.");
+        }
 
-        Future<?> future = executor.submit(() -> {
+        try {
+            executor.execute(() -> execute(sessionId, onCompletion));
+        } catch (RejectedExecutionException ex) {
+            inFlight.remove(sessionId);
+            runPermits.release();
+            return CouncilRunSubmission.rejected(sessionId, "The council run executor is shutting down.");
+        }
+
+        return CouncilRunSubmission.accepted(sessionId);
+    }
+
+    private void execute(String sessionId, Consumer<CouncilRunCompletion> onCompletion) {
+        try {
+            CouncilRunCompletion completion;
             try {
                 CouncilContext context = councilService.runCouncil(sessionId);
                 CouncilSession session = councilService.getSession(sessionId);
                 boolean successful = session.failureReason() == null;
-                String failure = session.failureReason();
-                onCompletion.accept(new CouncilRunCompletion(sessionId, successful, session, context, failure));
+                completion = new CouncilRunCompletion(
+                        sessionId, successful, session, context, session.failureReason());
             } catch (Exception ex) {
                 CouncilSession session = councilService.getSession(sessionId);
                 String failure = session.failureReason() != null ? session.failureReason() : ex.getMessage();
-                onCompletion.accept(new CouncilRunCompletion(sessionId, false, session, null, failure));
-            } finally {
-                inFlight.remove(sessionId);
-                runPermits.release();
+                completion = new CouncilRunCompletion(sessionId, false, session, null, failure);
             }
-        });
-        inFlight.put(sessionId, future);
 
-        return CouncilRunSubmission.accepted(sessionId);
+            try {
+                // A UI/persistence callback failure must not be mistaken for a council
+                // failure and retried: that previously invoked the callback twice.
+                onCompletion.accept(completion);
+            } catch (RuntimeException ex) {
+                log.error("Council run completion callback failed for session {}", sessionId, ex);
+            }
+        } finally {
+            inFlight.remove(sessionId);
+            runPermits.release();
+        }
     }
 
     /**
@@ -87,12 +114,11 @@ public class CouncilRunExecutor {
      * @return {@code true} if a submitted run was found
      */
     public boolean cancel(String sessionId) {
-        Future<?> future = inFlight.get(sessionId);
-        if (future == null) {
-            return false;
-        }
-        future.cancel(false);
-        return true;
+        // CouncilService/RunRegistry owns cancellation, including the small
+        // accepted-before-registered window. Cancelling the Future with
+        // mayInterruptIfRunning=false can mark a task cancelled without running
+        // its finally block, leaking a semaphore permit.
+        return inFlight.containsKey(sessionId);
     }
 
     @PreDestroy

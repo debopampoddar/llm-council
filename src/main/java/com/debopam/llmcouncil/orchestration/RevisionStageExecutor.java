@@ -143,7 +143,7 @@ public class RevisionStageExecutor implements StageExecutor {
                                   "latencyMs", result.latency() != null ? result.latency().toMillis() : -1));
 
             // Reuse the same draftId so downstream stages can track the draft lineage.
-            return new Draft(originalDraft.draftId(), modelId, result.text());
+            return new Draft(originalDraft.draftId(), modelId, result.text(), originalDraft.anonymous());
         } catch (ModelCallException ex) {
             events.publish(ctx.session().id(), stage().name(), "REVISION_FAILED", modelId,
                            Map.of("error", ex.getMessage()));

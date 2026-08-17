@@ -20,8 +20,10 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Debate trigger based on reviewer disagreement about the same draft.
 - Chair synthesis with score and dissent context.
 - Fresh Eyes validation with structured JSON output.
-- In-memory session and event history.
-- Local artifact storage for raw, normalized, final, and export metadata.
+- Bounded in-memory persistence by default, with optional JDBC persistence for
+  sessions, chats, events, and chat sequence state on H2 or SQLite.
+- Local artifact storage for raw, normalized, final, export metadata, and the
+  durable terminal run response at `final/result.json`.
 
 ### Anti-Sycophancy & Quality (Phase 3)
 - **Adversarial debate roles**: `PROPOSER`, `CRITIC`, and `SYNTHESIZER` council personas with role-specific system prompts. CRITIC models receive explicit instructions to challenge emerging consensus.
@@ -67,7 +69,7 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - "Save for later" writes a proposal file that startup never reads, re-checked every time you come back to it.
 
 ### Testing
-- 823 JUnit tests: policy resolution, confidence parsing, quorum, KS convergence math, sycophancy detection at the shipped thresholds, council-composition warnings, the debate trigger, all scoring strategies, retry logic, full protocol integration, durable stores against H2 and SQLite, the catalog, config-write and advisor endpoints, static resource serving, skipped-stage event contracts, score-pass labelling, cancellation, and configuration synthesis across every requirement combination.
+- 887 JUnit tests: policy resolution, confidence parsing, quorum, KS convergence math, sycophancy detection at the shipped thresholds, council-composition warnings, debate and post-debate evidence handling, all scoring strategies, retry and timeout logic, concurrent-run lifecycle, full protocol integration, path-containment and deletion-cascade security, durable stores against H2 and SQLite, Docker rigorous-model provisioning, the catalog, config-write and advisor endpoints, static resource serving, cancellation, and configuration synthesis across every requirement combination.
 
 ## Runtime Requirements
 
@@ -122,18 +124,22 @@ Configure runtime model providers with their own environment variables. Local Ol
 
 ## Profiles And Depth Modes
 
-Public callers choose only:
+Public callers choose:
 
-- `profileId`: `local`, `oci`, `hybrid`, or `mock`.
+- `profileId`: a configured profile such as `default`, `local`, `oci`,
+  `hybrid`, `gemini`, `multi-cloud`, or the test-only `mock`.
 - `depthMode`: `QUICK`, `BALANCED`, or `RIGOROUS`.
 
 Configuration maps that pair to a `CouncilPolicy`.
 
 | Profile | Purpose |
 |---|---|
+| `default` | Alias of the shipped local policy mapping, defaulting to BALANCED. |
 | `local` | Ollama-only local council. Useful for private or offline-capable runs. |
 | `oci` | OCI/OpenAI-compatible council. Useful for Oracle Code Assist LiteLLM, OCI, or another OpenAI-compatible provider. |
 | `hybrid` | Local models for draft diversity plus OCI/OpenAI-compatible chair and validator. |
+| `gemini` | Gemini/Vertex-only council. Requires a configured Google Cloud project and credentials. |
+| `multi-cloud` | Ollama plus Gemini, Anthropic, and OpenAI models for maximum provider diversity. Required providers depend on depth. |
 | `mock` | Test-only deterministic profile. Use for smoke tests, not real answers. |
 
 | Depth | Protocol | Typical behavior |
@@ -150,6 +156,10 @@ GENERATE → ANONYMIZE → REVIEW → SCORE → DEBATE → REVISE → REVIEW_POS
 
 The `REVISE` stage lets each model incorporate debate arguments into a revised draft. The `REVIEW_POST_DEBATE` stage asks reviewers to re-evaluate with debate context, so the second `SCORE` pass operates on genuinely updated evidence.
 
+If `DEBATE` does not trigger, `REVISE`, `REVIEW_POST_DEBATE`, and the second
+`SCORE` pass are explicitly skipped. The initial score remains authoritative;
+the run does not manufacture a post-debate comparison without debate evidence.
+
 ## Architecture
 
 ### Council Roles
@@ -158,7 +168,7 @@ Each council member model is assigned a `CouncilRole` (separate from structural 
 
 | Role | Behavior |
 |---|---|
-| `PROPOSER` | Default. Produces an independent answer with chain-of-thought reasoning. |
+| `PROPOSER` | Default. Produces an independent answer with a concise, inspectable rationale. |
 | `CRITIC` | Devil's advocate. System prompt explicitly requires challenging the consensus. |
 | `SYNTHESIZER` | Seeks common ground across perspectives. |
 
@@ -404,9 +414,9 @@ The repository includes Docker Compose files for local Mac testing:
 
 | File | Target machine | Default local models |
 |---|---|---|
-| `docker-compose.m1-32gb.yml` | Apple Silicon M1 class Mac with 32 GB memory | `llama3.1:8b`, `mistral:7b` |
-| `docker-compose.m1-32gb-app-only.yml` | Apple Silicon M1 app container plus native/separate Ollama | `llama3.1:8b`, `mistral:7b` |
-| `docker-compose.intel-2019-32gb.yml` | 2019 Intel MacBook Pro with 32 GB memory | `llama3.2:3b`, `qwen2.5:3b` |
+| `docker-compose.m1-32gb.yml` | Apple Silicon M1 class Mac with 32 GB memory | `llama3.1:8b`, `mistral:7b`, `qwen2.5:7b` |
+| `docker-compose.m1-32gb-app-only.yml` | Apple Silicon M1 app container plus native/separate Ollama | `llama3.1:8b`, `mistral:7b`, `qwen2.5:7b` |
+| `docker-compose.intel-2019-32gb.yml` | 2019 Intel MacBook Pro with 32 GB memory | `llama3.2:3b`, `qwen2.5:3b`, `qwen2.5:7b` |
 
 Validate and start on M1:
 
@@ -675,10 +685,19 @@ For live local demos, start with `QUICK`, show `BALANCED` if local model
 preflight passes, and use `RIGOROUS` only after practicing latency or with the
 `mock` profile to show protocol shape quickly.
 
-Chat V1 is intentionally in-memory. App restart clears chat history, and each
-message creates one linked council session. It is demo-grade: durable chat
-storage, cancellation, queued run recovery, SSE reconnect cursors, and user
-ownership are still production-readiness work.
+Each message creates one linked council session. Persistence defaults to bounded
+memory; set `council.persistence.type=jdbc` and configure H2 or SQLite for
+durable sessions, chats, event history, restart interruption recovery, and SSE
+cursor replay. Cancellation and chat deletion are implemented:
+
+```bash
+curl -X DELETE http://localhost:8080/api/council/sessions/{sessionId}/run
+curl -X DELETE http://localhost:8080/api/council/chats/{chatId}
+```
+
+Chat deletion cascades through its linked council sessions, persisted events,
+cached results, and artifact directories. The remaining production gaps are
+authentication/ownership, a durable queued scheduler, and per-provider limits.
 
 Artifacts are written under:
 
@@ -720,7 +739,8 @@ com.debopam.llmcouncil.domain           session, status, depth, event records
 com.debopam.llmcouncil.model            model profiles, policies, clients, retry decorator
 com.debopam.llmcouncil.orchestration    protocol, stages, prompts, parser, scoring strategies,
                                         sycophancy detection, convergence detector, artifacts
-com.debopam.llmcouncil.persistence      in-memory sessions and local artifacts
+com.debopam.llmcouncil.persistence      bounded memory/JDBC stores, retention, migrations,
+                                        local artifacts, deletion cascade
 
 src/main/resources/static                web UI — vanilla HTML/CSS/JS, no build step
 ├── index.html                           chat view, served at /
@@ -747,10 +767,8 @@ src/main/resources/static                web UI — vanilla HTML/CSS/JS, no buil
 
 See [docs/library-flow-guide.md](docs/library-flow-guide.md) for a simple but detailed explanation of the business logic, execution sequence, configuration model, and extension points.
 
-See [docs/enhancement-implementation-sequences.md](docs/enhancement-implementation-sequences.md) for concrete code examples for planned enhancements. Some early examples, such as chat and event streaming, now exist as demo-grade V1 features.
-
 See [docs/production-readiness-plan.md](docs/production-readiness-plan.md) for the prioritized robustness and production-readiness plan.
 
-See [docs/production-readiness-implementation-guide.md](docs/production-readiness-implementation-guide.md) for detailed implementation notes, full code examples, and testing guidance for those recommendations.
+See [docs/production-readiness-implementation-guide.md](docs/production-readiness-implementation-guide.md) for the historical implementation sequence, current status matrix, and remaining implementation guidance. Code sketches in that document are design history, not drop-in current code.
 
-See [docs/demo-chat-api-v1-guide.md](docs/demo-chat-api-v1-guide.md) for a step-by-step Rancher Desktop demo runbook.
+See [docs/testing-m1-32gb.md](docs/testing-m1-32gb.md) for the Apple Silicon/Rancher or Docker Desktop runbook, and [docs/testing-intel-2019-32gb.md](docs/testing-intel-2019-32gb.md) for the Intel Docker runbook.

@@ -14,10 +14,12 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The rigorous protocol runs SCORE twice, and the two passes must stay apart.
+ * A rigorous protocol must only run a second evidence pass when a debate
+ * actually produced new evidence.
  *
  * <p>Both passes previously read {@code artifact-label: initial} from
  * configuration, because stage options are keyed by {@link StageType} and SCORE
@@ -46,21 +48,20 @@ class ScorePassLabellingTest {
     private ArtifactStore artifacts;
 
     @Test
-    void bothScoringPassesKeepTheirOwnArtifact() {
+    void skippedDebateDoesNotCreateAFalsePostDebateScoreArtifact() {
         String sessionId = runRigorous();
 
         List<String> written = artifacts.listArtifacts(sessionId).stream()
                                         .filter(path -> path.startsWith("normalized/scores-"))
                                         .toList();
 
-        assertEquals(2, written.size(),
-                "each SCORE pass needs its own artifact: " + written);
+        assertEquals(1, written.size(), written.toString());
         assertTrue(written.contains("normalized/scores-initial.json"), written.toString());
-        assertTrue(written.contains("normalized/scores-post-debate.json"), written.toString());
+        assertFalse(written.contains("normalized/scores-post-debate.json"), written.toString());
     }
 
     @Test
-    void thePassesReportDistinctLabels() {
+    void skippedSecondPassDoesNotPretendToHaveAComparisonLabel() {
         String sessionId = runRigorous();
 
         List<String> labels = events.history(sessionId).stream()
@@ -68,36 +69,32 @@ class ScorePassLabellingTest {
                                     .map(event -> String.valueOf(event.payload().get("label")))
                                     .toList();
 
-        assertEquals(List.of("initial", "post-debate"), labels,
-                "the UI keys the before/after comparison on these labels");
+        assertEquals(List.of("initial"), labels);
     }
 
     @Test
-    void reviewsAndScoresAgreeOnHowManyPassesRan() {
-        // Reviews were already kept either side of debate; scores now match, so
-        // the two halves of the evidence line up.
+    void reviewsAndScoresAgreeThatOnlyTheInitialPassRan() {
         String sessionId = runRigorous();
         List<String> written = artifacts.listArtifacts(sessionId);
 
         assertTrue(written.contains("normalized/reviews.json"), written.toString());
-        assertTrue(written.contains("normalized/reviews-post-debate.json"), written.toString());
+        assertFalse(written.contains("normalized/reviews-post-debate.json"), written.toString());
         assertTrue(written.contains("normalized/scores-initial.json"), written.toString());
-        assertTrue(written.contains("normalized/scores-post-debate.json"), written.toString());
+        assertFalse(written.contains("normalized/scores-post-debate.json"), written.toString());
     }
 
     @Test
-    void onlyTheLaterPassIsTreatedAsPostDebate() {
-        // Escalation fires only on the post-debate pass. That decision now
-        // follows the protocol rather than a cosmetic artifact label.
+    void skippedSecondPassPublishesAnExplicitReason() {
         String sessionId = runRigorous();
 
-        List<CouncilEvent> scoring = events.history(sessionId).stream()
-                                           .filter(event -> "SCORE_COMPLETED".equals(event.type()))
-                                           .toList();
+        List<CouncilEvent> skipped = events.history(sessionId).stream()
+                .filter(event -> "SCORE_SKIPPED".equals(event.type()))
+                .filter(event -> event.payload().containsKey("reason"))
+                .toList();
 
-        assertEquals(2, scoring.size());
-        assertEquals("initial", scoring.getFirst().payload().get("label"));
-        assertEquals("post-debate", scoring.getLast().payload().get("label"));
+        assertEquals(1, skipped.size());
+        assertTrue(String.valueOf(skipped.getFirst().payload().get("reason"))
+                .contains("No debate"));
     }
 
     private String runRigorous() {

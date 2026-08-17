@@ -1,10 +1,15 @@
 package com.debopam.llmcouncil.model;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.retry.TransientAiException;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
@@ -47,8 +52,39 @@ public class SpringAiModelClient implements ModelClient {
                                            .maxTokens(request.maxOutputTokens())
                                            .temperature(request.temperature())
                                            .build());
-            // Use the full CallResponseSpec to access both content and usage metadata.
-            var chatResponse = spec.user(user).call();
+            // Spring AI's generic ChatOptions does not carry a portable per-call
+            // timeout. Enforce the ModelProfile timeout at this adapter boundary
+            // so cloud calls honour the same contract as direct Ollama calls.
+            var requestSpec = spec.user(user);
+            // ChatClient#call() only builds a response spec; the provider call
+            // is triggered by content()/chatResponse(). Keep the terminal
+            // operations inside the timed task or the timeout is illusory.
+            FutureTask<SpringAiResponse> call = new FutureTask<>(() -> {
+                ChatClient.CallResponseSpec responseSpec = requestSpec.call();
+                String content = responseSpec.content();
+                ChatResponse response = responseSpec.chatResponse();
+                return new SpringAiResponse(content, response);
+            });
+            Thread.startVirtualThread(call);
+            SpringAiResponse chatResponse;
+            try {
+                Duration timeout = request.timeout();
+                if (timeout == null) {
+                    chatResponse = call.get();
+                } else {
+                    chatResponse = call.get(Math.max(1L, timeout.toMillis()), TimeUnit.MILLISECONDS);
+                }
+            } catch (TimeoutException ex) {
+                call.cancel(true);
+                throw new TimeoutException(
+                        "Model call exceeded timeout " + request.timeout() + " for " + modelId);
+            } catch (ExecutionException ex) {
+                Throwable cause = ex.getCause();
+                if (cause instanceof Exception exception) {
+                    throw exception;
+                }
+                throw ex;
+            }
             String response = chatResponse.content();
 
             // Extract token usage from Spring AI metadata if available.
@@ -58,7 +94,7 @@ public class SpringAiModelClient implements ModelClient {
             Long promptTokens = null;
             Long completionTokens = null;
             try {
-                var result = chatResponse.chatResponse();
+                var result = chatResponse.response();
                 if (result != null && result.getMetadata() != null
                         && result.getMetadata().getUsage() != null) {
                     var usage = result.getMetadata().getUsage();
@@ -74,6 +110,9 @@ public class SpringAiModelClient implements ModelClient {
                                        promptTokens, completionTokens,
                                        Duration.between(start, Instant.now()));
         } catch (Exception ex) {
+            if (ex instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             throw new ModelCallException(
                     category(ex),
                     null,
@@ -83,6 +122,9 @@ public class SpringAiModelClient implements ModelClient {
                     + rootCauseMessage(ex),
                     ex);
         }
+    }
+
+    private record SpringAiResponse(String content, ChatResponse response) {
     }
 
     private String rootCauseMessage(Throwable throwable) {
@@ -97,12 +139,15 @@ public class SpringAiModelClient implements ModelClient {
 
     private ModelFailureCategory category(Throwable throwable) {
         Throwable current = throwable;
-        while (current.getCause() != null) {
+        while (current != null) {
+            if (current instanceof TimeoutException
+                || current.getClass().getSimpleName().toLowerCase().contains("timeout")) {
+                return ModelFailureCategory.MODEL_TIMEOUT;
+            }
+            if (current instanceof TransientAiException) {
+                return ModelFailureCategory.PROVIDER_UNAVAILABLE;
+            }
             current = current.getCause();
-        }
-        if (current instanceof TimeoutException
-            || current.getClass().getSimpleName().toLowerCase().contains("timeout")) {
-            return ModelFailureCategory.MODEL_TIMEOUT;
         }
         return ModelFailureCategory.MODEL_CALL_FAILED;
     }

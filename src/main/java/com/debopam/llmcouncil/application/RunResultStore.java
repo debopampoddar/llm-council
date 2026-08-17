@@ -35,4 +35,7 @@ public interface RunResultStore {
      * @return the result, or empty when the run has not finished or is unknown
      */
     Optional<CouncilRunResponse> findById(String sessionId);
+
+    /** Remove a terminal result when its owning session is deleted. */
+    void delete(String sessionId);
 }

@@ -94,7 +94,8 @@ council:
   #   SPRING_AI_OPENAI_API_KEY=sk-...          → OpenAI active
   #   SPRING_AI_ANTHROPIC_API_KEY=sk-ant-...   → Anthropic active
   #   GOOGLE_CLOUD_PROJECT=my-project          → Gemini/Vertex AI active
-  # Ollama is always available (local, no credentials required).
+  # Ollama needs no credential, but its daemon must be running and configured
+  # model tags must be pulled; profile health checks verify both.
 
   persistence:
     # memory | jdbc. memory is the default and creates no datasource at all:
@@ -132,7 +133,7 @@ council:
       timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
       role: MEMBER
       councilRole: PROPOSER         # default debate persona
-      modelFamily: llama            # architecture family for diversity check
+      modelFamily: ${LLM_COUNCIL_LOCAL_MODEL_FAMILY:llama} # architecture family for diversity check
     - id: local-mistral
       provider: ollama
       providerModelId: ${LLM_COUNCIL_LOCAL_ALT_MODEL:mistral:7b}
@@ -141,7 +142,7 @@ council:
       timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
       role: MEMBER
       councilRole: CRITIC           # adversarial devil's advocate persona
-      modelFamily: mistral          # different family from llama
+      modelFamily: ${LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY:mistral} # different family from llama
     # Third local member, and the reason local-rigorous is a council of three
     # rather than a council of two with one member counted twice. It previously
     # seated local-llama3 and local-chair, which both resolve to llama3.1:8b:
@@ -162,7 +163,7 @@ council:
       timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
       role: MEMBER
       councilRole: PROPOSER
-      modelFamily: qwen
+      modelFamily: ${LLM_COUNCIL_LOCAL_THIRD_MODEL_FAMILY:qwen}
     # Fresh Eyes validator for local councils. Deliberately a different model
     # family from local-chair: a validator sharing the chair's weights shares
     # every one of its blind spots and cannot perform an independent check.
@@ -177,7 +178,7 @@ council:
       timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
       role: VALIDATOR
       councilRole: CRITIC
-      modelFamily: mistral
+      modelFamily: ${LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY:mistral}
     - id: local-chair
       provider: ollama
       providerModelId: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:llama3.1:8b}
@@ -186,7 +187,7 @@ council:
       timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
       role: CHAIR
       councilRole: SYNTHESIZER      # bridge-builder persona for the chair
-      modelFamily: llama
+      modelFamily: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL_FAMILY:llama}
 
     # OCI/OpenAI-compatible logical model. Configure Spring AI OpenAI base URL
     # and key externally for Oracle Code Assist LiteLLM, OCI, or another

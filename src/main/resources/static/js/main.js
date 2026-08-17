@@ -460,9 +460,11 @@ async function send(text) {
     render();
     await refreshChats();
     render();
+    return true;
   } catch (error) {
     state.error = describe(error);
     render();
+    return false;
   }
 }
 

@@ -20,7 +20,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  *   <li>{@code SPRING_AI_OPENAI_API_KEY=sk-...} → OpenAI active</li>
  *   <li>{@code SPRING_AI_ANTHROPIC_API_KEY=sk-ant-...} → Anthropic active</li>
  *   <li>{@code GOOGLE_CLOUD_PROJECT=my-project} → Gemini/Vertex AI active</li>
- *   <li>Ollama is always available (local, no credentials)</li>
+ *   <li>Ollama needs no credential; the local daemon and model tags must still
+ *       pass the health check</li>
  * </ul>
  *
  * <p>The Vertex AI auto-configuration classes are excluded because they throw

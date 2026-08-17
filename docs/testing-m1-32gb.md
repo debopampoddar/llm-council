@@ -9,11 +9,17 @@ There are two supported local paths:
 - App-only stack: `docker-compose.m1-32gb-app-only.yml` runs only the LLM Council
   app and connects to native or separately managed Ollama on the Mac host.
 
-The compose stack starts:
+The full compose stack starts:
 
 - `ollama`: local Ollama runtime in Docker.
 - `ollama-pull`: one-shot model download job.
 - `app`: Java 25 Spring Boot LLM Council service.
+
+> **Security:** the compose app binds `0.0.0.0` so Docker port publishing works,
+> and the API has no authentication. Run this only on a trusted local network,
+> restrict the published port with host/firewall controls, and do not expose
+> port 8080 to the internet. Raw prompts and model output are stored in the
+> artifact volume.
 
 Important performance note: Ollama inside Docker Desktop on macOS is a
 reproducible CPU-oriented setup. Native macOS Ollama can be faster on Apple
@@ -28,7 +34,7 @@ Dockerfile
 docker-compose.m1-32gb.yml
 docker-compose.m1-32gb-app-only.yml
 src/main/resources/application.yml
-docs/enhancement-implementation-sequences.md
+docs/library-flow-guide.md
 ```
 
 ## Hardware Assumptions
@@ -49,6 +55,7 @@ The M1 compose file defaults to:
 ```text
 LLM_COUNCIL_LOCAL_MODEL=llama3.1:8b
 LLM_COUNCIL_LOCAL_ALT_MODEL=mistral:7b
+LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.1:8b
 ```
 
@@ -57,6 +64,8 @@ If Docker inference is too slow, start with smaller models:
 ```bash
 export LLM_COUNCIL_LOCAL_MODEL=llama3.2:3b
 export LLM_COUNCIL_LOCAL_ALT_MODEL=qwen2.5:3b
+export LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY=qwen
+export LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 export LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.2:3b
 ```
 
@@ -65,7 +74,7 @@ export LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.2:3b
 From the project root:
 
 ```bash
-cd "/Users/depoddar/Documents/docs/personal/LLM Council/code/llm-council-full"
+cd /path/to/llm-council
 uname -m
 docker version
 docker compose version
@@ -99,6 +108,7 @@ Expected result:
 
 ```text
 BUILD SUCCESS
+Tests run: 887, Failures: 0, Errors: 0, Skipped: 0
 ```
 
 If Java 25 is not installed, install it or run only the Docker build path.
@@ -327,6 +337,7 @@ normalized/scores-initial.json
 private/anonymization-map.json
 final/answer.md
 final/validation.json
+final/result.json
 ```
 
 ## Step 6: Run A Local QUICK Test
@@ -360,7 +371,7 @@ Check the app's effective environment first:
 
 ```bash
 docker compose -f docker-compose.m1-32gb-app-only.yml exec app env \
-  | grep -E 'SPRING_AI_OLLAMA_BASE_URL|LLM_COUNCIL_LOCAL_MODEL|LLM_COUNCIL_LOCAL_ALT_MODEL|LLM_COUNCIL_LOCAL_CHAIR_MODEL'
+  | grep -E 'SPRING_AI_OLLAMA_BASE_URL|LLM_COUNCIL_LOCAL_MODEL|LLM_COUNCIL_LOCAL_ALT_MODEL|LLM_COUNCIL_LOCAL_THIRD_MODEL|LLM_COUNCIL_LOCAL_CHAIR_MODEL'
 ```
 
 Expected for app-only M1 testing:
@@ -369,6 +380,7 @@ Expected for app-only M1 testing:
 SPRING_AI_OLLAMA_BASE_URL=http://host.rancher-desktop.internal:11434
 LLM_COUNCIL_LOCAL_MODEL=llama3.1:8b
 LLM_COUNCIL_LOCAL_ALT_MODEL=mistral:7b
+LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.1:8b
 ```
 
@@ -517,6 +529,8 @@ If it remains too slow, restart with smaller models:
 docker compose -f docker-compose.m1-32gb.yml down
 export LLM_COUNCIL_LOCAL_MODEL=llama3.2:3b
 export LLM_COUNCIL_LOCAL_ALT_MODEL=qwen2.5:3b
+export LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY=qwen
+export LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 export LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.2:3b
 docker compose -f docker-compose.m1-32gb.yml up --build
 ```
@@ -547,6 +561,8 @@ Mitigation:
 docker compose -f docker-compose.m1-32gb.yml down
 export LLM_COUNCIL_LOCAL_MODEL=llama3.2:3b
 export LLM_COUNCIL_LOCAL_ALT_MODEL=qwen2.5:3b
+export LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY=qwen
+export LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 export LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.2:3b
 docker compose -f docker-compose.m1-32gb.yml up --build
 ```

@@ -24,6 +24,7 @@ services:
       no_proxy: "localhost,127.0.0.1,host.docker.internal,host.rancher-desktop.internal,host.lima.internal,ollama"
       LLM_COUNCIL_LOCAL_MODEL: ${LLM_COUNCIL_LOCAL_MODEL:-llama3.1:8b}
       LLM_COUNCIL_LOCAL_ALT_MODEL: ${LLM_COUNCIL_LOCAL_ALT_MODEL:-mistral:7b}
+      LLM_COUNCIL_LOCAL_THIRD_MODEL: ${LLM_COUNCIL_LOCAL_THIRD_MODEL:-qwen2.5:7b}
       LLM_COUNCIL_LOCAL_CHAIR_MODEL: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.1:8b}
       LLM_COUNCIL_LOCAL_OUTPUT_TOKENS: "1000"
       LLM_COUNCIL_LOCAL_ALT_OUTPUT_TOKENS: "1000"

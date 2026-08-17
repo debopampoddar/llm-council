@@ -1,7 +1,16 @@
 # Licensing and Distribution — decisions, and what is left to do
 
-Status: **blocked on registering `contextruntime.io`.** Everything that does not
-depend on the domain is either done or specified below.
+Plan status: **blocked on registering `contextruntime.io`.**
+
+> **Current legal/build state, audited 2026-08-17:** the repository is still
+> version `2.0.0`, groupId `com.debopam`, and carries the GPL-3.0 license text.
+> The AGPL/commercial model, `io.contextruntime` coordinates, Maven Central, CLA,
+> NOTICE, and SPDX work below are decisions for a future 2.1.0 release; they are
+> not claims about the code users receive today.
+
+This is an engineering release plan, not legal advice. Revalidate the licence
+strategy with counsel before changing the repository licence or selling
+commercial exceptions.
 
 This document exists so the analysis behind these decisions is not repeated. The
 dependency licence audit in §6 in particular took a full scan of the tree and
@@ -97,22 +106,17 @@ the address on the commercial licence and in `LICENSING.md`.
 
 ---
 
-## 3. Already committed
+## 3. Already committed and merged
 
-Branch `chore/trim-fat-jar`, off `main`, not pushed.
+The dependency/package changes and Requirement Advisor are on `main`.
 
 | Commit | What |
 |---|---|
 | `04c141a` | Dependency trim, 100 MB → 77 MB |
-| `aaadf90` | GitHub Packages `distributionManagement` + publish workflow |
-
-Other branches in flight:
-
-| Branch | Contents | Merge order |
-|---|---|---|
-| `phase5/requirement-advisor` | PR #32, the Requirement Advisor | first |
-| `chore/test-fixture-builders` | `TestModels` builders, based on phase5 | **after #32** |
-| `chore/trim-fat-jar` | dependencies + packaging, off `main` | independent |
+| `aaadf90` | GitHub Packages `distributionManagement` + release publish workflow |
+| `5eebb1a` | PR #32, Requirement Advisor merge |
+| `743390e` | PR #33, dependency/package trim merge |
+| `767231d` | PR #34, test fixture builders merge |
 
 ---
 
@@ -321,19 +325,20 @@ Apache-2.0, logback is the dual case above. These are what §4.3's
 
 ## 7. Open risks
 
-1. **No CI.** There is no `.github/workflows` beyond the publish job added here.
-   776 tests that run when someone remembers are not a safety net. Cheapest
-   high-value fix available.
+1. **No pull-request CI.** The release publish workflow runs `mvn verify`, but
+   ordinary pushes and pull requests have no required workflow. The clean
+   reviewed baseline is 887 tests; local success is not a repository gate.
 2. **Hermetic tests do not prove integration.** `mvn test` never calls a model.
    Nothing verifies the council works against real Ollama, Anthropic, or Vertex.
    This is also what the dependency exclusions would rest on more comfortably.
-3. **`-Pintegration` is documented but does not exist.** CLAUDE.md §12.9 refers
-   to it; `grep integration pom.xml` returns nothing.
+3. **No live-provider Maven profile exists.** Do not tell contributors to run
+   `-Pintegration`; add an explicit `provider-contracts` profile before
+   documenting that workflow.
 4. **Maven Central is immutable.** Nothing published is ever removed. Settle
    groupId, licence, and version before the first release.
 5. **CLA before the first outside contribution**, not after.
-6. Two dead documentation links in the README (`enhancement-implementation-sequences.md`,
-   `demo-chat-api-v1-guide.md`).
+6. **Resolved 2026-08-17:** the two dead README links were replaced with the
+   current production-readiness and machine testing guides.
 
 ---
 
