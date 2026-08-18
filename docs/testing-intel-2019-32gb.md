@@ -98,7 +98,7 @@ Expected result:
 
 ```text
 BUILD SUCCESS
-Tests run: 887, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 930, Failures: 0, Errors: 0, Skipped: 0
 ```
 
 If Java 25 is not available on the Intel machine, rely on the Docker build path:
@@ -216,7 +216,7 @@ Expected:
 - `answer` is non-empty.
 
 If this takes too long, keep using the mock profile for orchestration testing and
-use OCI/hybrid for real model quality.
+use an OpenAI, Claude, or Gemini profile for real model quality.
 
 ## Step 7: Run Local BALANCED Only After QUICK Passes
 
@@ -257,13 +257,23 @@ Expected if successful:
 - `scoreSummary` is present.
 - `validation` is present.
 
-If models produce malformed review JSON, the current implementation excludes
-that reviewer. This is expected until structured-output repair is implemented.
+The review parser recovers the local-model shapes observed in practice:
+multiple JSON envelopes, compact criterion objects, fractional scores, and
+valid siblings of a malformed review. The timeline reports exact per-reviewer
+coverage. A missing required non-self review degrades the run to `PARTIAL`; it
+is never counted toward quorum or hidden behind a clean completion.
 
-## Step 8: Prefer OCI Or Hybrid For Real Quality On Intel
+In `RIGOROUS`, debate is conditional even after complete review coverage. A
+measurable disagreement value below the configured trigger causes debate and
+its dependent stages to be explicitly skipped. This is expected. Use a derived
+protocol with `DEBATE.force-run: true` only when the goal is to demonstrate
+every stage; it is substantially slower on this CPU-only setup.
+
+## Step 8: Prefer A Cloud Profile For Real Quality On Intel
 
 For a 2019 Intel laptop, local CPU models are useful for smoke tests and privacy
-checks. For real answer quality and acceptable latency, use `oci` or `hybrid`.
+checks. For real answer quality and acceptable latency, use `openai`, `claude`,
+or `gemini`.
 
 Stop stack:
 
@@ -275,10 +285,8 @@ Provide runtime credentials:
 
 ```bash
 export SPRING_AI_OPENAI_API_KEY="your-runtime-api-key"
-export SPRING_AI_OPENAI_BASE_URL="https://your-openai-compatible-endpoint"
-export SPRING_AI_OPENAI_CHAT_COMPLETIONS_PATH="/v1/chat/completions"
-export OCA_LLM_MODEL="your-model"
-export OCA_LLM_REVIEW_MODEL="your-review-model"
+# Or use Claude instead:
+# export SPRING_AI_ANTHROPIC_API_KEY="your-anthropic-api-key"
 ```
 
 Restart:
@@ -287,19 +295,19 @@ Restart:
 docker compose -f docker-compose.intel-2019-32gb.yml up --build
 ```
 
-Run OCI:
+Run OpenAI:
 
 ```bash
-OCI_SESSION_ID=$(curl -s -X POST http://localhost:8080/api/council/sessions \
+OPENAI_SESSION_ID=$(curl -s -X POST http://localhost:8080/api/council/sessions \
   -H "Content-Type: application/json" \
   -d '{
     "question": "Review this migration plan for risks and missing controls.",
     "context": "Prefer concrete engineering tradeoffs.",
     "depthMode": "BALANCED",
-    "profileId": "oci"
+    "profileId": "openai"
   }' | jq -r .sessionId)
 
-curl -s -X POST "http://localhost:8080/api/council/sessions/$OCI_SESSION_ID/run" | jq
+curl -s -X POST "http://localhost:8080/api/council/sessions/$OPENAI_SESSION_ID/run" | jq
 ```
 
 ## Step 9: Common Intel Failures
@@ -339,7 +347,7 @@ Mitigations:
   memory pressure forces a smaller value, expect prompt truncation warnings and
   reduce output-token budgets or use `QUICK` rather than assuming 3072 is enough.
 - Use smaller models.
-- Use `oci` or `hybrid` for real runs.
+- Use `openai`, `claude`, or `gemini` for real cloud runs.
 
 ### App Is Healthy But Local Run Fails
 

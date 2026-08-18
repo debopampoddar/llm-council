@@ -99,10 +99,14 @@ public class CouncilService {
                                         ? CouncilStatus.CANCELLED
                                         : ctx.isTerminal()
                                           ? (ctx.synthesisResult().isPresent() ? CouncilStatus.PARTIAL : CouncilStatus.FAILED)
+                                          : ctx.isDegraded()
+                                            ? CouncilStatus.PARTIAL
                                           : CouncilStatus.COMPLETED;
             String failureReason = ctx.isCancelled()
                                    ? CANCELLED_BY_USER
-                                   : ctx.failureMessage().orElse(null);
+                                   : ctx.isTerminal()
+                                     ? ctx.failureMessage().orElse(null)
+                                     : ctx.degradationMessage().orElse(null);
             CouncilSession completed = session.withStatus(finalStatus)
                                               .withFinalAnswer(ctx.synthesisResult().orElse(null))
                                               .withFailureReason(failureReason);

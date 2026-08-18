@@ -43,13 +43,8 @@ public class CatalogService {
     // user what to set — the values themselves are never read or reported here.
     private static final Map<String, String> PROVIDER_ENV_VARS = Map.of(
             "openai", "SPRING_AI_OPENAI_API_KEY",
-            "openai-compatible", "SPRING_AI_OPENAI_API_KEY",
-            "oci", "SPRING_AI_OPENAI_API_KEY",
-            "oci-openai", "SPRING_AI_OPENAI_API_KEY",
             "anthropic", "SPRING_AI_ANTHROPIC_API_KEY",
-            "gemini", "GOOGLE_CLOUD_PROJECT",
-            "vertex-ai", "GOOGLE_CLOUD_PROJECT",
-            "google", "GOOGLE_CLOUD_PROJECT");
+            "gemini", "GOOGLE_CLOUD_PROJECT");
 
     private final CouncilCatalogHolder catalogHolder;
     private final OllamaModelDiscoveryService ollamaDiscovery;

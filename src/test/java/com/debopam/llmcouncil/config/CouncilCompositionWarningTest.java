@@ -26,8 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>Three overstatements the shipped configuration itself contained:
  * {@code local-rigorous} listed three members of which two resolved to
  * {@code llama3.1:8b}; the same policy seated its chair as a member, so the
- * chair synthesised a pool containing its own draft; and both {@code oci-*}
- * member ids defaulted to one provider model. None of these failed validation,
+ * chair synthesised a pool containing its own draft; and two logical cloud
+ * member ids resolved to one provider model. None of these failed validation,
  * none appeared in any report, and each made a council look wider than it was.
  *
  * <p>Every case here is paired with the configuration that must stay silent.

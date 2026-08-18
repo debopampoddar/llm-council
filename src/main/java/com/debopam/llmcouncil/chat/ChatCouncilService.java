@@ -176,6 +176,10 @@ public class ChatCouncilService {
             // PARTIAL result rather than as the stop the user asked for.
             updated = current.failed(CouncilService.CANCELLED_BY_USER);
             eventType = "TURN_FAILED";
+        } else if (completion.session().status() == CouncilStatus.PARTIAL && !blank(answer)) {
+            updated = current.partial(answer,
+                    blank(failure) ? "Council completed with reduced evidence" : failure);
+            eventType = "TURN_PARTIAL";
         } else if (!blank(answer) && blank(failure)) {
             updated = current.completed(answer);
             eventType = "TURN_COMPLETED";

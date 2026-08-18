@@ -127,8 +127,12 @@ public class ProtocolOrchestrator {
 
             String terminalEvent = context.isCancelled() ? "PROTOCOL_CANCELLED"
                                  : context.isTerminal() ? "PROTOCOL_FAILED"
+                                 : context.isDegraded() ? "PROTOCOL_PARTIAL"
                                  : "PROTOCOL_COMPLETED";
-            events.publish(session.id(), "PROTOCOL", terminalEvent, null, Map.of());
+            events.publish(session.id(), "PROTOCOL", terminalEvent, null,
+                           context.isDegraded()
+                           ? Map.of("reasons", context.degradationReasons())
+                           : Map.of());
             return context;
         } finally {
             runRegistry.unregister(session.id());

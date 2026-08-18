@@ -81,7 +81,7 @@ Request:
   "question": "What should we do about distributed transactions?",
   "context": "Optional background",
   "depthMode": "BALANCED",
-  "profileId": "hybrid"
+  "profileId": "openai"
 }
 ```
 
@@ -128,8 +128,8 @@ CouncilController.runCouncil()
 The service resolves:
 
 ```text
-profileId=hybrid + depthMode=BALANCED
-  -> policyId=hybrid-balanced
+profileId=openai + depthMode=BALANCED
+  -> policyId=openai-balanced
   -> protocolId=balanced
 ```
 
@@ -220,7 +220,7 @@ Turn outcomes:
 ```text
 RUNNING   -> council run is active
 COMPLETED -> final answer attached to turn
-PARTIAL   -> answer exists but council recorded a failure or warning state
+PARTIAL   -> answer exists but required evidence was incomplete or a nonterminal failure degraded the run
 FAILED    -> council run failed without an answer
 REJECTED  -> runtime concurrency guard rejected the run
 ```
@@ -274,7 +274,7 @@ Runtime provider clients are created in `CouncilConfig`.
 
 If a real provider bean is missing, the model gets `UnavailableModelClient`. That client fails explicitly if called. It does not return mock output.
 
-The default `application.yml` also includes placeholder OpenAI/Anthropic keys because Spring AI creates those provider beans eagerly. These placeholders are boot-only placeholders, not usable credentials. Real OCI/OpenAI-compatible profiles require real runtime environment variables.
+The default `application.yml` also includes placeholder OpenAI/Anthropic keys because Spring AI creates those provider beans eagerly. These placeholders are boot-only placeholders, not usable credentials. OpenAI and Claude profiles require real runtime API keys.
 
 For local Ollama runs, `application.yml` now exposes the Ollama connection and
 runtime options as environment variables:
@@ -308,7 +308,6 @@ LLM Council supports multiple LLM providers. Each cloud provider **auto-activate
 | OpenAI | `openai` | `SPRING_AI_OPENAI_API_KEY` | Auto-detects real key (not a placeholder) |
 | Anthropic | `anthropic` | `SPRING_AI_ANTHROPIC_API_KEY` | Auto-detects real key (not a placeholder) |
 | Gemini / Vertex AI | `gemini` | `GOOGLE_CLOUD_PROJECT` + ADC or SA | Auto-detects real project ID |
-| OCI/OpenAI-compatible | `openai-compatible` | `SPRING_AI_OPENAI_API_KEY` + `SPRING_AI_OPENAI_BASE_URL` | Uses OpenAI detection |
 | Mock | `mock` | None | Always available (test-only) |
 
 ### How Auto-Detection Works
@@ -405,22 +404,22 @@ Profiles are user-facing:
 
 ```yaml
 profiles:
-  hybrid:
+  openai:
     defaultDepth: BALANCED
     depthPolicies:
-      QUICK: hybrid-quick
-      BALANCED: hybrid-balanced
-      RIGOROUS: hybrid-rigorous
+      QUICK: openai-quick
+      BALANCED: openai-balanced
+      RIGOROUS: openai-rigorous
 ```
 
-Profiles can be local-only, OCI/OpenAI-compatible only, hybrid, Gemini-only, or multi-cloud.
+Profiles can be local-only, OpenAI-only, Claude-only, Gemini-only, or multi-cloud.
 
 | Profile | Purpose |
 |---|---|
 | `default` | Alias of the shipped local policy mapping, defaulting to BALANCED. |
 | `local` | Ollama-only local council. Private or offline-capable runs. |
-| `oci` | OCI/OpenAI-compatible council. Oracle Code Assist, OCI, or another endpoint. |
-| `hybrid` | Local models for draft diversity plus OCI/OpenAI-compatible chair and validator. |
+| `openai` | OpenAI-only council. Auto-activates from `SPRING_AI_OPENAI_API_KEY`. |
+| `claude` | Anthropic Claude-only council. Auto-activates from `SPRING_AI_ANTHROPIC_API_KEY`. |
 | `gemini` | Google Gemini (Vertex AI) only. Auto-activates from `GOOGLE_CLOUD_PROJECT` plus ADC/service-account credentials. |
 | `multi-cloud` | Maximum diversity: Ollama + Gemini + Anthropic/OpenAI. Health preflight reports the providers required by the selected depth. |
 | `mock` | Test-only deterministic profile. Use for smoke tests, not real answers. |
@@ -430,11 +429,11 @@ Profiles can be local-only, OCI/OpenAI-compatible only, hybrid, Gemini-only, or 
 Policies are the business contract for one profile/depth pair:
 
 ```yaml
-hybrid-balanced:
+openai-balanced:
   protocolId: balanced
-  memberModelIds: [local-llama3, local-mistral, oci-reviewer]
-  chairModelId: oci-primary
-  validatorModelId: oci-reviewer
+  memberModelIds: [openai-gpt, openai-critic]
+  chairModelId: openai-chair
+  validatorModelId: openai-validator
   minimumSuccessfulDrafts: 2
   minimumReviewsPerDraft: 1
   validationRequired: true
@@ -550,11 +549,18 @@ ReviewStageExecutor
 What it does:
 
 1. Sends anonymized drafts to reviewers.
-2. Asks for JSON only.
-3. Parses the JSON with `StructuredOutputParser`.
-4. Rejects malformed scores or confidence values.
-5. Filters self-review.
-6. Writes raw and normalized review artifacts.
+2. Requests JSON mode where the model adapter supports it and also gives an
+   explicit JSON schema in the prompt.
+3. Parses every bounded, balanced top-level review envelope rather than only
+   the first object in the response.
+4. Accepts the documented criterion array and the compact score-object form;
+   finite fractional scores are rounded to the nearest integer.
+5. Retains valid sibling reviews when another entry is malformed.
+6. Removes self-reviews, unknown draft IDs, and duplicate reviewer/draft pairs.
+7. Checks exact unique non-self coverage for each reviewer and publishes actual,
+   expected, and missing draft IDs. Incomplete coverage degrades the run to
+   `PARTIAL`; it cannot silently inflate quorum or produce clean completion.
+8. Writes raw and normalized review artifacts.
 
 Expected review shape:
 
@@ -589,7 +595,8 @@ What it does:
 2. Checks review quorum per draft.
 3. Aggregates scores using the configured scoring strategy (default: confidence-weighted).
 4. Creates `ScoreArtifact` per draft.
-5. Creates `ScoreSummary` with variance and winning draft.
+5. Creates `ScoreSummary` with cross-draft ranking variance, same-draft reviewer
+   disagreement, whether disagreement is measurable, and the winning draft.
 6. If post-debate variance exceeds threshold, triggers escalation policy.
 
 Available scoring strategies (selectable per protocol stage via `scoring-strategy` option):
@@ -611,7 +618,9 @@ DebateStageExecutor
 
 What it does:
 
-1. Checks whether debate is forced or score variance exceeds threshold.
+1. Checks whether debate is forced or reviewer disagreement about the same
+   draft exceeds `debate-trigger-score-variance`. Despite the legacy option
+   name, cross-draft ranking variance does not trigger debate.
 2. Runs bounded debate rounds (minimum 2 by default to prevent premature convergence).
 3. Uses role-aware debate prompts — `CRITIC` models are explicitly instructed to challenge consensus.
 4. Parses confidence from each contribution using multi-pattern extraction.
@@ -656,8 +665,10 @@ What it does:
 2. Uses `postDebateReviewMessages()` — the prompt includes debate history alongside drafts.
 3. Post-debate reviews are kept separately from initial reviews, so the second
    SCORE pass uses only genuinely updated evidence.
-4. System prompt: "Do not simply copy your pre-debate review."
-5. If debate did not run, this stage and the second SCORE pass are explicitly
+4. Applies the same resilient parsing, filtering, and exact non-self coverage
+   rules as the initial review stage.
+5. System prompt: "Do not simply copy your pre-debate review."
+6. If debate did not run, this stage and the second SCORE pass are explicitly
    skipped; the initial score remains authoritative.
 
 ### SYNTHESIZE
@@ -977,21 +988,20 @@ Mock is explicit and test-only:
 
 Mock output is deterministic and parser-friendly. Do not use it to judge answer quality.
 
-## Using OCI Or Oracle Code Assist
+## Using OpenAI Or Claude
 
 The Java service should not read `~/.codex/auth.json`.
 
 Codex uses ChatGPT auth for the development tool. This application uses runtime provider credentials.
 
-Configure your OpenAI-compatible runtime externally:
+Configure the provider credentials externally:
 
 ```bash
-export SPRING_AI_OPENAI_API_KEY="$OCA_LLM_API_TOKEN"
-export SPRING_AI_OPENAI_BASE_URL="$OCA_LLM_BASE_URL"
-export OCA_LLM_MODEL="gpt-4o"
+export SPRING_AI_OPENAI_API_KEY="sk-..."
+export SPRING_AI_ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-If these values are missing, the application still boots for local and mock use, but OCI model calls fail explicitly.
+If these values are missing, the application still boots for local and mock use, but calls to the unconfigured cloud profile fail explicitly.
 
 Then choose:
 
@@ -999,11 +1009,18 @@ Then choose:
 {
   "question": "Assess this architecture risk.",
   "depthMode": "RIGOROUS",
-  "profileId": "oci"
+  "profileId": "claude"
 }
 ```
 
 ## Extension Points
+
+For a user-defined model, prefer the advanced workbench at
+`http://localhost:8080/config.html` over editing shipped configuration. It can
+import YAML, validate cross-references, preview the merged catalog, and
+optionally probe the exact provider model id before the confirmed save. A
+successful probe means only that one bounded call completed; it is not a quality
+or council-level test, and a restart is still required after saving.
 
 Add a model:
 
@@ -1019,7 +1036,7 @@ Add a provider:
 
 1. Add the Spring AI starter dependency to `pom.xml`.
 2. Inject the `ChatModel` bean in `CouncilConfig` with `@Autowired(required = false)`.
-3. Add a case to `buildClient()` with explicit credential/bean availability
+3. Add a case to `buildRawProviderClient()` with explicit credential/bean availability
    checks and an actionable `UnavailableModelClient` fallback.
 4. Extend provider health checking and the startup/catalog status information.
 5. Add model entries with the new provider name and contract tests for the
@@ -1044,7 +1061,11 @@ Add a stage:
 - Artifact storage is local filesystem only; there is no object-store backend
   or application-provided encryption at rest.
 - Spring AI provider-specific option support is intentionally conservative.
-- Review repair prompts are not implemented yet; malformed review JSON excludes that reviewer.
+- Review parsing recovers multiple complete JSON envelopes, compact criterion
+  objects, fractional scores, and valid siblings of a malformed review. It also
+  enforces exact unique non-self coverage. Provider retry/repair prompts are not
+  implemented, so missing required evidence is reported as `PARTIAL` rather
+  than silently presented as a clean completion.
 - Authentication and authorization are not implemented on the API.
 - Chat cancellation, deletion cascade, durable JDBC history, interrupted-run
   recovery, and `Last-Event-ID`/query cursor replay are implemented. There is no
@@ -1053,8 +1074,8 @@ Add a stage:
   executor's global concurrency permit.
 - Chat renders a cancelled turn as failed; the persisted council result still
   correctly reports `CANCELLED`.
-- Structured-output repair, model-call metrics, browser E2E, and live-provider
-  contract tests remain open; see
+- Provider-side structured-output retries, model-call metrics, browser E2E, and
+  repeatable cloud-provider contract tests remain open; see
   [production-readiness-plan.md](production-readiness-plan.md).
 
 These are deliberate next steps, not reasons to reintroduce user-selected protocol IDs or silent mock fallback.

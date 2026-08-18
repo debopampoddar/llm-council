@@ -45,7 +45,7 @@ class ProfileHealthStatesTest {
     void deferredProfileIsRunnableButCarriesWarnings() throws Exception {
         // The third state. Nothing was checked, so "runnable" here means
         // "nothing is known to be wrong", not "verified".
-        mockMvc.perform(get("/api/council/profiles/oci/health?depthMode=BALANCED"))
+        mockMvc.perform(get("/api/council/profiles/openai/health?depthMode=BALANCED"))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.runnable").value(true))
                .andExpect(jsonPath("$.warnings.length()").value(greaterThan(0)))

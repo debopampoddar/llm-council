@@ -15,9 +15,9 @@
 //    misreading this whole product exists to prevent, so any *_SKIPPED event
 //    inside a stage overrides its completion and its reason is shown verbatim.
 //
-// The suffix match is deliberate rather than an enumerated list: new no-op
-// events have been added to this codebase over time, and a stage silently
-// turning green is exactly the failure that would not be noticed.
+// A per-draft SCORE_SKIPPED is different: the stage can still score other
+// drafts, so that event makes the row partial rather than turning the whole row
+// into a no-op.
 
 import { el, replace, pill, elapsedMs, formatDuration } from "./dom.js";
 
@@ -39,7 +39,7 @@ export function buildTimeline(events) {
       rows[index] = {
         index, name, status: "pending",
         startedAt: null, completedAt: null,
-        noopReason: null, errors: [], detail: [],
+        noopReason: null, partialReasons: [], errors: [], detail: [],
       };
     }
     if (name) rows[index].name = name;
@@ -58,7 +58,9 @@ export function buildTimeline(events) {
       continue;
     }
     if (type === "PROTOCOL_COMPLETED") { status = "completed"; continue; }
+    if (type === "PROTOCOL_PARTIAL") { status = "partial"; continue; }
     if (type === "PROTOCOL_FAILED") { status = "failed"; continue; }
+    if (type === "PROTOCOL_CANCELLED") { status = "cancelled"; continue; }
 
     const index = payload.stageIndex;
     if (type === "STAGE_STARTED" && Number.isInteger(index)) {
@@ -75,11 +77,16 @@ export function buildTimeline(events) {
 
     if (type === "STAGE_COMPLETED") {
       current.completedAt = occurredAt;
-      // A no-op already claimed this row; completion must not overwrite it.
-      current.status = current.status === "noop" ? "noop" : "done";
+      // A no-op or partial result already claimed this row; completion must not
+      // overwrite the evidence-level outcome.
+      current.status = ["noop", "partial"].includes(current.status) ? current.status : "done";
     } else if (type === "STAGE_FAILED") {
       current.completedAt = occurredAt;
       current.status = "failed";
+    } else if (type === "SCORE_SKIPPED" && payload.draftId) {
+      current.status = "partial";
+      current.partialReasons.push(payload.reason || `draft ${payload.draftId} was not scored`);
+      current.detail.push({ type, payload });
     } else if (isNoop(type)) {
       current.status = "noop";
       current.noopReason = payload.reason || "no reason reported";
@@ -104,6 +111,12 @@ function summarise(row) {
   const count = (type) => row.detail.filter((d) => d.type === type).length;
 
   const score = find("SCORE_COMPLETED");
+  if (row.status === "partial") {
+    if (score) {
+      return `partial — scored ${score.payload.scoreCount}/${score.payload.draftCount} drafts`;
+    }
+    return `partially ran — ${row.partialReasons[0] || "some evidence was unavailable"}`;
+  }
   if (score) {
     return `${score.payload.strategy} · variance ${score.payload.variance} · label ${score.payload.label}`;
   }
@@ -133,6 +146,7 @@ const NODE_CLASS = {
   pending: "tl-node",
   running: "tl-node run",
   done: "tl-node done",
+  partial: "tl-node partial",
   noop: "tl-node noop",
   failed: "tl-node fail",
 };
@@ -164,7 +178,9 @@ export function renderTimeline(container, events, options = {}) {
     const panel = el("div.tl-panel", { id: panelId, hidden: open ? null : "hidden" },
       options.renderPanel ? options.renderPanel(row) : renderDefaultPanel(row));
 
-    return el(`div.tl-row${row.status === "noop" ? ".is-noop" : ""}`, {}, [
+    const outcomeClass = row.status === "noop" ? ".is-noop"
+                       : row.status === "partial" ? ".is-partial" : "";
+    return el(`div.tl-row${outcomeClass}`, {}, [
       el("div.tl-gut", {}, [
         el(`span.${NODE_CLASS[row.status].replace(/ /g, ".")}`),
         position === rows.length - 1 ? null : el("span.tl-line"),
@@ -183,9 +199,11 @@ export function renderTimeline(container, events, options = {}) {
   });
 
   const done = rows.filter((r) => r.status !== "pending").length;
+  const statusKind = status === "failed" ? "crit"
+                   : status === "completed" ? "ok"
+                   : ["partial", "cancelled"].includes(status) ? "warn" : "accent";
   const header = el("div.tl-head-row", {}, [
-    pill(status === "failed" ? "crit" : status === "completed" ? "ok" : "accent",
-         status === "running" ? `stage ${done} of ${rows.length}` : status),
+    pill(statusKind, status === "running" ? `stage ${done} of ${rows.length}` : status),
     protocolId ? el("span.tl-proto", { text: `protocol ${protocolId}` }) : null,
   ]);
 

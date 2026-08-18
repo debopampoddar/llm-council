@@ -39,7 +39,7 @@ public final class ConfigLimits {
 
     /** Providers a user may bind to. Adding a provider needs Java, not config. */
     public static final Set<String> ALLOWED_PROVIDERS = Set.of(
-            "ollama", "openai", "anthropic", "gemini", "openai-compatible");
+            "ollama", "openai", "anthropic", "gemini");
 
     /** Depth modes a profile may map to a policy. */
     public static final List<String> DEPTH_MODES = List.of("QUICK", "BALANCED", "RIGOROUS");

@@ -58,6 +58,7 @@ public class CouncilContext {
     private final List<String> excludedModels = new CopyOnWriteArrayList<>();
     private final List<ModelFailure> modelFailures = new CopyOnWriteArrayList<>();
     private final List<String> warnings = new CopyOnWriteArrayList<>();
+    private final List<String> degradationReasons = new CopyOnWriteArrayList<>();
     // Sycophancy warnings flagged during debate rounds.
     private final List<String> sycophancyWarnings = new CopyOnWriteArrayList<>();
     // One entry per model call, written from the calling virtual thread.
@@ -245,6 +246,35 @@ public class CouncilContext {
 
     /** @return Non-terminal warnings accumulated during the run. */
     public List<String> warnings() { return List.copyOf(warnings); }
+
+    /**
+     * Record that the protocol produced an answer from less evidence than its
+     * selected policy promised. Degradation is non-terminal: synthesis may
+     * still produce a useful answer, but the session and API must report
+     * {@code PARTIAL} rather than silently upgrading that answer to a clean run.
+     */
+    public void markDegraded(String reason) {
+        if (!degradationReasons.contains(reason)) {
+            degradationReasons.add(reason);
+        }
+        if (!warnings.contains(reason)) {
+            warnings.add(reason);
+        }
+    }
+
+    /** @return whether required evidence was lost without terminating the run. */
+    public boolean isDegraded() { return !degradationReasons.isEmpty(); }
+
+    /** @return stable, user-facing reasons why this is a partial result. */
+    public List<String> degradationReasons() { return List.copyOf(degradationReasons); }
+
+    /** @return a concise explanation suitable for session and chat status. */
+    public Optional<String> degradationMessage() {
+        return degradationReasons.isEmpty()
+                ? Optional.empty()
+                : Optional.of("Council completed with reduced evidence: "
+                              + String.join("; ", degradationReasons));
+    }
 
     /** Record a sycophancy warning detected during debate.*/
     public void addSycophancyWarning(String warning) { sycophancyWarnings.add(warning); }

@@ -13,8 +13,8 @@ Current verdict:
 
 - **Good local/personal application and strong development platform.**
 - **Not production-ready for untrusted network users.** It has no authentication or authorization and intentionally relies on loopback binding as its access-control boundary.
-- **Do not market every shipped profile as a genuinely independent council.** The local rigorous and multi-cloud profiles have useful diversity. Several single-provider OCI/Gemini policies seat the chair as a member or use correlated chair/validator families; the application warns about this, but warnings do not create independence.
-- **The orchestration is now internally consistent under the mock and deterministic test harness.** Real provider behavior still needs opt-in contract tests before a release claim can extend to OpenAI, Anthropic, Gemini, OCI-compatible endpoints, or Ollama versions actually deployed by users.
+- **Do not market every shipped profile as a genuinely independent council.** The local rigorous and multi-cloud profiles have useful diversity. OpenAI, Claude, and Gemini are single-provider policies with correlated chair/validator families; the application reports that correlation, but a warning does not create independence.
+- **The orchestration is internally consistent under the deterministic harness and the shipped three-model Ollama council was exercised live.** Repeatable contract tests are still needed before a release claim can extend to OpenAI, Anthropic, Gemini, or arbitrary Ollama versions deployed by users.
 
 Indicative assessment after fixes:
 
@@ -25,13 +25,13 @@ Indicative assessment after fixes:
 | Configuration safety | 8/10 | Unusually thorough validation and warnings. Some shipped policies knowingly fall below the quality bar the warnings describe. |
 | User experience | 7/10 | Useful preflight, SSE timeline, trust signals, setup advisor, retry/cancel, and now honest send/delete behavior. Error contracts and cancellation presentation need cleanup. |
 | Persistence/privacy | 7/10 | JDBC session/event persistence, filesystem artifacts, retention, path containment, durable result artifacts, and deletion cascade exist. No encryption or user-level access control. |
-| Test confidence | 8/10 | 887 passing tests in 13.6 seconds. Strong deterministic coverage; no live-provider, browser E2E, load, or fault-injection environment. |
+| Test confidence | 8/10 | 930 passing deterministic tests plus two live three-model Ollama runs. Browser E2E, load, fault-injection, and repeatable cloud-provider suites remain open. |
 
 ## Review method
 
 The review used several passes rather than reading controllers in isolation:
 
-1. Repository and build inventory: 189 production Java source files plus the static UI and configuration.
+1. Repository and build inventory: 200 production Java source files plus the static UI and configuration.
 2. Protocol trace: create session through resolution, generation, review, score, debate, revision, synthesis, validation, export, persistence, SSE, chat completion, cancellation, and retention.
 3. Failure trace: invalid profile, model timeout, provider transient failure, malformed model output, quorum loss, partial synthesis, cancellation windows, duplicate requests, callback failure, and artifact-store failure.
 4. Data-integrity/security pass: path traversal, symlinks, deletion semantics, retention, durable restart behavior, network exposure, untrusted model output, and prompt-context boundaries.
@@ -42,8 +42,8 @@ Verification performed:
 
 ```text
 JAVA_HOME=<JDK 25> mvn clean test
-Tests run: 887, Failures: 0, Errors: 0, Skipped: 0
-Total time: 13.610 s
+Tests run: 930, Failures: 0, Errors: 0, Skipped: 0
+Total time: 14.284 s
 Ruby YAML parse: application.yml and all three Compose files valid
 Markdown relative-link scan: 9 files checked, 0 missing targets
 mvn -DskipTests package: BUILD SUCCESS
@@ -56,7 +56,10 @@ installed in this environment. YAML parsing, application-context tests, and the
 Compose content regression tests passed; actual container startup remains a
 machine-runbook check.
 
-No live provider credentials were used. No claim in this report treats mock-provider success as proof of a cloud provider contract.
+No cloud-provider credentials were used. The live verification used only the
+local Ollama service and the installed `llama3.1:8b`, `mistral:7b`, and
+`qwen2.5:7b` models. No claim in this report treats that result or mock-provider
+success as proof of a cloud-provider contract.
 
 ## Must-have defects fixed
 
@@ -180,7 +183,35 @@ declares the alternate as Qwen. Compose regression tests cover the contract.
 Files: `application.yml`, all three Docker Compose files,
 `DockerComposeConfigurationTest`.
 
-Implementation status: **all 17 concrete must-have defects in this report are
+### 18. Local review output could erase valid evidence and still look successful
+
+The observed Ollama run exposed three parser/orchestration defects at once.
+Llama emitted one review envelope per draft with prose between them, while the
+old first-object parser retained only its self-review and then removed it.
+Mistral emitted a compact criterion score object instead of the documented
+array, so its whole response was excluded. Qwen was the only reviewer left,
+which gave each draft at most one review, made reviewer disagreement
+unmeasurable, and cascaded into skipped debate, revision, post-debate review,
+and second scoring. Because a final synthesis existed, the run was nevertheless
+shown as cleanly `COMPLETED`.
+
+Review parsing now extracts every bounded, balanced top-level JSON object;
+accepts criterion arrays and compact score objects; normalizes finite
+fractional scores in the valid range; and retains valid sibling reviews when
+one entry is malformed. Review evidence is normalized to unique
+reviewer/draft pairs, with unknown drafts, duplicates, and self-reviews unable
+to inflate quorum. Each reviewer publishes expected and actual non-self review
+counts plus exact missing draft IDs. Incomplete evidence marks the run
+`PARTIAL`, while the timeline distinguishes a partially scored stage from a
+stage that never ran. Both review passes request JSON mode where the adapter
+supports it.
+
+Files: `StructuredOutputParser`, `ReviewEvidence`, `ReviewStageExecutor`,
+`ReviewPostDebateStageExecutor`, `ScoreStageExecutor`, `CouncilContext`,
+`ProtocolOrchestrator`, `CouncilService`, `CouncilRunResponse`,
+`ChatCouncilService`, `static/js/timeline.js`, and `static/css/app.css`.
+
+Implementation status: **all 18 concrete must-have defects in this report are
 CLOSED in the reviewed worktree.** The next section contains conditional release
 gates that remain OPEN for shared/public deployment; they are not descriptions
 of unfixed items above.
@@ -194,14 +225,84 @@ and current test suite.
 | Document | Gap found | Correction |
 |---|---|---|
 | `README.md` | Claimed chat was memory-only and lacked cancellation/cursor durability; contained two dead links; omitted the durable result and third rigorous model. | Describes memory/JDBC modes, cancellation, cursor replay, deletion cascade, `final/result.json`, all Compose models, and links only to existing runbooks. |
-| `library-flow-guide.md` | Hard-coded in-memory stores, 4096 context, “Ollama always available,” provider enable flags, combined review evidence, and old limitations. | Uses configured stores, 16384 default, health-qualified Ollama status, credential auto-detection, separated post-debate evidence, current endpoints, and current limitations. |
-| `production-readiness-plan.md` | Treated health, failures, persistence, SSE, cancellation, and chat as future work. | Rewritten as the authoritative current status and prioritized release-gate plan. |
-| `production-readiness-implementation-guide.md` | Old proposed snippets looked current and advised unsafe `Future.cancel`; demo limitations said durability/cancellation/cursors were absent. | Marked historical, added an as-built matrix, marked completed/partial packages, and explicitly rejects the old cancellation authority. |
-| `user-configurability-and-ui-plan.md` | “Proposed” status and pre-implementation claims remained unqualified; memory default, cancellation, SSE, prompt budget, `/api/ui/**`, and next-priority claims were stale. | Marked historical, recorded delivered phases and deviations, corrected invariants, and points future work to the current readiness plan. |
-| `testing-m1-32gb.md` | Broken doc reference, machine-specific path, missing third model/result artifact, and no network-exposure warning. | Uses repository-relative setup, documents/pulls the rigorous third member, lists `final/result.json`, current test baseline, and Docker security warning. |
-| `testing-intel-2019-32gb.md` | Same broken path/link issues, omitted third model, incorrect model-family metadata, and obsolete 3072 context advice. | Documents the third member and Qwen family override, keeps the shipped 8192 context guidance, and adds test/security expectations. |
-| `licensing-and-distribution.md` | Future AGPL/coordinates could be read as current; merged branches and test/link risks were stale. | Separates current GPL-3.0/2.0.0 state from the future licensing plan, records merged work, current tests, PR-CI gap, and resolved links. |
-| This report | Did not explicitly distinguish fixed defects from conditional production gates and predated the Compose/doc audit. | Adds closure status, the seventeenth defect, and this audit record. |
+| `library-flow-guide.md` | Hard-coded stores/context/provider claims, combined review evidence, first-object parsing assumptions, and a cross-draft debate-trigger description were stale. | Uses current stores and providers, documents resilient exact-coverage parsing, separate post-debate evidence, and the actual same-draft reviewer-disagreement trigger. |
+| `production-readiness-plan.md` | Treated health, failures, persistence, SSE, cancellation, chat, structured-output recovery, and all real-provider verification as future work. | Rewritten as the authoritative current status, records partial parser recovery and manual Ollama evidence, and keeps repeatable provider contracts as a release gate. |
+| `production-readiness-implementation-guide.md` | Old proposed snippets looked current and advised unsafe `Future.cancel`; its baseline omitted current review recovery and live verification. | Marked historical, added an as-built matrix and current parser/Ollama evidence, and explicitly rejects the old cancellation authority. |
+| `user-configurability-and-ui-plan.md` | “Proposed” status and pre-implementation claims remained unqualified; two tunable debate options and the selectable `average` scoring strategy were absent from its option table. | Records delivered phases and deviations, points future work to the readiness plan, and now mirrors the complete server-owned stage-option specification. |
+| `testing-m1-32gb.md` | Broken references, machine-specific path, missing third model/result artifact, and no explanation of conditional rigorous stages or recovered review shapes. | Uses repository-relative setup, covers all rigorous models/artifacts, adds exact review-coverage expectations, and includes a rigorous API verification path with `force-run` guidance. |
+| `testing-intel-2019-32gb.md` | Omitted third model, incorrect family metadata, obsolete context advice, and treated malformed reviews and rigorous skips too simplistically. | Documents the Qwen member/family, shipped context guidance, parser recovery/`PARTIAL` behavior, and conditional-debate expectations for CPU-only runs. |
+| `licensing-and-distribution.md` | Future AGPL/coordinates could be read as current, merged branches/test/link risks were stale, and it said nothing had verified real Ollama. | Separates current and future licensing state, records CI/link closure, and accurately limits the two manual Ollama audits without treating them as cloud-provider contracts. |
+| This report | Did not explicitly distinguish fixed defects from conditional production gates and predated the Compose, parser, and live-verification audits. | Adds closure status, the eighteenth defect, live evidence, and this audit record. |
+
+### Provider/profile cleanup completed
+
+The shipped configuration no longer exposes the removed gateway-specific or
+mixed legacy profiles. Public profile IDs are now exactly `default`, `local`,
+`openai`, `claude`, `gemini`, and `multi-cloud`; `mock` remains test-only.
+Application code, health checks, user-config validation, examples, UI comments,
+and every document under `docs/` use the same provider vocabulary.
+
+The cleanup also corrected two runtime defects discovered during verification:
+
+- retired Claude API defaults were replaced with active Claude model IDs;
+- Anthropic calls omit sampling temperature because current Claude generations
+  reject non-default sampling parameters;
+- the Gemini chair was removed from the member roster and a Flash-Lite critic
+  was added, so no shipped production policy synthesizes a pool containing its
+  own draft.
+
+Regression tests pin the public profile set, validator independence tier,
+chair/member separation, deferred cloud health state, and provider-specific
+sampling behavior.
+
+### Phase 1 showcase work completed after the review
+
+The repository now has a pull-request workflow for a clean Java 25 build and a
+reusable `scripts/verify-repository.sh` gate for YAML, local documentation/image
+links, and removed-provider references.
+
+The static UI now includes `/config.html`, an advanced configuration workbench.
+It loads or imports the overlay, runs the existing strict parser and semantic
+validator, previews the effective catalog diff, locks save to the exact
+validated source revision, requires explicit write confirmation, preserves the
+atomic-write/backup contract, and makes the restart requirement prominent.
+
+A model can also be probed before it is saved. That endpoint accepts no
+credentials, rejects unknown fields and oversized bodies, permits only the four
+supported user providers, requires explicit acknowledgement for cloud calls,
+uses a fixed non-sensitive prompt with eight output tokens and a fixed timeout,
+does not retry, globally throttles calls, and returns stable failure categories
+without exposing the raw provider exception. Deterministic tests cover success,
+failure sanitization, acknowledgement, strict parsing, credential refusal,
+throttling, the negative `System.nanoTime` origin edge case, and the guarantee
+that global mock fallback cannot fabricate a successful probe.
+
+The clean post-implementation verification is 930 tests with zero failures,
+errors, or skips on the reviewed machine.
+
+### Live local verification after the review-output fix
+
+Two real runs were executed through the HTTP API against the shipped local
+profile and three installed Ollama models on 2026-08-17.
+
+1. The unmodified `local` + `RIGOROUS` preset completed with three drafts, six
+   unique non-self reviews, three initial scores, synthesis, independent
+   validation, and export. Reviewer disagreement was measurable at `6.25`,
+   below the configured `40.0` trigger, so debate and its dependent stages were
+   explicitly skipped. This is the intended evidence-driven path, not a quorum
+   failure.
+2. A temporary user overlay derived from `rigorous` with
+   `DEBATE.force-run: true`, full `3/3` draft quorum, and two reviews per draft
+   exercised every stage. It completed 20 model calls: three drafts, six initial
+   reviews, two debate rounds, three revisions, six post-debate reviews, three
+   second-pass scores, synthesis, independent validation, and export. The
+   61-event audit contained no incomplete, failed, partial, or skipped stage.
+
+The forced overlay was removed and the verification server was stopped after
+the audit. One debate contribution omitted a parseable confidence marker; its
+argument remained in the transcript, convergence excluded that confidence, and
+the final result disclosed the warning. That is truthful degraded measurement,
+not lost review evidence.
 
 The long planning documents intentionally retain historical code sketches and
 phase counts. Their top-level status warnings now prevent those snapshots from
@@ -222,7 +323,7 @@ The current `server.address=127.0.0.1` default is the correct safe default and s
 
 ### Before claiming production-grade council quality
 
-1. **Fix or clearly demote weak shipped policies.** OCI balanced/rigorous and Gemini balanced/rigorous seat the chair as a member and use same-family/correlated validation. With two members and self-review excluded, reviewer disagreement is not measurable. The boot warning is honest, but the profile name still overstates the evidence.
+1. **Clearly distinguish provider diversity from model diversity.** OpenAI, Claude, and Gemini balanced/rigorous policies no longer seat their chair as a member and use distinct provider model IDs for member, chair, and validator roles, but their validation remains correlated within one provider/model family. Use `multi-cloud` when provider-level independence is required.
 2. **Run gated contract tests against each supported provider.** Verify request options, model identifiers, timeout behavior, JSON compliance, token usage metadata, 429/5xx classification, streaming/non-streaming semantics, and provider-specific maximum output limits.
 3. **Calibrate the quality heuristics on labelled data.** Confidence-weighted scoring trusts self-reported confidence; the debate trigger, KS threshold, sycophancy detector, and escalation variance are engineered heuristics, not demonstrated predictors of answer correctness.
 
@@ -239,8 +340,8 @@ The current `server.address=127.0.0.1` default is the correct safe default and s
 
 ### Model integration and structured output
 
-1. Use provider-supported structured output/schema controls where Spring AI exposes them. `ModelCallRequest.jsonMode` is currently not bound by `SpringAiModelClient`; correctness relies on prompt compliance plus tolerant parsing.
-2. Replace first-`{`/last-`}` extraction with a parser that can select a valid balanced JSON object. Prose containing braces can currently make an otherwise valid reply fail.
+1. Use provider-supported structured output/schema controls where Spring AI exposes them. Ollama review calls now request JSON mode; `ModelCallRequest.jsonMode` is still not bound by `SpringAiModelClient`, so cloud correctness relies on prompt compliance plus tolerant parsing.
+2. Apply the review parser's balanced-object selection to validation and advisor output. Those paths still use first-`{`/last-`}` extraction and can fail when surrounding prose contains unrelated braces.
 3. Expand provider error mapping beyond `TransientAiException` and timeout. Rate limits, authentication, not-found model IDs, and provider 5xx errors should produce stable categories and retry decisions.
 4. Propagate a request/correlation ID into provider calls and logs. Session ID is useful, but a single stage can retry and call several models.
 
@@ -250,6 +351,7 @@ The current `server.address=127.0.0.1` default is the correct safe default and s
 2. Revisit sycophancy measurement. Confidence movement is only a proxy for position, word-level Jaccard is brittle to paraphrase, punctuation is retained, and the “majority” confidence includes the member being judged.
 3. Preserve and display minority reasoning even when synthesis succeeds. The backend has dissent signals; the final user experience should make the strongest unresolved objection easy to find.
 4. Add an abstain/insufficient-evidence path distinct from provider failure and low quorum.
+5. Render a deterministic evidence summary alongside free-form synthesis and format scores to a fixed precision. A live chair answer reproduced Java floating-point tails and made a numeric ranking claim that did not match its own listed values; model-based validation approved it. The underlying score artifact was correct, but the prose should not be the only user-facing interpretation of those numbers.
 
 ### Privacy and operations
 
@@ -287,6 +389,8 @@ What is already good:
 - The UI exposes stage progress, artifacts, confidence, validation independence, exclusions, sycophancy warnings, and usage rather than showing only a polished answer.
 - Partial answers are distinct from clean completion.
 - Configuration validation is specific and actionable.
+- Advanced users can create/import, validate, diff, and safely save an overlay
+  in the browser, with a bounded model-id connectivity check.
 - The default loopback bind is safe for a no-auth personal app.
 
 What still causes avoidable friction:
@@ -295,6 +399,9 @@ What still causes avoidable friction:
 - Cancellation is presented as failure in chat.
 - API errors have inconsistent shapes.
 - A rigorous single-provider profile can look more independent than it is unless the user reads the warnings carefully.
+- `RIGOROUS` debate is conditional by default. The timeline now states the
+  measured disagreement and threshold, but users who expect every listed stage
+  to run need a derived protocol with `DEBATE.force-run: true`.
 - The product does not prominently explain raw artifact persistence and retention.
 - There is no direct “delete this run and all evidence” control.
 
@@ -302,7 +409,10 @@ What still causes avoidable friction:
 
 Deleting the previous suite was the wrong tradeoff. The deleted suite was not a slow pile of meaningless generated tests: it contained useful contract tests for both JDBC engines, SSE cursor semantics, retention, advisor/configuration boundaries, prompt budgets, scoring math, failure states, and shipped configuration warnings. In an isolated baseline it ran 817 tests successfully in roughly 16 seconds.
 
-The suite has been restored, stale expectations were corrected, and regressions were added for the defects in this review. The clean result is now 887 tests in 13.6 seconds.
+The suite has been restored, stale expectations were corrected, and regressions
+were added for the defects in this review. At the original review checkpoint it
+was 891 tests in 14.8 seconds; Phase 1 work added configuration-workbench and
+model-probe boundary coverage after that measurement.
 
 New/expanded scenarios include:
 
@@ -318,6 +428,9 @@ New/expanded scenarios include:
 - terminal result recovery after memory loss;
 - UI send failure preservation;
 - end-to-end quick/balanced/rigorous mock protocol and API boundaries.
+- observed multi-envelope, compact-criteria, fractional-score, duplicate,
+  self-review, malformed-sibling, and missing-coverage review outputs;
+- truthful `PARTIAL` propagation and partial-score timeline rendering.
 
 “Exhaustive” should not be used literally: no finite suite proves every model output, scheduler interleaving, filesystem race, browser, database, or provider behavior. This suite is broad and fast. Its material gaps are live-provider contracts, browser E2E, load/soak, transport fault injection, and measured branch/mutation coverage.
 

@@ -13,7 +13,7 @@ import java.util.NoSuchElementException;
  * Resolves the business policy for a request from profile plus depth mode.
  *
  * <p>This is the enforcement point for the decision that public callers do not
- * choose protocol IDs. They choose "local balanced" or "OCI rigorous" style
+ * choose protocol IDs. They choose "local balanced" or "OpenAI rigorous" style
  * inputs, and configuration maps that to the allowed protocol and quorum.
  */
 @Component

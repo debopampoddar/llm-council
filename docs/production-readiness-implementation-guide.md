@@ -27,6 +27,12 @@ led to the current system. It is retained as historical reference.
 - Health preflight, categorized failures, retries, timeouts, asynchronous chat,
   cancellation, SSE cursors, retention, restart recovery, and deletion cascade
   are implemented.
+- Review parsing recovers the observed local-model envelope, criterion, and
+  fractional-score variants; exact unique non-self coverage controls quorum and
+  incomplete evidence produces `PARTIAL`.
+- Pull-request CI and the advanced configuration workbench are implemented;
+  two manual three-model Ollama audits passed, while repeatable provider-contract
+  suites and automated browser E2E remain open.
 
 ## As-built status
 
@@ -42,7 +48,7 @@ led to the current system. It is retained as historical reference.
 | 8. SSE | Implemented with durable cursor replay when JDBC is selected |
 | 9. Prompt/security boundary | Prompt boundaries implemented; API authentication/ownership open |
 | 10. Quality/calibration | Partially implemented; production policy quality and empirical calibration remain open |
-| 11. Tests | 887 deterministic tests; live-provider/browser/load/fault suites open |
+| 11. Tests | 930 deterministic tests plus PR CI; browser/load/fault and repeatable cloud-provider suites open |
 | 12. Chat API | Implemented, including optional durability, cancellation, cursor replay, and deletion cascade |
 
 ## Original implementation order (historical)
@@ -59,8 +65,8 @@ led to the current system. It is retained as historical reference.
 10. Chat API.
 
 Health and failure categorization are complete. The current priority order is
-authentication/ownership, production policy quality, live-provider contract
-tests, and pull-request CI; see the current production-readiness plan.
+authentication/ownership, production policy quality, and live-provider contract
+tests; see the current production-readiness plan.
 
 ---
 

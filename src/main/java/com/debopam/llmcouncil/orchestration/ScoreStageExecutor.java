@@ -95,6 +95,7 @@ public class ScoreStageExecutor implements StageExecutor {
         // draft to exist at all, which a two-member council never has.
         double reviewerDisagreement = 0.0;
         boolean disagreementMeasurable = false;
+        int skippedDraftCount = 0;
 
         for (Draft draft : ctx.drafts()) {
             // Collect all reviews that target this specific draft.
@@ -106,7 +107,8 @@ public class ScoreStageExecutor implements StageExecutor {
             if (reviews.size() < ctx.policy().minimumReviewsPerDraft()) {
                 String warning = "Review quorum not met for " + draft.draftId() + ": "
                         + reviews.size() + "/" + ctx.policy().minimumReviewsPerDraft();
-                ctx.addWarning(warning);
+                ctx.markDegraded(warning);
+                skippedDraftCount++;
                 events.publish(ctx.session().id(), stage().name(), "SCORE_SKIPPED", null,
                         Map.of("draftId", draft.draftId(), "reason", warning));
                 continue;
@@ -172,6 +174,8 @@ public class ScoreStageExecutor implements StageExecutor {
         events.publish(ctx.session().id(), stage().name(), "SCORE_COMPLETED", null,
                 Map.of("label", label,
                        "scoreCount", stageScores.size(),
+                       "draftCount", ctx.drafts().size(),
+                       "skippedDraftCount", skippedDraftCount,
                        "strategy", strategy.name(),
                        "variance", summary.variance(),
                        "escalated", summary.escalated(),

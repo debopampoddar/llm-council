@@ -38,7 +38,7 @@ class ModelContextWindowsTest {
 
     @Test
     void cloudProvidersAssumeALargeWindow() {
-        for (String provider : new String[]{"openai", "anthropic", "gemini", "openai-compatible"}) {
+        for (String provider : new String[]{"openai", "anthropic", "gemini"}) {
             assertEquals(ModelContextWindows.DEFAULT_CLOUD_CONTEXT_TOKENS,
                          ModelContextWindows.resolve(model(provider, 0), 4096),
                          "provider " + provider);

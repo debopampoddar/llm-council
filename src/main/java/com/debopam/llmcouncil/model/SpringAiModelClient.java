@@ -16,18 +16,24 @@ import java.util.stream.Collectors;
 /**
  * Spring AI-backed model client.
  *
- * <p>The project uses this adapter for OpenAI, Anthropic, Ollama, and
- * OpenAI-compatible/OCI-style provider beans. Provider-specific option binding
- * can be added later; this adapter at least preserves system/user separation in
- * the composed prompt and records latency.
+ * <p>The project uses this adapter for OpenAI, Anthropic, and Gemini provider
+ * beans. It preserves system/user separation, binds the provider model per
+ * request, and can omit sampling parameters for providers whose current models
+ * reject non-default temperature values.
  */
 public class SpringAiModelClient implements ModelClient {
     private final String modelId;
     private final ChatClient chatClient;
+    private final boolean includeTemperature;
 
     public SpringAiModelClient(String modelId, ChatClient chatClient) {
+        this(modelId, chatClient, true);
+    }
+
+    public SpringAiModelClient(String modelId, ChatClient chatClient, boolean includeTemperature) {
         this.modelId = modelId;
         this.chatClient = chatClient;
+        this.includeTemperature = includeTemperature;
     }
 
     @Override
@@ -47,11 +53,13 @@ public class SpringAiModelClient implements ModelClient {
             if (!system.isBlank()) {
                 spec = spec.system(system);
             }
-            spec = spec.options(ChatOptions.builder()
-                                           .model(request.providerModelId())
-                                           .maxTokens(request.maxOutputTokens())
-                                           .temperature(request.temperature())
-                                           .build());
+            ChatOptions.Builder options = ChatOptions.builder()
+                                                     .model(request.providerModelId())
+                                                     .maxTokens(request.maxOutputTokens());
+            if (includeTemperature) {
+                options.temperature(request.temperature());
+            }
+            spec = spec.options(options.build());
             // Spring AI's generic ChatOptions does not carry a portable per-call
             // timeout. Enforce the ModelProfile timeout at this adapter boundary
             // so cloud calls honour the same contract as direct Ollama calls.
