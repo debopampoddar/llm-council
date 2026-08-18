@@ -59,6 +59,15 @@ class StaticResourceTest {
                .andExpect(content().string(containsString("/js/setup.js")));
     }
 
+    @Test
+    void servesTheAdvancedConfigurationWorkbenchAsHtml() throws Exception {
+        mockMvc.perform(get("/config.html"))
+               .andExpect(status().isOk())
+               .andExpect(content().contentTypeCompatibleWith("text/html"))
+               .andExpect(content().string(containsString("id=\"config-source\"")))
+               .andExpect(content().string(containsString("/js/config.js")));
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "/js/main.js",
@@ -93,6 +102,17 @@ class StaticResourceTest {
     void servesEveryModuleTheSetupWizardLoads(String path) throws Exception {
         // Same failure mode, one page over: the wizard is the primary
         // configuration surface, and a missing module leaves it blank.
+        mockMvc.perform(get(path)).andExpect(status().isOk());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/js/config.js",
+            "/js/config-api.js",
+            "/js/dom.js",
+            "/css/app.css"
+    })
+    void servesEveryModuleTheConfigurationWorkbenchLoads(String path) throws Exception {
         mockMvc.perform(get(path)).andExpect(status().isOk());
     }
 }

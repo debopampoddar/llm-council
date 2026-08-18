@@ -1,6 +1,6 @@
 # LLM Council
 
-LLM Council is a Java 25 / Spring Boot library and service for running a configurable council of language models. A caller submits a question, chooses a profile such as `local`, `oci`, `hybrid`, `gemini`, or `multi-cloud`, and chooses a depth mode such as `QUICK`, `BALANCED`, or `RIGOROUS`. The application resolves that request to an internal policy and protocol, collects independent model drafts, reviews and scores them, optionally debates disagreements, synthesizes a final answer, and validates it with a Fresh Eyes model.
+LLM Council is a Java 25 / Spring Boot library and service for running a configurable council of language models. A caller submits a question, chooses a profile such as `local`, `openai`, `claude`, `gemini`, or `multi-cloud`, and chooses a depth mode such as `QUICK`, `BALANCED`, or `RIGOROUS`. The application resolves that request to an internal policy and protocol, collects model drafts, reviews and scores them, optionally debates disagreements, synthesizes a final answer, and validates it with a Fresh Eyes model.
 
 The public API does not accept raw protocol IDs. Protocols are owned by application configuration so users cannot bypass validation, quorum, or cost controls.
 
@@ -8,7 +8,7 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 
 ### Core Council Engine
 - Profile plus depth policy resolution.
-- Separate local, OCI/OpenAI-compatible, hybrid, Gemini, multi-cloud, and explicit mock profiles.
+- Separate local, OpenAI, Claude, Gemini, multi-cloud, and explicit mock profiles.
 - Config-owned protocols: `quick`, `balanced`, and `rigorous`.
 - Quorum enforcement before synthesis.
 - Explicit unavailable-provider failures instead of silent mock fallback.
@@ -16,7 +16,7 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Structured model failure categories in run responses.
 - Chat API V1 with asynchronous council runs and server-sent progress events.
 - Anonymized draft IDs with private model mapping artifacts.
-- Structured JSON review parsing and per-draft scoring.
+- Resilient structured-review parsing with exact non-self coverage checks and per-draft scoring.
 - Debate trigger based on reviewer disagreement about the same draft.
 - Chair synthesis with score and dissent context.
 - Fresh Eyes validation with structured JSON output.
@@ -48,7 +48,7 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 ### Multi-Provider Support
 - **Credential auto-detection**: providers activate automatically when real API keys are set. Placeholder keys (e.g. `unused-development-placeholder`) are detected and ignored — no explicit "enabled" flags needed.
 - **Google Gemini / Vertex AI**: `spring-ai-starter-model-vertex-ai-gemini` with conditional activation. Supports both Application Default Credentials (ADC) and service account JSON.
-- **Pre-built profiles**: `gemini` (Gemini-only), `multi-cloud` (Ollama + Gemini + Anthropic/OpenAI) with full QUICK/BALANCED/RIGOROUS policy sets.
+- **Pre-built profiles**: `openai`, `claude`, `gemini`, and `multi-cloud` (Ollama + Gemini + Anthropic/OpenAI), each with QUICK/BALANCED/RIGOROUS policy sets.
 - **Startup provider banner**: logs which providers were auto-detected at boot.
 - **Graceful degradation**: models on disabled providers fall through to `UnavailableModelClient` with actionable error messages.
 
@@ -68,15 +68,22 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Nothing is sent to a cloud provider until it is named and you confirm it, enforced on the server rather than in the page.
 - "Save for later" writes a proposal file that startup never reads, re-checked every time you come back to it.
 
+### Advanced configuration workbench
+- Workbench at `/config.html` for users who want to edit or import the YAML overlay directly.
+- Uses the server-owned schema and strict parser, then shows validation issues, integrity warnings, the merged-catalog diff, and the profiles that will be selectable after restart.
+- Save is locked to the exact validated text, requires a second confirmation, writes atomically, and keeps the previous file as a backup.
+- A new provider model can be live-probed before saving. The probe uses a fixed non-sensitive prompt, eight output tokens, a fixed timeout, no retries, and a global cooldown. Cloud probes require an explicit acknowledgement because they may be billable.
+- Credentials are structurally outside the request and overlay contracts; credential fields and credential-shaped values are refused without being echoed.
+
 ### Testing
-- 887 JUnit tests: policy resolution, confidence parsing, quorum, KS convergence math, sycophancy detection at the shipped thresholds, council-composition warnings, debate and post-debate evidence handling, all scoring strategies, retry and timeout logic, concurrent-run lifecycle, full protocol integration, path-containment and deletion-cascade security, durable stores against H2 and SQLite, Docker rigorous-model provisioning, the catalog, config-write and advisor endpoints, static resource serving, cancellation, and configuration synthesis across every requirement combination.
+- 930 deterministic JUnit tests: policy resolution, confidence parsing, quorum, multi-envelope and compact local-model review output, exact review coverage, partial-state reporting, KS convergence math, sycophancy detection at the shipped thresholds, council-composition warnings, debate and post-debate evidence handling, all scoring strategies, retry and timeout logic, concurrent-run lifecycle, full protocol integration, path-containment and deletion-cascade security, durable stores against H2 and SQLite, Docker rigorous-model provisioning, the catalog, config-write/advisor/model-probe endpoints, static resource serving, cancellation, and configuration synthesis across every requirement combination.
+- Pull requests and pushes to `main` run a clean Java 25 Maven build plus YAML, local Markdown-link, and removed-provider regression checks in `.github/workflows/ci.yml`.
 
 ## Runtime Requirements
 
 - Java 25.
 - Maven 3.9+.
 - Optional local model runtime: Ollama, either as the macOS app/background service or via `ollama serve`.
-- Optional OCI/OpenAI-compatible runtime: Oracle Code Assist LiteLLM, OCI OpenAI-compatible endpoint, or another Spring AI OpenAI-compatible endpoint.
 - Optional cloud providers (auto-detected via API keys):
   - **OpenAI**: set `SPRING_AI_OPENAI_API_KEY=sk-...`
   - **Anthropic**: set `SPRING_AI_ANTHROPIC_API_KEY=sk-ant-...`
@@ -118,16 +125,16 @@ The current local Codex configuration uses ChatGPT auth in `~/.codex/auth.json`:
 
 Do not read or reuse these Codex tokens from the Java service. They authenticate the Codex development tool, not this application backend.
 
-Configure runtime model providers with their own environment variables. Local Ollama calls use direct `/api/chat` HTTP requests against `spring.ai.ollama.base-url`. Oracle Code Assist or OCI/OpenAI-compatible endpoints use Spring AI's OpenAI-compatible client settings.
+Configure runtime model providers with their own environment variables. Local Ollama calls use direct `/api/chat` HTTP requests against `spring.ai.ollama.base-url`; OpenAI and Anthropic calls use their Spring AI clients.
 
-`application.yml` supplies harmless placeholder keys for eager Spring AI auto-configuration so local/mock profiles can boot without OpenAI or Anthropic credentials. Those placeholders are not valid for runtime model calls. Real `oci` or `hybrid` runs must override them with valid endpoint credentials.
+`application.yml` supplies harmless placeholder keys for eager Spring AI auto-configuration so local/mock profiles can boot without OpenAI or Anthropic credentials. Those placeholders are not valid for runtime model calls. OpenAI and Claude runs require their respective real API keys.
 
 ## Profiles And Depth Modes
 
 Public callers choose:
 
-- `profileId`: a configured profile such as `default`, `local`, `oci`,
-  `hybrid`, `gemini`, `multi-cloud`, or the test-only `mock`.
+- `profileId`: a configured profile such as `default`, `local`, `openai`,
+  `claude`, `gemini`, `multi-cloud`, or the test-only `mock`.
 - `depthMode`: `QUICK`, `BALANCED`, or `RIGOROUS`.
 
 Configuration maps that pair to a `CouncilPolicy`.
@@ -136,8 +143,8 @@ Configuration maps that pair to a `CouncilPolicy`.
 |---|---|
 | `default` | Alias of the shipped local policy mapping, defaulting to BALANCED. |
 | `local` | Ollama-only local council. Useful for private or offline-capable runs. |
-| `oci` | OCI/OpenAI-compatible council. Useful for Oracle Code Assist LiteLLM, OCI, or another OpenAI-compatible provider. |
-| `hybrid` | Local models for draft diversity plus OCI/OpenAI-compatible chair and validator. |
+| `openai` | OpenAI-only council. Requires `SPRING_AI_OPENAI_API_KEY`. |
+| `claude` | Anthropic Claude-only council. Requires `SPRING_AI_ANTHROPIC_API_KEY`. |
 | `gemini` | Gemini/Vertex-only council. Requires a configured Google Cloud project and credentials. |
 | `multi-cloud` | Ollama plus Gemini, Anthropic, and OpenAI models for maximum provider diversity. Required providers depend on depth. |
 | `mock` | Test-only deterministic profile. Use for smoke tests, not real answers. |
@@ -146,7 +153,7 @@ Configuration maps that pair to a `CouncilPolicy`.
 |---|---|---|
 | `QUICK` | `quick` | Generate and synthesize only. No review or validation. |
 | `BALANCED` | `balanced` | Generate, anonymize, review, score, synthesize, validate. |
-| `RIGOROUS` | `rigorous` | Balanced flow plus debate, draft revision, post-debate re-review, second score, validation, and export manifest. |
+| `RIGOROUS` | `rigorous` | Balanced flow plus conditional debate, draft revision, post-debate re-review, second score, validation, and export manifest. |
 
 ### Rigorous Protocol Pipeline
 
@@ -154,7 +161,7 @@ Configuration maps that pair to a `CouncilPolicy`.
 GENERATE → ANONYMIZE → REVIEW → SCORE → DEBATE → REVISE → REVIEW_POST_DEBATE → SCORE → SYNTHESIZE → VALIDATE → EXPORT
 ```
 
-The `REVISE` stage lets each model incorporate debate arguments into a revised draft. The `REVIEW_POST_DEBATE` stage asks reviewers to re-evaluate with debate context, so the second `SCORE` pass operates on genuinely updated evidence.
+The `REVISE` stage lets each model incorporate debate arguments into a revised draft. The `REVIEW_POST_DEBATE` stage asks reviewers to re-evaluate with debate context, so the second `SCORE` pass operates on genuinely updated evidence. Debate is evidence-triggered by default: if reviewer disagreement is measurable but below the configured threshold, `DEBATE`, `REVISE`, post-debate review, and the second score pass are explicitly skipped. Derive a user protocol from `rigorous` with `DEBATE.force-run: true` when a demonstration must execute every stage.
 
 If `DEBATE` does not trigger, `REVISE`, `REVIEW_POST_DEBATE`, and the second
 `SCORE` pass are explicitly skipped. The initial score remains authoritative;
@@ -382,6 +389,25 @@ which environment variable activates the rest:
 
 ```bash
 curl 'localhost:8080/api/council/catalog?include=providers'
+```
+
+For an in-browser power-user workflow, open
+**<http://localhost:8080/config.html>**. The workbench loads the current overlay,
+accepts a local YAML file, and offers a valid model example. "Validate and
+preview" does not write: it runs the strict parser and semantic validator, then
+shows every added, overridden, or removed entity. "Review save" is enabled only
+for the exact text that passed validation, and the final confirmation states
+that restart is required.
+
+The optional model probe checks whether the configured runtime can call an exact
+provider model id. It is deliberately not a quality evaluation and it does not
+save anything. For cloud providers it makes one potentially billable call only
+after acknowledgement; it never retries. A global cooldown defaults to ten
+seconds. Change the operational bounds only when necessary:
+
+```bash
+export LLM_COUNCIL_MODEL_PROBE_COOLDOWN_SECONDS=10
+export LLM_COUNCIL_MODEL_PROBE_TIMEOUT_SECONDS=20
 ```
 
 ### Context window and memory
@@ -632,6 +658,26 @@ Synthesis answers with `200` and a null `profileId` when this machine has nothin
 to seat, carrying the reason and the command that fixes it. That is an answer to a
 well-formed question, not a malformed request.
 
+### Configuration API
+
+The advanced workbench is a client of the same public localhost API:
+
+```bash
+curl localhost:8080/api/council/config/schema
+curl localhost:8080/api/council/config/export
+
+# One local connectivity call. Cloud providers additionally require
+# "acknowledgeCloudCall": true.
+curl -X POST localhost:8080/api/council/config/models/probe \
+  -H 'Content-Type: application/json' \
+  -d '{"provider":"ollama","providerModelId":"llama3.1:8b"}'
+```
+
+Provider-call failures return a stable status such as `MODEL_NOT_FOUND`,
+`MODEL_TIMEOUT`, or `PROVIDER_UNAVAILABLE` without returning the raw provider
+exception. Malformed requests are `400`; calls inside the cooldown are `429`
+with `Retry-After`.
+
 ## Chat API V1
 
 Chat API V1 is a usability layer over the existing council engine. Each chat
@@ -705,17 +751,16 @@ Artifacts are written under:
 ${LLM_COUNCIL_ARTIFACT_PATH:-$HOME/.llm-council/runs}/{sessionId}/
 ```
 
-## Configuring OCI Or Oracle Code Assist Runtime
+## Configuring OpenAI Or Claude
 
-The `oci` profile uses logical models with provider `openai-compatible`. Configure Spring AI's OpenAI-compatible client externally. The exact environment variables depend on your Spring AI setup and endpoint, but the runtime concept is:
+The `openai` and `claude` profiles use the official Spring AI provider clients. Configure one or both credentials before starting the service:
 
 ```bash
-export SPRING_AI_OPENAI_API_KEY="$OCA_LLM_API_TOKEN"
-export SPRING_AI_OPENAI_BASE_URL="$OCA_LLM_BASE_URL"
-export OCA_LLM_MODEL="gpt-4o"
+export SPRING_AI_OPENAI_API_KEY="sk-..."
+export SPRING_AI_ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-Without valid values, the service can still start, but `oci` and `hybrid` model calls will fail explicitly rather than silently falling back to mock output.
+Without valid values, the service can still start for local and mock use. Calls to an unconfigured cloud profile fail explicitly rather than silently falling back to mock output. Model IDs can be overridden with the `COUNCIL_OPENAI_*_MODEL` and `COUNCIL_CLAUDE_*_MODEL` variables documented in `application.yml`.
 
 Then call with:
 
@@ -723,7 +768,7 @@ Then call with:
 {
   "question": "Review this architecture decision...",
   "depthMode": "BALANCED",
-  "profileId": "oci"
+  "profileId": "openai"
 }
 ```
 
@@ -745,6 +790,7 @@ com.debopam.llmcouncil.persistence      bounded memory/JDBC stores, retention, m
 src/main/resources/static                web UI — vanilla HTML/CSS/JS, no build step
 ├── index.html                           chat view, served at /
 ├── setup.html                           requirement advisor wizard
+├── config.html                          advanced YAML validation workbench
 ├── css/app.css                          single stylesheet, light and dark
 └── js/
     ├── api.js                           fetch wrapper over /api/council/**
@@ -758,10 +804,24 @@ src/main/resources/static                web UI — vanilla HTML/CSS/JS, no buil
     ├── providers.js                     read-only provider status panel
     ├── proposal.js                      unapplied-proposal and first-run notices
     ├── setup.js                         the five-step wizard
+    ├── config-api.js                    strict configuration/probe API wrapper
+    ├── config.js                        validate, preview, save, schema, probe UI
     ├── requirement-form.js              the requirement as editable choices
     ├── dom.js                           node builders
     └── main.js                          app state and orchestration
 ```
+
+## Repository verification
+
+Run the same repository-level checks used by pull-request CI:
+
+```bash
+mvn --batch-mode --no-transfer-progress clean verify
+./scripts/verify-repository.sh
+```
+
+The script parses every repository YAML document, checks local Markdown and
+image targets, and rejects reintroduction of the removed provider configuration.
 
 ## More Detail
 

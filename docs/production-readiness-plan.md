@@ -9,7 +9,7 @@ determines what is still open.
 
 The application already provides:
 
-- Java 25, Spring Boot, Spring AI, direct Ollama, OpenAI-compatible, Anthropic,
+- Java 25, Spring Boot, Spring AI, direct Ollama, OpenAI, Anthropic,
   and Gemini/Vertex integrations;
 - configuration-owned profiles, policies, and protocols with fail-fast built-in
   validation and fail-soft user overlays;
@@ -26,7 +26,11 @@ The application already provides:
   `final/result.json`;
 - a static browser UI, health gate, stage timeline, trust signals, and a
   requirement-to-configuration advisor;
-- 887 deterministic JUnit tests in the clean reviewed baseline.
+- an advanced configuration workbench with strict YAML import, validation,
+  catalog preview, atomic save, export, and a bounded live model probe;
+- pull-request CI for the clean Java 25 build and repository documentation/
+  configuration checks;
+- 930 deterministic JUnit tests in the current clean baseline.
 
 This is a capable local/personal application. It is not ready for untrusted or
 shared network deployment.
@@ -45,9 +49,11 @@ shared network deployment.
 | Concurrency control | Partial | Async chat uses a global permit and rejects saturation. The synchronous run endpoint bypasses that permit; there is no durable queue or distributed lease. |
 | Observability | Partial | Events, artifacts, usage, health, and Actuator exist. Dedicated latency/failure/queue metrics and production dashboards do not. |
 | API security | Not implemented | No authentication, authorization, ownership, rate limiting, or application-managed TLS. Default loopback binding is the only safe boundary. |
-| Structured output recovery | Partial | Parsers are tolerant, but malformed review/validation output is not repaired with a bounded retry prompt. |
-| Real-provider verification | Not implemented | The normal suite is hermetic. There is no opt-in provider-contract Maven profile. |
+| Structured output recovery | Partial | Review parsing recovers multiple envelopes, compact criteria, fractional scores, and valid siblings, then enforces exact coverage. Validation output and irrecoverable responses do not receive a bounded repair call. |
+| Real-provider verification | Partial | Two manual three-model Ollama runs now cover the conditional and forced full rigorous paths. The normal suite remains hermetic and there is no repeatable provider-contract Maven profile or cloud-provider gate. |
 | Browser/load/fault testing | Not implemented | No browser E2E, load/soak, database contention, or network fault-injection suite. |
+| Pull-request CI | Implemented | Java 25 `clean verify`, YAML parsing, local Markdown/image links, and removed-provider regression checks run on pull requests and `main`. |
+| Configuration workbench | Implemented | Import, strict validation, diff preview, confirmed atomic save, export, restart guidance, and a guarded model-id probe are available at `/config.html`. |
 
 ## Must have before shared or public deployment
 
@@ -82,19 +88,20 @@ Acceptance criteria:
 ### 3. Real-provider contract tests
 
 Add an opt-in `provider-contracts` Maven profile. Cover Ollama, Spring AI
-OpenAI-compatible, Anthropic, and Gemini adapters with minimal live calls and
+OpenAI, Anthropic, and Gemini adapters with minimal live calls and
 assert timeout, usage extraction, structured output, model-not-found, auth, and
 transient failure mapping.
 
 The default `mvn test` must stay hermetic. Credentials must come only from the
 environment or CI secrets.
 
-### 4. CI on pull requests
+### 4. CI on pull requests — implemented
 
-The release publish workflow runs `mvn verify`, but there is no pull-request
-workflow. Add a required PR check for a clean Java 25 build, the full hermetic
-suite, and documentation-link validation. Keep live-provider contracts opt-in or
-scheduled.
+`.github/workflows/ci.yml` now runs a clean Java 25 `mvn verify` and
+`scripts/verify-repository.sh` for pull requests and pushes to `main`. The
+repository script parses YAML, checks local Markdown/image targets, and prevents
+the removed provider configuration from returning. Live-provider contracts
+remain deliberately outside this hermetic job.
 
 ## Should have
 

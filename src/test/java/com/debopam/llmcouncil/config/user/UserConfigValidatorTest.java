@@ -271,6 +271,21 @@ class UserConfigValidatorTest {
     }
 
     @Test
+    void acceptsEveryScoringStrategyImplementedByTheExecutor() {
+        for (String strategy : List.of("average", "median", "trimmed-mean", "confidence-weighted")) {
+            UserConfigDocument document = doc(List.of(), Map.of(), Map.of(),
+                    Map.of("mine", new UserConfigDocument.UserProtocol("balanced", null,
+                            Map.of("SCORE", Map.of("scoring-strategy", strategy)))));
+
+            UserConfigValidator.ValidationReport report = validator.validate(document, builtIn());
+
+            assertTrue(report.errors().isEmpty(),
+                    () -> strategy + " is implemented by ScoreStageExecutor but was rejected: "
+                            + report.errors());
+        }
+    }
+
+    @Test
     void warnsWhenAnOptionSuppressesSycophancyDetection() {
         UserConfigDocument document = doc(List.of(), Map.of(), Map.of(),
                 Map.of("mine", new UserConfigDocument.UserProtocol("rigorous", null,

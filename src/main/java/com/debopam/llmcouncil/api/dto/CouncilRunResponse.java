@@ -63,10 +63,12 @@ public record CouncilRunResponse(
                 ? "CANCELLED"
                 : ctx.isTerminal()
                         ? (ctx.synthesisResult().isPresent() ? "PARTIAL" : "FAILED")
-                        : "COMPLETED";
+                        : ctx.isDegraded() ? "PARTIAL" : "COMPLETED";
         String failureReason = ctx.isCancelled()
                 ? "Cancelled by user"
-                : ctx.failureMessage().orElse(null);
+                : ctx.isTerminal()
+                        ? ctx.failureMessage().orElse(null)
+                        : ctx.degradationMessage().orElse(null);
         return new CouncilRunResponse(
                 sessionId,
                 status,

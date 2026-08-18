@@ -108,7 +108,7 @@ Expected result:
 
 ```text
 BUILD SUCCESS
-Tests run: 887, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 930, Failures: 0, Errors: 0, Skipped: 0
 ```
 
 If Java 25 is not installed, install it or run only the Docker build path.
@@ -433,11 +433,41 @@ Expected:
 - `scoreSummary` is present.
 - `validation` is present.
 
-If local models fail to return valid JSON during review, try the mock profile to
-confirm orchestration still works, then use smaller or more instruction-following
-models.
+The parser recovers the local-model variants observed during verification:
+multiple review envelopes, compact criterion objects, fractional scores, and
+valid siblings of a malformed entry. Inspect events rather than relying only on
+the final status. Every three-member review pass should report two required
+non-self reviews per reviewer. Missing coverage produces `PARTIAL` with exact
+missing draft IDs.
 
-## Step 8: Optional OCI Or Hybrid Test
+### Optional: verify the local RIGOROUS path
+
+```bash
+RIGOROUS_SESSION_ID=$(curl -s -X POST http://localhost:8080/api/council/sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "Choose a modular monolith or microservices for a regulated payments startup with eight engineers and a six-month deadline. Defend one choice and give a measurable migration trigger.",
+    "depthMode": "RIGOROUS",
+    "profileId": "local"
+  }' | jq -r .sessionId)
+
+curl -s -X POST \
+  "http://localhost:8080/api/council/sessions/$RIGOROUS_SESSION_ID/run" | jq
+
+curl -s \
+  "http://localhost:8080/api/council/sessions/$RIGOROUS_SESSION_ID/events" \
+  | jq '.[] | {stage, type, modelId, payload}'
+```
+
+`RIGOROUS` does not manufacture disagreement. The initial score must cover all
+three drafts, but debate runs only when same-draft reviewer disagreement meets
+the configured trigger. If it is measurable but below the trigger, `DEBATE`,
+`REVISE`, post-debate review, and the second score are deliberately marked
+skipped. To exercise every stage for a demo or audit, derive a protocol from
+`rigorous` and set `DEBATE.force-run: true` as documented in the root
+`council-user.example.yml`.
+
+## Step 8: Optional OpenAI Or Claude Test
 
 Do not use Codex `~/.codex/auth.json` tokens. The service needs runtime model
 credentials.
@@ -448,31 +478,29 @@ Stop the stack:
 docker compose -f docker-compose.m1-32gb.yml down
 ```
 
-Start with OCI/OpenAI-compatible environment variables:
+Start with an OpenAI or Anthropic credential:
 
 ```bash
 export SPRING_AI_OPENAI_API_KEY="your-runtime-api-key"
-export SPRING_AI_OPENAI_BASE_URL="https://your-openai-compatible-endpoint"
-export SPRING_AI_OPENAI_CHAT_COMPLETIONS_PATH="/v1/chat/completions"
-export OCA_LLM_MODEL="your-model"
-export OCA_LLM_REVIEW_MODEL="your-review-model"
+# Or use Claude instead:
+# export SPRING_AI_ANTHROPIC_API_KEY="your-anthropic-api-key"
 
 docker compose -f docker-compose.m1-32gb.yml up --build
 ```
 
-Create an OCI session:
+Create an OpenAI session:
 
 ```bash
-OCI_SESSION_ID=$(curl -s -X POST http://localhost:8080/api/council/sessions \
+OPENAI_SESSION_ID=$(curl -s -X POST http://localhost:8080/api/council/sessions \
   -H "Content-Type: application/json" \
   -d '{
     "question": "Review this architecture decision for operational risk.",
     "context": "Use a balanced council.",
     "depthMode": "BALANCED",
-    "profileId": "oci"
+    "profileId": "openai"
   }' | jq -r .sessionId)
 
-curl -s -X POST "http://localhost:8080/api/council/sessions/$OCI_SESSION_ID/run" | jq
+curl -s -X POST "http://localhost:8080/api/council/sessions/$OPENAI_SESSION_ID/run" | jq
 ```
 
 ## Step 9: Common Failures

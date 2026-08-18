@@ -12,8 +12,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * REVIEW stage: each member model writes a qualitative peer review of all
@@ -38,7 +36,6 @@ public class ReviewStageExecutor implements StageExecutor {
 
     @Override
     public CouncilContext execute(CouncilContext ctx, ProtocolStageOptions opts) {
-        Set<String> validDraftIds = ctx.drafts().stream().map(Draft::draftId).collect(Collectors.toSet());
         for (String modelId : ctx.policy().memberModelIds()) {
             ModelProfile model = registry.model(modelId);
             events.publish(ctx.session().id(), stage().name(), "REVIEW_STARTED", modelId, Map.of());
@@ -51,46 +48,66 @@ public class ReviewStageExecutor implements StageExecutor {
                 ModelCallResult result = registry.clientForModel(modelId).call(
                         new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                                              model.providerModelId(), messages,
-                                             model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()));
+                                             model.defaultOutputTokens(), model.temperature(), true, model.defaultTimeout()));
                 ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
                 artifactStore.writeText(ctx.session().id(), "raw/review-" + modelId + ".json", result.text());
-                List<ReviewArtifact> parsed = parser.parseReviews(result.text()).reviews().stream()
-                        .filter(review -> validDraftIds.contains(review.draftId()))
-                        .filter(review -> !isSelfReview(ctx, modelId, review.draftId()))
-                        .map(review -> new ReviewArtifact(modelId, review.draftId(),
-                                                          safeList(review.strengths()),
-                                                          safeList(review.issues()),
-                                                          safeList(review.criteria()),
-                                                          review.overallScore(),
-                                                          review.confidence(),
-                                                          result.text()))
-                        .toList();
-                parsed.forEach(ctx::addReview);
+                StructuredOutputParser.ReviewEnvelope envelope = parser.parseReviews(result.text());
+                ReviewEvidence.Batch batch = ReviewEvidence.normalize(
+                        ctx, modelId, envelope.reviews(), result.text());
+                batch.reviews().forEach(ctx::addReview);
+                publishParserDiagnostics(ctx, modelId, envelope.diagnostics());
+                recordCoverage(ctx, modelId, batch);
                 events.publish(ctx.session().id(), stage().name(), "REVIEW_COMPLETED", modelId,
-                               Map.of("reviewCount", parsed.size()));
+                               Map.of("reviewCount", batch.reviews().size(),
+                                      "expectedReviewCount", batch.expectedDraftIds().size(),
+                                      "complete", batch.complete()));
             } catch (ModelCallException ex) {
                 events.publish(ctx.session().id(), stage().name(), "REVIEW_FAILED", modelId,
                                Map.of("error", ex.getMessage()));
                 ctx.excludeModel(modelId, "review failed: " + ex.getMessage());
+                recordCoverage(ctx, modelId,
+                        ReviewEvidence.normalize(ctx, modelId, List.of(), ""));
             } catch (IllegalArgumentException ex) {
                 events.publish(ctx.session().id(), stage().name(), "REVIEW_PARSE_FAILED", modelId,
                                Map.of("error", ex.getMessage()));
                 ctx.excludeModel(modelId, "review parse failed: " + ex.getMessage());
+                recordCoverage(ctx, modelId,
+                        ReviewEvidence.normalize(ctx, modelId, List.of(), ""));
             }
         }
         artifactStore.writeJson(ctx.session().id(), "normalized/reviews.json", ctx.reviews());
         return ctx;
     }
 
-    private boolean isSelfReview(CouncilContext ctx, String reviewerId, String draftId) {
-        return ctx.drafts().stream()
-                  .filter(d -> d.draftId().equals(draftId))
-                  .findFirst()
-                  .map(d -> reviewerId.equals(d.modelId()))
-                  .orElse(false);
+    private void publishParserDiagnostics(CouncilContext ctx, String modelId,
+                                          List<String> diagnostics) {
+        if (!diagnostics.isEmpty()) {
+            events.publish(ctx.session().id(), stage().name(),
+                           "REVIEW_OUTPUT_RECOVERED", modelId,
+                           Map.of("diagnostics", diagnostics,
+                                  "diagnosticCount", diagnostics.size()));
+        }
     }
 
-    private <T> List<T> safeList(List<T> values) {
-        return values == null ? List.of() : values;
+    private void recordCoverage(CouncilContext ctx, String modelId, ReviewEvidence.Batch batch) {
+        if (batch.duplicateCount() > 0 || batch.unknownDraftCount() > 0) {
+            events.publish(ctx.session().id(), stage().name(),
+                           "REVIEW_OUTPUT_FILTERED", modelId,
+                           Map.of("duplicateCount", batch.duplicateCount(),
+                                  "unknownDraftCount", batch.unknownDraftCount(),
+                                  "selfReviewCount", batch.selfReviewCount()));
+        }
+        if (batch.complete()) {
+            return;
+        }
+        String warning = "Review coverage incomplete for " + modelId + ": missing "
+                + batch.missingDraftIds().size() + " of " + batch.expectedDraftIds().size()
+                + " required non-self reviews " + batch.missingDraftIds();
+        ctx.markDegraded(warning);
+        events.publish(ctx.session().id(), stage().name(), "REVIEW_INCOMPLETE", modelId,
+                       Map.of("expectedReviewCount", batch.expectedDraftIds().size(),
+                              "reviewCount", batch.reviews().size(),
+                              "missingDraftIds", batch.missingDraftIds(),
+                              "reason", warning));
     }
 }

@@ -5,7 +5,7 @@
 // message before sending.
 //
 // Three states, not two. The obvious binary is runnable/not-runnable, but the
-// API returns a third case: `oci` reports runnable:true with every model at
+// API returns a third case: `openai` reports runnable:true with every model at
 // NOT_CHECKED and its warnings array populated, because provider health is
 // deferred to runtime credentials. Painting that green would promise a
 // preflight that never happened — on the profile that costs real money when it

@@ -31,12 +31,12 @@ class ValidationIndependenceTest {
 
     @Test
     void distinctIdsResolvingToTheSameProviderModelAreCorrelated() {
-        // The oci-* policies name two different logical models that both default
-        // to the same underlying provider model. Comparing ids alone would call
+        // Two logical OpenAI bindings can still resolve to the same underlying
+        // provider model. Comparing ids alone would call
         // this independent, which is exactly the mistake worth catching.
         assertEquals(ValidationIndependence.CORRELATED,
-                     ValidationIndependence.between("oci-gpt-5-4", null, "gpt-5.4",
-                                                    "oci-reviewer", null, "gpt-5.4"));
+                     ValidationIndependence.between("openai-chair", null, "gpt-4.1",
+                                                    "openai-validator", null, "gpt-4.1"));
     }
 
     @Test

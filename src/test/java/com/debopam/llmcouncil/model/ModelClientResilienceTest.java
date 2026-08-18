@@ -9,6 +9,7 @@ import org.springframework.ai.retry.TransientAiException;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -92,6 +93,38 @@ class ModelClientResilienceTest {
                 () -> client.call(request(Duration.ofSeconds(1))));
 
         assertEquals(ModelFailureCategory.PROVIDER_UNAVAILABLE, failure.category());
+    }
+
+    @Test
+    void springAiAdapterCanOmitTemperatureForProvidersThatRejectIt() {
+        AtomicReference<Double> capturedTemperature = new AtomicReference<>();
+        ChatModel inspecting = prompt -> {
+            capturedTemperature.set(prompt.getOptions().getTemperature());
+            throw new IllegalStateException("captured");
+        };
+        SpringAiModelClient client = new SpringAiModelClient(
+                "claude", ChatClient.create(inspecting), false);
+
+        assertThrows(ModelCallException.class,
+                () -> client.call(request(Duration.ofSeconds(1))));
+
+        assertNull(capturedTemperature.get());
+    }
+
+    @Test
+    void springAiAdapterIncludesTemperatureByDefault() {
+        AtomicReference<Double> capturedTemperature = new AtomicReference<>();
+        ChatModel inspecting = prompt -> {
+            capturedTemperature.set(prompt.getOptions().getTemperature());
+            throw new IllegalStateException("captured");
+        };
+        SpringAiModelClient client = new SpringAiModelClient(
+                "openai", ChatClient.create(inspecting));
+
+        assertThrows(ModelCallException.class,
+                () -> client.call(request(Duration.ofSeconds(1))));
+
+        assertEquals(0.2, capturedTemperature.get());
     }
 
     @Test

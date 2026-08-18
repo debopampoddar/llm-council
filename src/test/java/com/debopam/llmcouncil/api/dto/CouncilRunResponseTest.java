@@ -78,6 +78,20 @@ class CouncilRunResponseTest {
     }
 
     @Test
+    void reportsPartialWhenRequiredEvidenceWasLostWithoutAFatalFailure() {
+        CouncilContext ctx = context();
+        ctx.setSynthesisResult("answer from reduced evidence");
+        ctx.markDegraded("Review coverage incomplete for member-b");
+
+        CouncilRunResponse response = CouncilRunResponse.from("session-1", ctx);
+
+        assertEquals("PARTIAL", response.status());
+        assertEquals("answer from reduced evidence", response.answer());
+        assertTrue(response.failureReason().contains("reduced evidence"));
+        assertTrue(response.warnings().contains("Review coverage incomplete for member-b"));
+    }
+
+    @Test
     void cancellationIsNotMisreportedAsSuccess() {
         CouncilContext ctx = context();
         ctx.cancel();

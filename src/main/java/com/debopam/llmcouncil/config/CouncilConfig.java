@@ -428,33 +428,70 @@ public class CouncilConfig {
         // project ID. If the credential is a placeholder, the model falls
         // through to UnavailableModelClient. Ollama needs no credential, but
         // its actual daemon/model availability is reported by health checks.
-        ModelClient raw = switch (mp.getProvider().toLowerCase()) {
-            case "openai" -> hasRealCredential(openAiApiKey) && openAiChatModel != null
-                             ? new SpringAiModelClient(mp.getId(), ChatClient.create(openAiChatModel))
-                             : fallbackClient(mp, "OpenAI not available — provide a real "
-                                 + "SPRING_AI_OPENAI_API_KEY (current key is a placeholder or missing).");
-            case "anthropic" -> hasRealCredential(anthropicApiKey) && anthropicChatModel != null
-                                ? new SpringAiModelClient(mp.getId(), ChatClient.create(anthropicChatModel))
-                                : fallbackClient(mp, "Anthropic not available — provide a real "
-                                    + "SPRING_AI_ANTHROPIC_API_KEY (current key is a placeholder or missing).");
-            case "gemini", "vertex-ai", "google" -> hasRealCredential(geminiProjectId) && geminiChatModel != null
-                                ? new SpringAiModelClient(mp.getId(), ChatClient.create(geminiChatModel))
-                                : fallbackClient(mp, "Gemini/Vertex AI not available — provide "
-                                    + "GOOGLE_CLOUD_PROJECT (for Vertex AI with ADC) or configure "
-                                    + "Gemini API key access. Current project ID is blank or missing.");
-            case "ollama" -> new OllamaDirectModelClient(mp.getId(), ollamaBaseUrl,
-                                                          ollamaNumCtx, ollamaNumThread, ollamaKeepAlive);
-            case "oci", "oci-openai", "openai-compatible" -> hasRealCredential(openAiApiKey) && openAiChatModel != null
-                             ? new SpringAiModelClient(mp.getId(), ChatClient.create(openAiChatModel))
-                             : fallbackClient(mp, "OpenAI-compatible/OCI not available — provide a real "
-                                 + "SPRING_AI_OPENAI_API_KEY and SPRING_AI_OPENAI_BASE_URL.");
-            default -> fallbackClient(mp, "unsupported provider '" + mp.getProvider() + "'. "
-                           + "Supported: openai, anthropic, gemini, ollama, oci, openai-compatible, mock");
-        };
+        ModelClient raw = buildRawProviderClient(mp, true);
 
         // Wrap with retry logic unless the client is a mock or unavailable
         // fallback (retrying those would be pointless).
         return wrapWithRetry(raw, mp);
+    }
+
+    /**
+     * Build the same provider adapter used by the runtime for a bounded live
+     * probe of a model that is not in the active catalog yet.
+     *
+     * <p>No mock fallback and no retry wrapper are permitted here. A probe is
+     * one explicitly acknowledged provider call; silently fabricating success
+     * or multiplying that call behind a retry would make the result dishonest.
+     * The caller owns the fixed prompt, timeout, and rate limit.
+     *
+     * @param provider provider integration to use
+     * @param providerModelId exact provider-side model id
+     * @return a real adapter or an unavailable client with an actionable reason
+     */
+    public ModelClient buildProbeClient(String provider, String providerModelId) {
+        CouncilProperties.ModelProps probe = new CouncilProperties.ModelProps();
+        probe.setId("configuration-probe");
+        probe.setProvider(provider);
+        probe.setProviderModelId(providerModelId);
+        return buildRawProviderClient(probe, false);
+    }
+
+    /** Build a raw provider adapter, optionally honouring development fallback. */
+    private ModelClient buildRawProviderClient(CouncilProperties.ModelProps mp,
+                                                boolean allowConfiguredFallback) {
+        return switch (mp.getProvider().toLowerCase()) {
+            case "openai" -> hasRealCredential(openAiApiKey) && openAiChatModel != null
+                             ? new SpringAiModelClient(mp.getId(), ChatClient.create(openAiChatModel))
+                             : unavailableOrFallback(mp, "OpenAI not available — provide a real "
+                                 + "SPRING_AI_OPENAI_API_KEY (current key is a placeholder or missing).",
+                                 allowConfiguredFallback);
+            case "anthropic" -> hasRealCredential(anthropicApiKey) && anthropicChatModel != null
+                                ? new SpringAiModelClient(mp.getId(), ChatClient.create(anthropicChatModel), false)
+                                : unavailableOrFallback(mp, "Anthropic not available — provide a real "
+                                    + "SPRING_AI_ANTHROPIC_API_KEY (current key is a placeholder or missing).",
+                                    allowConfiguredFallback);
+            case "gemini" -> hasRealCredential(geminiProjectId) && geminiChatModel != null
+                                ? new SpringAiModelClient(mp.getId(), ChatClient.create(geminiChatModel))
+                                : unavailableOrFallback(mp, "Gemini/Vertex AI not available — provide "
+                                    + "GOOGLE_CLOUD_PROJECT (for Vertex AI with ADC) or configure "
+                                    + "Gemini API key access. Current project ID is blank or missing.",
+                                    allowConfiguredFallback);
+            case "ollama" -> new OllamaDirectModelClient(mp.getId(), ollamaBaseUrl,
+                                                          ollamaNumCtx, ollamaNumThread, ollamaKeepAlive);
+            default -> unavailableOrFallback(mp, "unsupported provider '" + mp.getProvider() + "'. "
+                           + "Supported: openai, anthropic, gemini, ollama, mock",
+                           allowConfiguredFallback);
+        };
+    }
+
+    private ModelClient unavailableOrFallback(CouncilProperties.ModelProps mp,
+                                               String reason,
+                                               boolean allowConfiguredFallback) {
+        if (allowConfiguredFallback) {
+            return fallbackClient(mp, reason);
+        }
+        log.warn("Probe model {} is unavailable: {}", mp.getProviderModelId(), reason);
+        return new UnavailableModelClient(mp.getId(), reason);
     }
 
     /**

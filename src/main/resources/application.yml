@@ -3,15 +3,15 @@ spring:
     name: llm-council
   ai:
     # Spring AI auto-config eagerly creates provider beans. Placeholder keys let
-    # the app boot for local/mock profiles; real OCI/OpenAI-compatible runs must
-    # override these with valid runtime credentials.
+    # the app boot for local/mock profiles; real OpenAI runs must override the
+    # placeholder with a valid runtime credential.
     openai:
-      api-key: ${SPRING_AI_OPENAI_API_KEY:${OCA_LLM_API_TOKEN:unused-development-placeholder}}
-      base-url: ${SPRING_AI_OPENAI_BASE_URL:${OCA_LLM_BASE_URL:https://api.openai.com}}
+      api-key: ${SPRING_AI_OPENAI_API_KEY:unused-development-placeholder}
+      base-url: ${SPRING_AI_OPENAI_BASE_URL:https://api.openai.com}
       chat:
         completions-path: ${SPRING_AI_OPENAI_CHAT_COMPLETIONS_PATH:/v1/chat/completions}
         options:
-          model: ${OCA_LLM_MODEL:gpt-4o}
+          model: ${COUNCIL_OPENAI_CHAIR_MODEL:gpt-4.1}
           temperature: 0.2
     anthropic:
       api-key: ${SPRING_AI_ANTHROPIC_API_KEY:unused-development-placeholder}
@@ -116,6 +116,13 @@ council:
 
   health:
     provider-timeout-seconds: ${LLM_COUNCIL_PROVIDER_HEALTH_TIMEOUT_SECONDS:5}
+  model-probe:
+    # The advanced configuration page can make one tiny, fixed-prompt call to
+    # validate a provider model id before saving it. Cloud calls require an
+    # explicit acknowledgement. A global cooldown prevents repeated clicks from
+    # multiplying billable requests, and no retry wrapper is used.
+    cooldown-seconds: ${LLM_COUNCIL_MODEL_PROBE_COOLDOWN_SECONDS:10}
+    timeout-seconds: ${LLM_COUNCIL_MODEL_PROBE_TIMEOUT_SECONDS:20}
   runtime:
     # Demo-safe default: one active background council run at a time. Increase
     # only when the host and model runtime can handle parallel generations.
@@ -189,32 +196,6 @@ council:
       councilRole: SYNTHESIZER      # bridge-builder persona for the chair
       modelFamily: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL_FAMILY:llama}
 
-    # OCI/OpenAI-compatible logical model. Configure Spring AI OpenAI base URL
-    # and key externally for Oracle Code Assist LiteLLM, OCI, or another
-    # compatible endpoint.
-    - id: oci-primary
-      provider: openai-compatible
-      providerModelId: ${OCA_LLM_MODEL:gpt-4o}
-      defaultOutputTokens: 2200
-      temperature: 0.2
-      timeoutSeconds: 120
-      role: CHAIR
-      councilRole: SYNTHESIZER
-      modelFamily: gpt
-    # Fresh Eyes validator for OCI councils. OCA_LLM_REVIEW_MODEL defaults to the
-    # SAME model as OCA_LLM_MODEL, which makes validation correlated with the
-    # chair rather than independent. Set it to a different model to get a real
-    # independent check; the boot log warns while the two resolve to one model.
-    - id: oci-reviewer
-      provider: openai-compatible
-      providerModelId: ${OCA_LLM_REVIEW_MODEL:gpt-4o-mini}
-      defaultOutputTokens: 1800
-      temperature: 0.2
-      timeoutSeconds: 120
-      role: VALIDATOR
-      councilRole: CRITIC
-      modelFamily: gpt
-
     # Explicit test-only mocks.
     - id: mock-member
       provider: mock
@@ -238,7 +219,8 @@ council:
       modelFamily: mock
 
     # ── Gemini / Vertex AI models ──────────────────────────────────────
-    # Activate with: COUNCIL_GEMINI_ENABLED=true
+    # Activates automatically when GOOGLE_CLOUD_PROJECT and ADC/service-account
+    # credentials are available.
     # Requires GCP authentication:
     #   gcloud auth application-default login
     # Or: GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
@@ -251,6 +233,16 @@ council:
       timeoutSeconds: 120
       role: MEMBER
       councilRole: PROPOSER
+      modelFamily: gemini
+    - id: gemini-flash-lite
+      contextWindowTokens: 1048576
+      provider: gemini
+      providerModelId: ${COUNCIL_GEMINI_CRITIC_MODEL:gemini-2.5-flash-lite}
+      defaultOutputTokens: 1600
+      temperature: 0.35
+      timeoutSeconds: 120
+      role: MEMBER
+      councilRole: CRITIC
       modelFamily: gemini
     - id: gemini-pro
       contextWindowTokens: 1048576
@@ -277,42 +269,110 @@ council:
       councilRole: CRITIC
       modelFamily: gemini
 
-    # ── Anthropic models ───────────────────────────────────────────────
-    # Activate with: COUNCIL_ANTHROPIC_ENABLED=true
-    # Requires: SPRING_AI_ANTHROPIC_API_KEY=sk-ant-...
-    - id: anthropic-sonnet
-      contextWindowTokens: 200000
+    # ── Claude models (Anthropic provider) ─────────────────────────────
+    # Activates automatically from SPRING_AI_ANTHROPIC_API_KEY.
+    - id: claude-sonnet
+      contextWindowTokens: 1000000
       provider: anthropic
-      providerModelId: ${COUNCIL_ANTHROPIC_MODEL:claude-sonnet-4-20250514}
+      providerModelId: ${COUNCIL_CLAUDE_MEMBER_MODEL:claude-sonnet-5}
       defaultOutputTokens: 2000
       temperature: 0.3
       timeoutSeconds: 120
       role: MEMBER
-      councilRole: CRITIC
+      councilRole: PROPOSER
       modelFamily: claude
-    - id: anthropic-opus
+    - id: claude-haiku
       contextWindowTokens: 200000
       provider: anthropic
-      providerModelId: ${COUNCIL_ANTHROPIC_CHAIR_MODEL:claude-sonnet-4-20250514}
+      providerModelId: ${COUNCIL_CLAUDE_CRITIC_MODEL:claude-haiku-4-5-20251001}
+      defaultOutputTokens: 1600
+      temperature: 0.35
+      timeoutSeconds: 120
+      role: MEMBER
+      councilRole: CRITIC
+      modelFamily: claude
+    - id: claude-opus
+      contextWindowTokens: 1000000
+      provider: anthropic
+      providerModelId: ${COUNCIL_CLAUDE_THIRD_MODEL:claude-opus-4-8}
+      defaultOutputTokens: 2200
+      temperature: 0.25
+      timeoutSeconds: 180
+      role: MEMBER
+      councilRole: PROPOSER
+      modelFamily: claude
+    - id: claude-chair
+      contextWindowTokens: 1000000
+      provider: anthropic
+      providerModelId: ${COUNCIL_CLAUDE_CHAIR_MODEL:claude-opus-5}
       defaultOutputTokens: 2200
       temperature: 0.2
       timeoutSeconds: 180
       role: CHAIR
       councilRole: SYNTHESIZER
       modelFamily: claude
+    - id: claude-validator
+      contextWindowTokens: 1000000
+      provider: anthropic
+      providerModelId: ${COUNCIL_CLAUDE_VALIDATOR_MODEL:claude-sonnet-4-6}
+      defaultOutputTokens: 1600
+      temperature: 0.2
+      timeoutSeconds: 120
+      role: VALIDATOR
+      councilRole: CRITIC
+      modelFamily: claude
 
-    # ── Direct OpenAI models ───────────────────────────────────────────
-    # Activate with: COUNCIL_OPENAI_ENABLED=true
-    # Requires: SPRING_AI_OPENAI_API_KEY=sk-...
+    # ── OpenAI models ──────────────────────────────────────────────────
+    # Activates automatically from SPRING_AI_OPENAI_API_KEY.
     - id: openai-gpt
       contextWindowTokens: 128000
       provider: openai
-      providerModelId: ${COUNCIL_OPENAI_MODEL:gpt-4o}
+      providerModelId: ${COUNCIL_OPENAI_MODEL:gpt-4o-mini}
       defaultOutputTokens: 2000
       temperature: 0.3
       timeoutSeconds: 120
       role: MEMBER
       councilRole: PROPOSER
+      modelFamily: gpt
+    - id: openai-critic
+      contextWindowTokens: 128000
+      provider: openai
+      providerModelId: ${COUNCIL_OPENAI_CRITIC_MODEL:gpt-4.1-mini}
+      defaultOutputTokens: 1800
+      temperature: 0.35
+      timeoutSeconds: 120
+      role: MEMBER
+      councilRole: CRITIC
+      modelFamily: gpt
+    - id: openai-analyst
+      contextWindowTokens: 128000
+      provider: openai
+      providerModelId: ${COUNCIL_OPENAI_THIRD_MODEL:gpt-4.1-nano}
+      defaultOutputTokens: 1600
+      temperature: 0.3
+      timeoutSeconds: 120
+      role: MEMBER
+      councilRole: PROPOSER
+      modelFamily: gpt
+    - id: openai-chair
+      contextWindowTokens: 128000
+      provider: openai
+      providerModelId: ${COUNCIL_OPENAI_CHAIR_MODEL:gpt-4.1}
+      defaultOutputTokens: 2200
+      temperature: 0.2
+      timeoutSeconds: 180
+      role: CHAIR
+      councilRole: SYNTHESIZER
+      modelFamily: gpt
+    - id: openai-validator
+      contextWindowTokens: 128000
+      provider: openai
+      providerModelId: ${COUNCIL_OPENAI_VALIDATOR_MODEL:gpt-4o}
+      defaultOutputTokens: 1800
+      temperature: 0.2
+      timeoutSeconds: 120
+      role: VALIDATOR
+      councilRole: CRITIC
       modelFamily: gpt
 
   profiles:
@@ -332,22 +392,22 @@ council:
         QUICK: local-quick
         BALANCED: local-balanced
         RIGOROUS: local-rigorous
-    oci:
-      displayName: OCI/OpenAI-compatible council
+    openai:
+      displayName: OpenAI council
       testOnly: false
       defaultDepth: BALANCED
       depthPolicies:
-        QUICK: oci-quick
-        BALANCED: oci-balanced
-        RIGOROUS: oci-rigorous
-    hybrid:
-      displayName: Local plus OCI council
+        QUICK: openai-quick
+        BALANCED: openai-balanced
+        RIGOROUS: openai-rigorous
+    claude:
+      displayName: Claude council
       testOnly: false
       defaultDepth: BALANCED
       depthPolicies:
-        QUICK: hybrid-quick
-        BALANCED: hybrid-balanced
-        RIGOROUS: hybrid-rigorous
+        QUICK: claude-quick
+        BALANCED: claude-balanced
+        RIGOROUS: claude-rigorous
     mock:
       displayName: Mock test council
       testOnly: true
@@ -407,62 +467,58 @@ council:
       validationRequired: true
       allowPartial: true
 
-    oci-quick:
+    openai-quick:
       protocolId: quick
-      memberModelIds: [oci-primary]
-      chairModelId: oci-primary
+      memberModelIds: [openai-gpt]
+      chairModelId: openai-chair
       validatorModelId:
       minimumSuccessfulDrafts: 1
       minimumReviewsPerDraft: 0
       validationRequired: false
       allowPartial: true
-    oci-balanced:
+    openai-balanced:
       protocolId: balanced
-      memberModelIds: [oci-primary, oci-reviewer]
-      chairModelId: oci-primary
-      validatorModelId: oci-reviewer
+      memberModelIds: [openai-gpt, openai-critic]
+      chairModelId: openai-chair
+      validatorModelId: openai-validator
       minimumSuccessfulDrafts: 2
       minimumReviewsPerDraft: 1
       validationRequired: true
       allowPartial: true
-    oci-rigorous:
+    openai-rigorous:
       protocolId: rigorous
-      memberModelIds: [oci-primary, oci-reviewer]
-      chairModelId: oci-primary
-      validatorModelId: oci-reviewer
+      memberModelIds: [openai-gpt, openai-critic, openai-analyst]
+      chairModelId: openai-chair
+      validatorModelId: openai-validator
       minimumSuccessfulDrafts: 2
       minimumReviewsPerDraft: 1
       validationRequired: true
       allowPartial: true
 
-    hybrid-quick:
+    claude-quick:
       protocolId: quick
-      memberModelIds: [local-llama3]
-      chairModelId: oci-primary
+      memberModelIds: [claude-sonnet]
+      chairModelId: claude-chair
       validatorModelId:
       minimumSuccessfulDrafts: 1
       minimumReviewsPerDraft: 0
       validationRequired: false
       allowPartial: true
-    # Validation runs on the local mistral binding rather than a second OCI
-    # model: the chair is a GPT-family model, so a local validator is a genuinely
-    # different family, and this profile already has Ollama in play. It is also
-    # the cheaper of the two options.
-    hybrid-balanced:
+    claude-balanced:
       protocolId: balanced
-      memberModelIds: [local-llama3, local-mistral, oci-reviewer]
-      chairModelId: oci-primary
-      validatorModelId: local-validator
+      memberModelIds: [claude-sonnet, claude-haiku]
+      chairModelId: claude-chair
+      validatorModelId: claude-validator
       minimumSuccessfulDrafts: 2
       minimumReviewsPerDraft: 1
       validationRequired: true
       allowPartial: true
-    hybrid-rigorous:
+    claude-rigorous:
       protocolId: rigorous
-      memberModelIds: [local-llama3, local-mistral, oci-primary, oci-reviewer]
-      chairModelId: oci-primary
-      validatorModelId: local-validator
-      minimumSuccessfulDrafts: 3
+      memberModelIds: [claude-sonnet, claude-haiku, claude-opus]
+      chairModelId: claude-chair
+      validatorModelId: claude-validator
+      minimumSuccessfulDrafts: 2
       minimumReviewsPerDraft: 1
       validationRequired: true
       allowPartial: true
@@ -511,7 +567,7 @@ council:
       allowPartial: true
     gemini-balanced:
       protocolId: balanced
-      memberModelIds: [gemini-flash, gemini-pro]
+      memberModelIds: [gemini-flash, gemini-flash-lite]
       chairModelId: gemini-pro
       validatorModelId: gemini-validator
       minimumSuccessfulDrafts: 2
@@ -520,7 +576,10 @@ council:
       allowPartial: true
     gemini-rigorous:
       protocolId: rigorous
-      memberModelIds: [gemini-flash, gemini-pro]
+      # Gemini exposes two stable non-chair text models in this compatibility
+      # tier. Do not seat gemini-pro merely to make the roster look larger: the
+      # chair must not synthesize a pool containing its own draft.
+      memberModelIds: [gemini-flash, gemini-flash-lite]
       chairModelId: gemini-pro
       validatorModelId: gemini-validator
       minimumSuccessfulDrafts: 2
@@ -540,18 +599,18 @@ council:
       allowPartial: true
     multi-cloud-balanced:
       protocolId: balanced
-      memberModelIds: [local-llama3, local-mistral, gemini-flash, anthropic-sonnet]
+      memberModelIds: [local-llama3, local-mistral, gemini-flash, claude-sonnet]
       chairModelId: gemini-pro
-      validatorModelId: anthropic-opus
+      validatorModelId: claude-validator
       minimumSuccessfulDrafts: 2
       minimumReviewsPerDraft: 1
       validationRequired: true
       allowPartial: true
     multi-cloud-rigorous:
       protocolId: rigorous
-      memberModelIds: [local-llama3, local-mistral, gemini-flash, anthropic-sonnet, openai-gpt]
+      memberModelIds: [local-llama3, local-mistral, gemini-flash, claude-sonnet, openai-gpt]
       chairModelId: gemini-pro
-      validatorModelId: anthropic-opus
+      validatorModelId: claude-validator
       minimumSuccessfulDrafts: 3
       minimumReviewsPerDraft: 1
       validationRequired: true
@@ -569,7 +628,7 @@ council:
         SYNTHESIZE:
           preserve-dissent: true
     rigorous:
-      description: High-rigor council with debate, post-debate revision, re-review, second scoring, validation, and export.
+      description: High-rigor council with conditional debate, post-debate revision, re-review, second scoring, validation, and export.
       # Added REVISE (post-debate draft revision) and
       # REVIEW_POST_DEBATE (re-review incorporating debate arguments) stages.
       orderedStages: [GENERATE, ANONYMIZE, REVIEW, SCORE, DEBATE, REVISE, REVIEW_POST_DEBATE, SCORE, SYNTHESIZE, VALIDATE, EXPORT]
@@ -586,6 +645,10 @@ council:
           # drafts measures how decisively the council ranked them, which is high
           # exactly when they agree — the opposite of a reason to debate.
           debate-trigger-score-variance: 40.0
+          # The normal preset does not manufacture disagreement. When reviewers
+          # agree, debate and its dependent stages are explicitly skipped. A
+          # derived user protocol can set this true for demonstrations or audits
+          # that must exercise every stage regardless of the evidence.
           force-run: false
           # Capitulation needs BOTH: the reasoning stood still (Jaccard at or above
           # sycophancy-threshold, against the member's own previous turn or the

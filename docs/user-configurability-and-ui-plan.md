@@ -8,8 +8,11 @@ and current production-readiness plan
 > Sections describing what “currently” exists are snapshots from before their
 > phase was implemented. As built: phases 0, 1, 2, 2A, 3A, and 5 are complete;
 > cancellation, JDBC persistence, SSE cursors, retention, config write APIs, the
-> browser UI, and the Advisor all exist. Phase 2B resume/re-run, 3B manual editor,
-> and 4 hot reload remain unimplemented. The reviewed baseline has 887 tests.
+> browser UI, Advisor, and an advanced YAML configuration workbench all exist.
+> Phase 2B resume/re-run and Phase 4 hot reload remain unimplemented. The
+> original four-tab form design from 3B was replaced by the schema-informed YAML
+> workbench rather than built literally. The current clean baseline has 930
+> deterministic tests.
 > Current production priorities are in
 > [production-readiness-plan.md](production-readiness-plan.md).
 
@@ -92,7 +95,7 @@ These were found while surveying the code for this plan. They are not new work i
 
 | # | Finding | Evidence | Assigned |
 |---|---|---|---|
-| F1 | **"Fresh Eyes" validation is not independent in 5 of 7 shipped profiles.** `local-balanced`, `local-rigorous`, `gemini-balanced`, `gemini-rigorous` set `validatorModelId == chairModelId` (identical model id). `oci-*` and `hybrid-*` use two ids that both default to `${OCA_LLM_MODEL:gpt-5.4}`. Only `multi-cloud-*` is genuinely independent. `CouncilConfigurationValidator` checks *member* diversity but never compares chair to validator. | `application.yml` policies; `CouncilConfigurationValidator.warnLowDiversity` | Phase 0 (§3.9) + Phase 1 (§4.7) |
+| F1 ✅ | **"Fresh Eyes" validation independence was overstated.** Several original policies reused the chair as validator or resolved separate logical ids to one provider model. Current local and multi-cloud policies are independent; OpenAI, Claude, and Gemini correctly report `CORRELATED`. | `application.yml` policies; `CouncilConfigurationValidator`; `ShippedValidationIndependenceTest` | Phase 0 (§3.9) + Phase 1 (§4.7) — **fixed** |
 | F2 ✅ | **Prompts were not length-bounded.** The original 4096-token local window could silently discard rigorous evidence. | `PromptBuilder`; `application.yml` `num-ctx` | Phase 1 (§4.8) — **fixed with prompt budgeting and a 16384 default** |
 | F3 ✅ | **Token counts are captured then discarded.** `OllamaDirectModelClient` parses `prompt_eval_count`/`eval_count` and `SpringAiModelClient` reads usage metadata into `ModelCallResult`, but all 8 executor call sites use only `.text()`. Nothing aggregates, so a `multi-cloud-rigorous` run (30–40 cloud calls) reports no cost signal. | `ModelCallResult`; the 8 `.call(` sites | Phase 2 (§5.6) — **fixed** |
 | F4 ✅ | **No run cancellation.** `CouncilRunExecutor.submit` discarded the run handle. | `CouncilRunExecutor` | Phase 2 (§5.7) — **fixed through `RunRegistry`; cancellation does not use a `Future` as lifecycle authority** |
@@ -111,7 +114,7 @@ A user defines a **model binding**, not a provider integration.
 | Field | Editable | Constraint |
 |---|---|---|
 | `id` | yes | `^[a-z0-9][a-z0-9-]{1,62}$`. Must not collide with a built-in id unless the entity sets `overrides: <built-in-id>` explicitly. |
-| `provider` | yes, **from a closed set** | One of `ollama`, `openai`, `anthropic`, `gemini`, `openai-compatible`. `mock` is rejected in the user layer. |
+| `provider` | yes, **from a closed set** | One of `ollama`, `openai`, `anthropic`, `gemini`. `mock` is rejected in the user layer. |
 | `providerModelId` | yes | Non-blank, ≤ 200 chars. For `ollama`, warn (do not reject) if not present in `/api/tags`. |
 | `defaultOutputTokens` | yes | 64 – 32000 |
 | `temperature` | yes | 0.0 – 2.0 |
@@ -172,10 +175,12 @@ Allowed stage-option keys and clamps (keys verified against the executors; do no
 | `DEBATE` | `min-rounds` | int | 1 – 3 | 2 | no |
 | `DEBATE` | `max-rounds` | int | 1 – 5, must be ≥ `min-rounds` | 3 | no |
 | `DEBATE` | `ks-convergence-threshold` | double | 0.01 – 0.50 | 0.10 | no |
+| `DEBATE` | `convergence-confidence-delta` | double | 1.0 – 50.0 | 5.0 | no |
 | `DEBATE` | `debate-trigger-score-variance` | double | 0.0 – 1000.0 | 120.0 | no |
 | `DEBATE` | `sycophancy-threshold` | double | 0.30 – 0.95 | 0.70 | **yes** above 0.85 |
+| `DEBATE` | `sycophancy-confidence-delta` | double | 1.0 – 100.0 | 15.0 | **yes** above 40.0 |
 | `DEBATE` | `force-run` | boolean | — | false | no |
-| `SCORE` | `scoring-strategy` | enum | must match a registered `ScoringStrategy.name()` | `confidence-weighted` | no |
+| `SCORE` | `scoring-strategy` | enum | `average`, `median`, `trimmed-mean`, `confidence-weighted` | `confidence-weighted` | no |
 | `SCORE` | `artifact-label` | string | `^[a-z0-9-]{1,32}$` | — | no |
 | `SCORE` | `escalation-variance-threshold` | double | 0.0 – 1000.0 | 120.0 | no |
 | `SCORE` | `escalation-policy` | enum | must match an `EscalationPolicy` constant | `SYNTHESIZE_WITH_DISSENT` | no |
@@ -398,7 +403,7 @@ public enum ValidationIndependence { INDEPENDENT, CORRELATED, SELF_VALIDATION }
 
 Details:
 
-- Compare **resolved** `providerModelId`, not the raw property string, so `oci-gpt-5-4` and `oci-reviewer` both defaulting to `gpt-5.4` are correctly detected as `CORRELATED`.
+- Compare **resolved** `providerModelId`, not the raw property string, so two logical bindings that resolve to the same provider model are correctly detected as `CORRELATED`.
 - Policies with no validator (`validatorModelId` blank, `validationRequired: false`) are exempt — no validation was claimed, so nothing is misreported.
 - Add `boolean acknowledgeSelfValidation` to `PolicyProps` (default `false`). When `true`, suppress the boot warning but **still** stamp the tier on the artifact and the API response. A user with an 8 GB machine has made an informed trade-off and should not be nagged; a user who did it by accident should still find out.
 - Expose the tier as `policies[].validationIndependence` in the catalog response (§3.5), on `ValidationArtifact`, and on `CouncilRunResponse`.
@@ -538,15 +543,13 @@ Then repoint:
 | Policy | Change | Resulting tier |
 |---|---|---|
 | `local-balanced`, `local-rigorous` | `validatorModelId: local-validator` | `INDEPENDENT` |
-| `hybrid-balanced`, `hybrid-rigorous` | `validatorModelId: local-validator` | `INDEPENDENT` |
 | `gemini-balanced`, `gemini-rigorous` | `validatorModelId: gemini-validator` | `CORRELATED` — best achievable in a single-provider profile, still better than identical |
-| `oci-*` | document that `OCA_LLM_REVIEW_MODEL` should be set to a different model than `OCA_LLM_MODEL` | `CORRELATED` until the operator differentiates them |
+| `openai-balanced`, `openai-rigorous` | distinct OpenAI chair and validator model bindings | `CORRELATED` — distinct models within one provider family |
+| `claude-balanced`, `claude-rigorous` | distinct Claude chair and validator model bindings | `CORRELATED` — distinct models within one provider family |
 
-Two deviations from this section as originally written:
+One deviation from this section as originally written:
 
 1. **Gemini needed its own `gemini-validator` binding**, not a direct repoint to `gemini-flash`. The existing role check requires the validator to be `VALIDATOR` or `CHAIR`, and `gemini-flash` is `MEMBER` — the same obstacle that made `local-validator` necessary. Both are second logical bindings over an already-configured provider model.
-2. **`hybrid-*` reached `INDEPENDENT` rather than staying `CORRELATED`.** The hybrid profile already runs Ollama members, so pointing validation at `local-validator` against a GPT-family chair is both genuinely independent and cheaper than a second OCI call. Not in the original plan; taken because it was free.
-
 Update `docs/testing-m1-32gb.md` and `docs/testing-intel-2019-32gb.md` if they enumerate the local model set.
 
 ### 4.8 Prompt budgeting (fixes F2) ✅ IMPLEMENTED — shipped separately as 1B
@@ -1130,7 +1133,12 @@ Do not attempt sub-stage resume. If `GENERATE` fanned out to five models and die
 > - **3A — the write path** (§8.1): `ConfigController`, validation, preview, atomic write, `/schema`. This is **infrastructure for saving any validated overlay, whatever produced it**, and Phase 5's wizard confirms through it (§10.5 ends in `PUT /api/council/config/draft`). It is therefore a **hard prerequisite of the Advisor**, not an alternative to it.
 > - **3B — the manual four-tab editor** (§8.2): hand-editing models, policies, profiles, and protocols field by field.
 >
-> **3B is deferred indefinitely.** If the Advisor synthesises a validated council from a plain-language description, hand-editing individual timeouts is a power-user need — and power users already have the YAML escape hatch from Phase 1. The Advisor is *describe-and-regenerate*, not a field-level editor; that trade-off is deliberate and must be documented in the UI rather than papered over. Build 3B only if real users ask to tweak single fields in-app.
+> **As-built amendment:** the literal four-tab field form was not built. A lower-
+> maintenance advanced YAML workbench now ships at `/config.html`: import/edit,
+> strict parse, semantic validation, catalog diff, confirmed atomic save, export,
+> restart guidance, schema boundaries, and a guarded live provider-model probe.
+> This satisfies the power-user workflow without duplicating every Java field
+> and cross-reference rule in browser code.
 >
 > The **Providers panel** (§8.2, last bullet) is **not** part of 3B — it is read-only, implements D2, and ships with 3A or Phase 5's environment step.
 
@@ -1177,7 +1185,17 @@ Fixed by canonicalising the tag in `ModelProfile`'s compact constructor, which c
 
 `RunIntegrityReportingTest` asserts no *shipped* protocol reduces integrity, which makes raising the sycophancy threshold in `application.yml` a test failure rather than a quiet edit.
 
-### 8.2 Phase 3B — Manual editor UI (`config.html`) — DEFERRED
+### 8.2 Phase 3B — Advanced editor UI (`config.html`) — IMPLEMENTED WITH A DIFFERENT DESIGN
+
+The original four-tab form below is retained as design history. The shipped
+page deliberately uses YAML as the editing surface and the server as the only
+parser and validator. It adds safeguards the sketch did not specify: save is
+bound to the exact validated source revision, write requires a second explicit
+confirmation, credentials and unknown probe fields are rejected before a call,
+and cloud model probes require acknowledgement, use a fixed prompt/timeout,
+never retry, and share a global cooldown.
+
+Original deferred design:
 
 Four tabs: **Models**, **Policies**, **Profiles**, **Protocols**, plus a **Providers** panel.
 
@@ -1226,9 +1244,14 @@ Four tabs: **Models**, **Policies**, **Profiles**, **Protocols**, plus a **Provi
 ## 10. Phase 5 — Requirement Advisor (wizard + CLI) ✅ IMPLEMENTED (wizard; CLI deferred)
 
 **Goal:** a non-technical user describes what they want in plain language and gets a validated configuration.
-**Depends on:** Phases 1, **3A** (the write path — the wizard's confirm step calls `PUT /api/council/config/draft`). Not 3B. Phase 4 optional but makes it feel instant.
+**Depends on:** Phases 1, **3A** (the write path — the wizard's confirm step calls `PUT /api/council/config/draft`). It did not depend on 3B. Phase 4 optional but makes it feel instant.
 
-> With 3B deferred, this phase is the **primary** configuration surface rather than an alternative to a manual editor. Its own review steps carry that weight: step 2 makes the extracted `CouncilRequirement` editable, and step 4 shows the synthesised config with per-decision rationale and a `/preview` diff before anything is written. A user approves what the Advisor produced; they do not tweak arbitrary single fields in-app.
+> At the time it shipped, 3B was deferred and this phase was the **primary**
+> configuration surface. Its own review steps therefore carry that weight: step
+> 2 makes the extracted `CouncilRequirement` editable, and step 4 shows the
+> synthesised config with per-decision rationale and a `/preview` diff before
+> anything is written. The later advanced YAML workbench is a power-user path;
+> it does not weaken the Advisor's safer intent-to-configuration boundary.
 
 ### 10.1 The core architectural rule
 
@@ -1396,18 +1419,21 @@ modules behind `setup.html`.
 | 2A | Durable persistence (SQLite/H2), retention (F5), interrupted-run sweep | ✅ shipped — ~2400 LOC, 19 new classes, 351 → 542 tests | Medium — contract tests carried it |
 | 2B | Resume and re-run | ~600 LOC | Medium-high — the stage-index detail in §7.4.1 is the trap |
 | 3A | Config **write path** — `ConfigController`, validate/preview/schema, atomic write | ✅ shipped — ~1500 LOC, 9 new classes, 542 → 604 tests | Medium — atomic write, schema generation |
-| 3B | Manual four-tab editor UI | ~300 LOC | Low — **deferred indefinitely**, see §8 |
+| 3B | Advanced YAML editor UI, guarded model probe | ✅ shipped — original four-tab form not pursued | Low — server remains the source of truth |
 | 4 | Hot reload | ~400 LOC, touches 10 classes | **High** — concurrency; do not start before Phase 2 is proven |
 | 5 | Requirement Advisor | ✅ shipped — ~2100 LOC Java + ~900 LOC JS/CSS/HTML, 21 new classes, 621 → 776 tests | Medium — synthesizer is pure and testable; LLM part is optional by design |
 
-**Delivered order: 0 → 1 → 2 → 2A → 3A → 5.** Those phases are complete.
+**Delivered order: 0 → 1 → 2 → 2A → 3A → 5 → 3B workbench.** Those phases are complete.
 Phase 2B is still unimplemented, but it is not the next production release gate:
-authentication/ownership, honest production policy quality, real-provider
-contracts, and pull-request CI take priority. Phases 3B and 4 remain deferred.
+authentication/ownership, honest production policy quality, and repeatable
+real-provider contracts take priority. Phase 4 remains deferred; 3B shipped as the advanced
+YAML workbench described in §8.2.
 
 This supersedes the original `2A → 2B, then 3 → 4 → 5`. Two reasons for the change:
 
-1. **The Advisor is the product's configuration story, so it outranks resume/re-run.** Splitting Phase 3 (§8) makes that affordable: only 3A is required to reach it, and 3B — the manual editor the Advisor makes largely redundant — drops out.
+1. **The Advisor remains the default configuration story.** The advanced YAML
+   workbench is the power-user escape hatch and validation showcase; it does not
+   replace the safer describe-and-review flow.
 2. **2B goes last because it is the highest-risk phase in the plan** (§7.4.1's stage-index trap), and it benefits from durable sessions being proven in production use first.
 
 2A stays first: durable sessions and chat history make everything after it feel less demo-grade, and 2B depends on it outright.
@@ -1416,7 +1442,8 @@ Dependency graph:
 
 ```
 0 ──┬── 1 ──┬── 3A ──┬── 5
-    │       │        └── (3B, 4)   deferred
+    │       │        ├── 3B        shipped as YAML workbench
+    │       │        └── 4         deferred
     └── 2 ── 2A ── 2B
 ```
 

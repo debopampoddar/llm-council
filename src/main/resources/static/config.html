@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LLM Council — Advanced configuration</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div class="config-workbench">
+    <header class="cfg-head">
+      <a class="brand" href="/"><strong>LLM Council</strong><span>advanced configuration</span></a>
+      <nav class="cfg-nav" aria-label="Configuration navigation">
+        <a href="/setup.html">Guided setup</a>
+        <a href="/">Chat</a>
+      </nav>
+    </header>
+
+    <div id="config-banner" aria-live="polite"></div>
+
+    <main>
+      <section class="cfg-intro">
+        <div>
+          <h1 class="wz-title">Create and validate an overlay</h1>
+          <p class="wz-lede">Edit or import YAML, run the server's real validation rules, and inspect
+            every catalog change before the file can be saved. Credentials never belong here.</p>
+        </div>
+        <div class="cfg-actions">
+          <button class="btn" id="load-current" type="button">Reload current</button>
+          <button class="btn" id="insert-example" type="button">Start model example</button>
+          <label class="btn cfg-file-label" for="import-file">Import YAML</label>
+          <input class="cfg-file" id="import-file" type="file" accept=".yml,.yaml,text/yaml">
+          <a class="btn" href="/api/council/config/export" download>Export current</a>
+        </div>
+      </section>
+
+      <div class="cfg-grid">
+        <section class="cfg-panel cfg-editor-panel" aria-labelledby="editor-heading">
+          <div class="cfg-panel-head">
+            <div>
+              <h2 id="editor-heading">council-user.yml</h2>
+              <p id="editor-state">Loading the current overlay…</p>
+            </div>
+            <span class="pill p-mute" id="validation-pill"><span class="led"></span>not checked</span>
+          </div>
+          <label class="sr-only" for="config-source">Configuration YAML</label>
+          <textarea class="cfg-source" id="config-source" spellcheck="false" rows="28"></textarea>
+          <div class="cfg-editor-foot">
+            <span class="wz-hint">Parsing and validation are read-only. Save stays locked until this exact text passes.</span>
+            <button class="btn btn-primary" id="validate-config" type="button">Validate and preview</button>
+          </div>
+        </section>
+
+        <aside class="cfg-side">
+          <section class="cfg-panel" aria-labelledby="result-heading">
+            <div class="cfg-panel-head">
+              <div>
+                <h2 id="result-heading">Validation</h2>
+                <p>Errors block the entire save. Warnings stay visible.</p>
+              </div>
+            </div>
+            <div id="validation-result" class="cfg-result">
+              <p class="wz-hint">Run validation to see issues and the resulting profiles.</p>
+            </div>
+          </section>
+
+          <section class="cfg-panel" aria-labelledby="changes-heading">
+            <div class="cfg-panel-head">
+              <div>
+                <h2 id="changes-heading">Catalog changes</h2>
+                <p>Compared with the catalog running now.</p>
+              </div>
+            </div>
+            <div id="change-result" class="cfg-result">
+              <p class="wz-hint">No preview yet.</p>
+            </div>
+          </section>
+
+          <section class="cfg-panel" aria-labelledby="save-heading">
+            <div class="cfg-panel-head">
+              <div>
+                <h2 id="save-heading">Save</h2>
+                <p>The overlay takes effect after restart.</p>
+              </div>
+            </div>
+            <div id="save-result" class="cfg-result"></div>
+          </section>
+        </aside>
+      </div>
+
+      <section class="cfg-panel cfg-probe" aria-labelledby="probe-heading">
+        <div class="cfg-panel-head">
+          <div>
+            <h2 id="probe-heading">Probe a provider model</h2>
+            <p>Optional live check with a fixed non-sensitive prompt, short output, timeout, and throttling.</p>
+          </div>
+        </div>
+        <div class="cfg-probe-form">
+          <label>Provider
+            <select id="probe-provider"></select>
+          </label>
+          <label>Provider model id
+            <input id="probe-model-id" type="text" maxlength="160" placeholder="gpt-4.1-mini">
+          </label>
+          <label class="wz-check cfg-ack" id="probe-ack-row">
+            <input id="probe-ack" type="checkbox">
+            Make one billable call to this cloud provider
+          </label>
+          <button class="btn" id="run-probe" type="button">Run live probe</button>
+        </div>
+        <div id="probe-result" class="cfg-result" aria-live="polite"></div>
+      </section>
+
+      <section class="cfg-panel cfg-schema" aria-labelledby="schema-heading">
+        <div class="cfg-panel-head">
+          <div>
+            <h2 id="schema-heading">Server-owned configuration rules</h2>
+            <p>Generated from the same limits and enums that reject invalid configuration.</p>
+          </div>
+        </div>
+        <div id="schema-result" class="cfg-schema-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/js/config.js"></script>
+</body>
+</html>

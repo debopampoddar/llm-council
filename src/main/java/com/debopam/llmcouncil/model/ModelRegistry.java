@@ -43,7 +43,7 @@ public class ModelRegistry {
     /**
      * Look up a model profile by its logical ID.
      *
-     * @param id The model's logical ID (e.g., "ollama-llama3", "oci-gpt-5-4").
+     * @param id The model's logical ID (e.g., "local-llama3", "openai-chair").
      * @return The model profile.
      * @throws NoSuchElementException if the model ID is not registered.
      */

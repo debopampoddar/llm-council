@@ -325,18 +325,20 @@ Apache-2.0, logback is the dual case above. These are what §4.3's
 
 ## 7. Open risks
 
-1. **No pull-request CI.** The release publish workflow runs `mvn verify`, but
-   ordinary pushes and pull requests have no required workflow. The clean
-   reviewed baseline is 887 tests; local success is not a repository gate.
-2. **Hermetic tests do not prove integration.** `mvn test` never calls a model.
-   Nothing verifies the council works against real Ollama, Anthropic, or Vertex.
-   This is also what the dependency exclusions would rest on more comfortably.
-3. **No live-provider Maven profile exists.** Do not tell contributors to run
+1. **Hermetic tests do not prove general provider integration.** `mvn test`
+   never calls a model. Two manual three-model Ollama runs verified the shipped
+   conditional rigorous path and every forced rigorous stage on the reviewed
+   laptop, but that is evidence for one installed Ollama version and model set,
+   not a repeatable contract and not evidence for Anthropic or Vertex. This is
+   also what the dependency exclusions would rest on more comfortably.
+2. **No live-provider Maven profile exists.** Do not tell contributors to run
    `-Pintegration`; add an explicit `provider-contracts` profile before
    documenting that workflow.
-4. **Maven Central is immutable.** Nothing published is ever removed. Settle
+3. **Maven Central is immutable.** Nothing published is ever removed. Settle
    groupId, licence, and version before the first release.
-5. **CLA before the first outside contribution**, not after.
+4. **CLA before the first outside contribution**, not after.
+5. **Resolved 2026-08-17:** pull-request CI now runs a clean Java 25 build plus
+   repository YAML, documentation-link, and removed-provider checks.
 6. **Resolved 2026-08-17:** the two dead README links were replaced with the
    current production-readiness and machine testing guides.
 

@@ -13,8 +13,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * REVIEW_POST_DEBATE stage: post-debate peer review incorporating debate arguments.
@@ -63,9 +61,6 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
             return ctx;
         }
 
-        Set<String> validDraftIds = ctx.drafts().stream()
-                .map(Draft::draftId).collect(Collectors.toSet());
-
         for (String modelId : ctx.policy().memberModelIds()) {
             ModelProfile model = registry.model(modelId);
             events.publish(ctx.session().id(), stage().name(),
@@ -81,40 +76,38 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
                         new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                                              model.providerModelId(), messages,
                                              model.defaultOutputTokens(), model.temperature(),
-                                             false, model.defaultTimeout()));
+                                             true, model.defaultTimeout()));
                 ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
 
                 artifactStore.writeText(ctx.session().id(),
                         "raw/review-post-debate-" + modelId + ".json", result.text());
 
-                // Parse and filter reviews using the same logic as ReviewStageExecutor
-                List<ReviewArtifact> parsed = parser.parseReviews(result.text()).reviews().stream()
-                        .filter(review -> validDraftIds.contains(review.draftId()))
-                        .filter(review -> !isSelfReview(ctx, modelId, review.draftId()))
-                        .map(review -> new ReviewArtifact(modelId, review.draftId(),
-                                                          safeList(review.strengths()),
-                                                          safeList(review.issues()),
-                                                          safeList(review.criteria()),
-                                                          review.overallScore(),
-                                                          review.confidence(),
-                                                          result.text()))
-                        .toList();
-
-                parsed.forEach(ctx::addPostDebateReview);
+                StructuredOutputParser.ReviewEnvelope envelope = parser.parseReviews(result.text());
+                ReviewEvidence.Batch batch = ReviewEvidence.normalize(
+                        ctx, modelId, envelope.reviews(), result.text());
+                batch.reviews().forEach(ctx::addPostDebateReview);
+                publishParserDiagnostics(ctx, modelId, envelope.diagnostics());
+                recordCoverage(ctx, modelId, batch);
 
                 events.publish(ctx.session().id(), stage().name(),
                                "POST_DEBATE_REVIEW_COMPLETED", modelId,
-                               Map.of("reviewCount", parsed.size()));
+                               Map.of("reviewCount", batch.reviews().size(),
+                                      "expectedReviewCount", batch.expectedDraftIds().size(),
+                                      "complete", batch.complete()));
             } catch (ModelCallException ex) {
                 events.publish(ctx.session().id(), stage().name(),
                                "POST_DEBATE_REVIEW_FAILED", modelId,
                                Map.of("error", ex.getMessage()));
                 ctx.excludeModel(modelId, "post-debate review failed: " + ex.getMessage());
+                recordCoverage(ctx, modelId,
+                        ReviewEvidence.normalize(ctx, modelId, List.of(), ""));
             } catch (IllegalArgumentException ex) {
                 events.publish(ctx.session().id(), stage().name(),
                                "POST_DEBATE_REVIEW_PARSE_FAILED", modelId,
                                Map.of("error", ex.getMessage()));
                 ctx.excludeModel(modelId, "post-debate review parse failed: " + ex.getMessage());
+                recordCoverage(ctx, modelId,
+                        ReviewEvidence.normalize(ctx, modelId, List.of(), ""));
             }
         }
 
@@ -123,18 +116,36 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
         return ctx;
     }
 
-    /**
-     * Check if a review is a self-review (reviewer reviewing their own draft).
-     */
-    private boolean isSelfReview(CouncilContext ctx, String reviewerId, String draftId) {
-        return ctx.drafts().stream()
-                  .filter(d -> d.draftId().equals(draftId))
-                  .findFirst()
-                  .map(d -> reviewerId.equals(d.modelId()))
-                  .orElse(false);
+    private void publishParserDiagnostics(CouncilContext ctx, String modelId,
+                                          List<String> diagnostics) {
+        if (!diagnostics.isEmpty()) {
+            events.publish(ctx.session().id(), stage().name(),
+                           "POST_DEBATE_REVIEW_OUTPUT_RECOVERED", modelId,
+                           Map.of("diagnostics", diagnostics,
+                                  "diagnosticCount", diagnostics.size()));
+        }
     }
 
-    private <T> List<T> safeList(List<T> values) {
-        return values == null ? List.of() : values;
+    private void recordCoverage(CouncilContext ctx, String modelId, ReviewEvidence.Batch batch) {
+        if (batch.duplicateCount() > 0 || batch.unknownDraftCount() > 0) {
+            events.publish(ctx.session().id(), stage().name(),
+                           "POST_DEBATE_REVIEW_OUTPUT_FILTERED", modelId,
+                           Map.of("duplicateCount", batch.duplicateCount(),
+                                  "unknownDraftCount", batch.unknownDraftCount(),
+                                  "selfReviewCount", batch.selfReviewCount()));
+        }
+        if (batch.complete()) {
+            return;
+        }
+        String warning = "Post-debate review coverage incomplete for " + modelId + ": missing "
+                + batch.missingDraftIds().size() + " of " + batch.expectedDraftIds().size()
+                + " required non-self reviews " + batch.missingDraftIds();
+        ctx.markDegraded(warning);
+        events.publish(ctx.session().id(), stage().name(),
+                       "POST_DEBATE_REVIEW_INCOMPLETE", modelId,
+                       Map.of("expectedReviewCount", batch.expectedDraftIds().size(),
+                              "reviewCount", batch.reviews().size(),
+                              "missingDraftIds", batch.missingDraftIds(),
+                              "reason", warning));
     }
 }

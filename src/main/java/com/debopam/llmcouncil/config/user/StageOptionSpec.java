@@ -71,7 +71,7 @@ public record StageOptionSpec(
 
     /** Scoring strategies registered in the application. */
     private static final List<String> SCORING_STRATEGIES =
-            List.of("median", "trimmed-mean", "confidence-weighted");
+            List.of("average", "median", "trimmed-mean", "confidence-weighted");
 
     /** Escalation policies understood by the SCORE stage. */
     private static final List<String> ESCALATION_POLICIES =

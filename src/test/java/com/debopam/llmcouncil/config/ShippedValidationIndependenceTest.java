@@ -41,10 +41,6 @@ class ShippedValidationIndependenceTest {
             // for local-mistral, and VALIDATE runs alone after SYNTHESIZE.
             "local-balanced,    INDEPENDENT",
             "local-rigorous,    INDEPENDENT",
-            // Hybrid has Ollama in play already, so a local validator against a
-            // GPT-family chair is both independent and the cheaper option.
-            "hybrid-balanced,   INDEPENDENT",
-            "hybrid-rigorous,   INDEPENDENT",
             "multi-cloud-balanced, INDEPENDENT",
             "multi-cloud-rigorous, INDEPENDENT",
             // Single-provider profiles cannot reach INDEPENDENT. Flash validating
@@ -52,14 +48,13 @@ class ShippedValidationIndependenceTest {
             // without leaving the provider.
             "gemini-balanced,   CORRELATED",
             "gemini-rigorous,   CORRELATED",
-            // OCA_LLM_REVIEW_MODEL now defaults to a different model from
-            // OCA_LLM_MODEL — they were both gpt-5.4, a model that does not
-            // exist, which made chair and validator literally the same call.
-            // They remain CORRELATED because they still share a model family;
-            // an operator reaches INDEPENDENT by pointing the review model at
-            // another provider.
-            "oci-balanced,      CORRELATED",
-            "oci-rigorous,      CORRELATED"
+            // OpenAI and Claude use distinct provider model IDs for member,
+            // chair, and validator duties, but remain correlated within their
+            // provider/model family. Use multi-cloud for provider independence.
+            "openai-balanced,   CORRELATED",
+            "openai-rigorous,   CORRELATED",
+            "claude-balanced,   CORRELATED",
+            "claude-rigorous,   CORRELATED"
     })
     void shippedPolicyHasExpectedValidationIndependence(String policyId, ValidationIndependence expected) {
         assertEquals(expected, tiersByPolicyId().get(policyId),
@@ -82,14 +77,40 @@ class ShippedValidationIndependenceTest {
     }
 
     @Test
+    void noRealPolicySeatsItsChairAsAMember() {
+        List<String> conflictedPolicies = catalogService.catalog(Set.of("policies"), true)
+                .policies().stream()
+                .filter(policy -> !TEST_FIXTURE_POLICIES.contains(policy.id()))
+                .filter(policy -> policy.memberModelIds().contains(policy.chairModelId()))
+                .map(CatalogResponse.PolicySummary::id)
+                .toList();
+
+        assertTrue(conflictedPolicies.isEmpty(),
+                   "these shipped policies seat their chair as a member: " + conflictedPolicies);
+    }
+
+    @Test
     void quickPoliciesDeclareNoValidatorRatherThanAWeakOne() {
         // QUICK deliberately skips validation. Declaring no validator is honest;
         // naming the chair would manufacture a validation claim from nothing.
         Map<String, ValidationIndependence> tiers = tiersByPolicyId();
 
         assertEquals(ValidationIndependence.NOT_APPLICABLE, tiers.get("local-quick"));
-        assertEquals(ValidationIndependence.NOT_APPLICABLE, tiers.get("oci-quick"));
+        assertEquals(ValidationIndependence.NOT_APPLICABLE, tiers.get("openai-quick"));
+        assertEquals(ValidationIndependence.NOT_APPLICABLE, tiers.get("claude-quick"));
         assertEquals(ValidationIndependence.NOT_APPLICABLE, tiers.get("gemini-quick"));
+        assertEquals(ValidationIndependence.NOT_APPLICABLE, tiers.get("multi-cloud-quick"));
+    }
+
+    @Test
+    void publicProfilesContainOnlySupportedProviderChoices() {
+        Set<String> profileIds = catalogService.catalog(Set.of("profiles"), false)
+                                               .profiles().stream()
+                                               .map(CatalogResponse.ProfileSummary::id)
+                                               .collect(Collectors.toSet());
+
+        assertEquals(Set.of("default", "local", "openai", "claude", "gemini", "multi-cloud"),
+                     profileIds);
     }
 
     private Map<String, ValidationIndependence> tiersByPolicyId() {
