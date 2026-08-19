@@ -9,7 +9,10 @@ files = Dir[root.join("{README.md,docs/**/*.md}")].sort
 failures = []
 
 files.each do |path|
-  text = File.read(path)
+  # Pin the encoding: File.read decodes using the locale's external encoding, so
+  # under LC_CTYPE=C the repository's non-ASCII prose raises "invalid byte
+  # sequence in US-ASCII" before a single link is checked.
+  text = File.read(path, encoding: "UTF-8")
   text.scan(/!?\[[^\]]*\]\(([^)]+)\)/).flatten.each do |raw_target|
     target = raw_target.strip
     target = target[1...target.index(">")].to_s if target.start_with?("<")
