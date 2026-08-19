@@ -709,7 +709,14 @@ What it does:
 2. Sends only original question/context and final answer.
 3. Does not send the full council transcript.
 4. Parses structured JSON validation.
-5. Fails the session if validation is required and rejected.
+5. Recomputes the effective verdict deterministically: approval is overridden when
+   a required criterion is missing/malformed, any criterion fails, or the model
+   requires human review.
+6. Fails the session when validation is required and the effective verdict rejects.
+
+This is model-based validation, not external fact-checking. “Human review
+required” means the model validator could not establish a material claim from the
+available evidence; the application must not present that uncertainty as approval.
 
 Expected validation shape:
 
@@ -720,8 +727,11 @@ Expected validation shape:
   "issues": [],
   "recommendedFixes": [],
   "criteria": {
-    "correctness": "pass",
-    "completeness": "pass"
+    "correctness": "pass: independently checked",
+    "completeness": "pass: covers the request",
+    "uncertainty": "pass: limitations are disclosed",
+    "safety": "pass: no material safety issue",
+    "actionability": "pass: recommendations are usable"
   },
   "requiresHumanReview": false
 }
@@ -1079,8 +1089,9 @@ Add a stage:
   executor's global concurrency permit.
 - Chat renders a cancelled turn as failed; the persisted council result still
   correctly reports `CANCELLED`.
-- Repair calls for wholly unparseable validation/advisor output, model-call
-  metrics, browser E2E, and repeatable cloud-provider contract tests remain open; see
+- Repair calls for wholly unparseable validation/advisor output, complete
+  operational dashboards/alerts, browser E2E, and repeatable cloud-provider
+  contract tests remain open; see
   [production-readiness-plan.md](production-readiness-plan.md).
 
 These are deliberate next steps, not reasons to reintroduce user-selected protocol IDs or silent mock fallback.

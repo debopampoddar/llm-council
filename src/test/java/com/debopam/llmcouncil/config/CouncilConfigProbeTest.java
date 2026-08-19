@@ -3,6 +3,7 @@ package com.debopam.llmcouncil.config;
 import com.debopam.llmcouncil.model.OllamaDirectModelClient;
 import com.debopam.llmcouncil.model.UnavailableModelClient;
 import com.debopam.llmcouncil.orchestration.ProtocolDefinitionRegistry;
+import com.debopam.llmcouncil.observability.CouncilMetrics;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -33,6 +34,7 @@ class CouncilConfigProbeTest {
         return new CouncilConfig(properties, new ProtocolDefinitionRegistry(),
                 new CouncilConfigurationValidator(4096),
                 "http://127.0.0.1:11434", 4096, 0, "1m",
-                "unused-development-placeholder", "unused-development-placeholder", "");
+                "unused-development-placeholder", "unused-development-placeholder", "",
+                CouncilMetrics.noop());
     }
 }

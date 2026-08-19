@@ -72,4 +72,17 @@ class TrustSignalProvenanceTest {
         assertTrue(integrity > 0 && prose > 0 && integrity < prose,
                    "weakened checks must render before the answer prose");
     }
+
+    @Test
+    void validatorConfidenceAndIndependenceAreNotPresentedAsExternalFactChecking() throws IOException {
+        String trust = Files.readString(TRUST, StandardCharsets.UTF_8);
+        String artifacts = Files.readString(
+                Path.of("src/main/resources/static/js/artifacts.js"), StandardCharsets.UTF_8);
+
+        assertTrue(trust.contains("validator confidence"));
+        assertTrue(trust.contains("validator independent of chair"));
+        assertTrue(trust.contains("validator correlated with chair"));
+        assertTrue(trust.contains("chair self-validation"));
+        assertTrue(artifacts.contains("not external fact-checking or human review"));
+    }
 }

@@ -6,10 +6,13 @@ import com.debopam.llmcouncil.config.CouncilCatalog;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.model.CouncilPolicy;
 import com.debopam.llmcouncil.model.CouncilProfile;
+import com.debopam.llmcouncil.observability.CouncilMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -29,15 +32,26 @@ public class ProtocolOrchestrator {
     private final StageExecutorRegistry executorRegistry;
     private final EventPublisher events;
     private final RunRegistry runRegistry;
+    private final CouncilMetrics metrics;
 
     public ProtocolOrchestrator(ProtocolDefinitionRegistry protocolRegistry,
                                 StageExecutorRegistry executorRegistry,
                                 EventPublisher events,
                                 RunRegistry runRegistry) {
+        this(protocolRegistry, executorRegistry, events, runRegistry, CouncilMetrics.noop());
+    }
+
+    @Autowired
+    public ProtocolOrchestrator(ProtocolDefinitionRegistry protocolRegistry,
+                                StageExecutorRegistry executorRegistry,
+                                EventPublisher events,
+                                RunRegistry runRegistry,
+                                CouncilMetrics metrics) {
         this.protocolRegistry = protocolRegistry;
         this.executorRegistry = executorRegistry;
         this.events = events;
         this.runRegistry = runRegistry;
+        this.metrics = metrics;
     }
 
     /**
@@ -113,15 +127,24 @@ public class ProtocolOrchestrator {
                 ProtocolStageOptions options = protocol.optionsFor(stageType);
                 events.publish(session.id(), stageType.name(), "STAGE_STARTED", null,
                                Map.of("stageIndex", i));
+                long stageStarted = System.nanoTime();
+                int degradationCount = context.degradationReasons().size();
                 try {
                     context = executorRegistry.get(stageType).execute(context, options);
                     events.publish(session.id(), stageType.name(), "STAGE_COMPLETED", null, Map.of());
+                    String outcome = context.isTerminal() ? "failed"
+                                   : context.degradationReasons().size() > degradationCount
+                                     ? "partial" : "completed";
+                    metrics.stageCompleted(stageType,
+                            Duration.ofNanos(System.nanoTime() - stageStarted), outcome);
                 } catch (Exception ex) {
                     log.error("Stage {} failed for session {}", stageType, session.id(), ex);
                     events.publish(session.id(), stageType.name(), "STAGE_FAILED", null,
                                    Map.of("errorType", ex.getClass().getSimpleName(),
                                           "message", ex.getMessage() != null ? ex.getMessage() : ""));
                     context.markFailed(stageType, ex);
+                    metrics.stageCompleted(stageType,
+                            Duration.ofNanos(System.nanoTime() - stageStarted), "failed");
                 }
             }
 

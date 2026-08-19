@@ -6,9 +6,13 @@ import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.application.CouncilService;
 import com.debopam.llmcouncil.application.EventPublisher;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
@@ -29,8 +33,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * ever starts emitting {@code STAGE_SKIPPED} for a stage that ran but did
  * nothing, this test fails and {@code timeline.js} needs updating with it.
  */
-@SpringBootTest(properties = "council.persistence.artifact-base-path=/private/tmp/llm-council-skip-test")
+@SpringBootTest
 class SkippedStageEventContractTest {
+
+    @TempDir
+    static Path tempDir;
+
+    @DynamicPropertySource
+    static void artifactPath(DynamicPropertyRegistry registry) {
+        registry.add("council.persistence.artifact-base-path",
+                () -> tempDir.resolve("artifacts").toString());
+    }
 
     @Autowired
     private CouncilService councilService;

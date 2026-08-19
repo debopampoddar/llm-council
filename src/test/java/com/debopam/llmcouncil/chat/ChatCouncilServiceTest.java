@@ -2,9 +2,13 @@ package com.debopam.llmcouncil.chat;
 
 import com.debopam.llmcouncil.domain.DepthMode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
+import java.nio.file.Path;
 import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -14,10 +18,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(properties = {
         "council.runtime.max-concurrent-runs=1",
-        "council.runtime.chat-recent-turn-count=2",
-        "council.persistence.artifact-base-path=/private/tmp/llm-council-chat-test"
+        "council.runtime.chat-recent-turn-count=2"
 })
 class ChatCouncilServiceTest {
+
+    @TempDir
+    static Path tempDir;
+
+    @DynamicPropertySource
+    static void artifactPath(DynamicPropertyRegistry registry) {
+        registry.add("council.persistence.artifact-base-path",
+                () -> tempDir.resolve("artifacts").toString());
+    }
 
     @Autowired
     private ChatCouncilService chatService;

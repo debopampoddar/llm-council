@@ -41,6 +41,8 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - **Confidence parsing**: free-text confidence is captured once and normalised onto 0–100, so `Confidence: 85`, `confidence: 0.85`, `.7`, and `92%` all resolve correctly. A bare `0` or `1` is refused as ambiguous rather than guessed, and anything unreadable is reported as unreadable rather than defaulted — an unreadable round is excluded from convergence and sycophancy analysis and says so in the run warnings.
 - **JSON parsing resilience**: markdown fence stripping, trailing comma tolerance, lenient Jackson configuration.
 - **Token usage tracking**: Ollama (`prompt_eval_count`/`eval_count`) and Spring AI (`getUsage()`) token extraction.
+- **Operational metrics**: cardinality-safe Micrometer counters, timers, token summaries,
+  retry counts, active-run gauge, and admission-rejection counts through Actuator.
 - **Minimum debate rounds**: prevents premature convergence from sycophantic first-round agreement.
 - **Convergence sized to the council**: debate stops early when every member's confidence moved less than `convergence-confidence-delta` points. The two-sample KS test is used only from 8 members up, where it is not quantised into uselessness — on a three-member council the statistic can only take the values 0, ⅓, ⅔ and 1.
 - **Council-composition warnings at boot**: two member ids resolving to one provider model, a chair seated as a member, or a `median`/`trimmed-mean` strategy on a council too small to aggregate.
@@ -77,7 +79,16 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Credentials are structurally outside the request and overlay contracts; credential fields and credential-shaped values are refused without being echoed.
 
 ### Testing
-- 932 deterministic JUnit tests: policy resolution, confidence parsing, quorum, multi-envelope and compact local-model review output, exact review coverage and targeted recovery, partial-state reporting, KS convergence math, sycophancy detection at the shipped thresholds, council-composition warnings, debate and post-debate evidence handling, all scoring strategies, retry and timeout logic, concurrent-run lifecycle, full protocol integration, path-containment and deletion-cascade security, durable stores against H2 and SQLite, Docker rigorous-model provisioning, the catalog, config-write/advisor/model-probe endpoints, static resource serving, cancellation, and configuration synthesis across every requirement combination.
+- 942 deterministic JUnit tests: policy resolution, confidence parsing, validation
+  evidence consistency, quorum, multi-envelope and compact local-model review output,
+  exact review coverage and targeted recovery, partial-state reporting, KS convergence
+  math, sycophancy detection at the shipped thresholds, council-composition warnings,
+  model-call/telemetry behavior, debate and post-debate evidence handling, all scoring
+  strategies, retry and timeout logic, concurrent-run lifecycle, full protocol
+  integration, path-containment and deletion-cascade security, durable stores against
+  H2 and SQLite, Docker rigorous-model provisioning, the catalog,
+  config-write/advisor/model-probe endpoints, static resource serving, cancellation,
+  and configuration synthesis across every requirement combination.
 - Pull requests and pushes to `main` run a clean Java 25 Maven build plus YAML, local Markdown-link, and removed-provider regression checks in `.github/workflows/ci.yml`.
 
 ## Runtime Requirements
@@ -130,6 +141,24 @@ Configure runtime model providers with their own environment variables. Local Ol
 
 `application.yml` supplies harmless placeholder keys for eager Spring AI auto-configuration so local/mock profiles can boot without OpenAI or Anthropic credentials. Those placeholders are not valid for runtime model calls. OpenAI and Claude runs require their respective real API keys.
 
+## Operational Metrics
+
+Actuator exposes the bounded metrics catalog at `GET /actuator/metrics`. Useful
+meters include:
+
+- `llm.council.model.calls` and `llm.council.model.duration`, tagged by configured
+  model, provider, stage, outcome, and stable failure category;
+- `llm.council.model.tokens`, split into input/output directions when the provider
+  reports usage;
+- `llm.council.model.retries`;
+- `llm.council.stage.duration`;
+- `llm.council.runs.active` and `llm.council.runs.rejected`.
+
+For example, inspect `GET /actuator/metrics/llm.council.model.calls` after a run.
+Metrics never tag session IDs, prompts, responses, or exception messages. These
+meters are the minimum operational baseline; dashboards, alerts, storage-failure,
+cancellation, and synchronous-endpoint admission metrics remain future work.
+
 ## Profiles And Depth Modes
 
 Public callers choose:
@@ -163,6 +192,13 @@ GENERATE → ANONYMIZE → REVIEW → SCORE → DEBATE → REVISE → REVIEW_POS
 ```
 
 The `REVISE` stage lets each model incorporate debate arguments into a revised draft. The `REVIEW_POST_DEBATE` stage asks reviewers to re-evaluate with debate context, so the second `SCORE` pass operates on genuinely updated evidence. Debate is evidence-triggered by default: if reviewer disagreement is measurable but below the configured threshold, `DEBATE`, `REVISE`, post-debate review, and the second score pass are explicitly skipped. Derive a user protocol from `rigorous` with `DEBATE.force-run: true` when a demonstration must execute every stage.
+
+Fresh Eyes validation is a model assessment, not external fact-checking. The
+validator is instructed to recompute material numerical claims and flag claims it
+cannot establish. An `approved: true` response is overridden when a required
+criterion is missing/invalid, any criterion fails, or `requiresHumanReview` is
+true. The UI labels validator confidence and whether the validator is independent
+of, correlated with, or identical to the chair.
 
 If `DEBATE` does not trigger, `REVISE`, `REVIEW_POST_DEBATE`, and the second
 `SCORE` pass are explicitly skipped. The initial score remains authoritative;

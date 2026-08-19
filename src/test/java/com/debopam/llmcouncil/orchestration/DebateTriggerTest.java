@@ -7,9 +7,13 @@ import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.DepthMode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,9 +36,17 @@ import static org.junit.jupiter.api.Assertions.*;
  * cannot measure disagreement must say so rather than report the same quiet
  * "below threshold" as a council that measured and found none.
  */
-@SpringBootTest(properties =
-        "council.persistence.artifact-base-path=/private/tmp/llm-council-debate-trigger-test")
+@SpringBootTest
 class DebateTriggerTest {
+
+    @TempDir
+    static Path tempDir;
+
+    @DynamicPropertySource
+    static void artifactPath(DynamicPropertyRegistry registry) {
+        registry.add("council.persistence.artifact-base-path",
+                () -> tempDir.resolve("artifacts").toString());
+    }
 
     @Autowired
     private CouncilService councilService;

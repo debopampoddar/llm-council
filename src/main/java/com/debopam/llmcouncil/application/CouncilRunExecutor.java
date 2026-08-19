@@ -3,10 +3,12 @@ package com.debopam.llmcouncil.application;
 import com.debopam.llmcouncil.config.CouncilCatalogHolder;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.orchestration.CouncilContext;
+import com.debopam.llmcouncil.observability.CouncilMetrics;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,6 +37,7 @@ public class CouncilRunExecutor {
     // an entry before submit() has stored it and a stale handle remains forever.
     private final Map<String, Boolean> inFlight = new ConcurrentHashMap<>();
     private final ExecutorService executor;
+    private final CouncilMetrics metrics;
 
     /**
      * @param councilService runs the protocol for a submitted session
@@ -43,28 +46,41 @@ public class CouncilRunExecutor {
      */
     public CouncilRunExecutor(CouncilService councilService,
                               CouncilCatalogHolder catalogHolder) {
+        this(councilService, catalogHolder, CouncilMetrics.noop());
+    }
+
+    @Autowired
+    public CouncilRunExecutor(CouncilService councilService,
+                              CouncilCatalogHolder catalogHolder,
+                              CouncilMetrics metrics) {
         int maxConcurrentRuns = catalogHolder.get().runtime().maxConcurrentRuns();
         this.councilService = councilService;
         this.runPermits = new Semaphore(Math.max(1, maxConcurrentRuns));
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
+        this.metrics = metrics;
     }
 
     public CouncilRunSubmission submit(String sessionId, Consumer<CouncilRunCompletion> onCompletion) {
         if (!runPermits.tryAcquire()) {
+            metrics.runRejected("capacity");
             return CouncilRunSubmission.rejected(
                     sessionId,
                     "Too many council runs are already active. Try again after the current run completes.");
         }
         if (inFlight.putIfAbsent(sessionId, Boolean.TRUE) != null) {
             runPermits.release();
+            metrics.runRejected("duplicate");
             return CouncilRunSubmission.rejected(sessionId, "This council session is already running.");
         }
 
         try {
+            metrics.runAccepted();
             executor.execute(() -> execute(sessionId, onCompletion));
         } catch (RejectedExecutionException ex) {
             inFlight.remove(sessionId);
             runPermits.release();
+            metrics.runFinished();
+            metrics.runRejected("shutting_down");
             return CouncilRunSubmission.rejected(sessionId, "The council run executor is shutting down.");
         }
 
@@ -96,6 +112,7 @@ public class CouncilRunExecutor {
         } finally {
             inFlight.remove(sessionId);
             runPermits.release();
+            metrics.runFinished();
         }
     }
 
