@@ -108,7 +108,7 @@ function renderValidation(validation) {
       validation.requiresHumanReview ? pill("warn", "human review required") : null,
     ]),
     criteria.length ? table(["Criterion", "Verdict"], criteria) : null,
-    el("p.caption", { text: `Validator: ${validation.validatorId}. Whether that is independent of the chair is shown on the trust strip above.` }),
+    el("p.caption", { text: `Model validator: ${validation.validatorId}. This is a model assessment, not external fact-checking or human review. Its independence from the chair is shown on the trust strip above.` }),
   ]);
 }
 

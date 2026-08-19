@@ -68,21 +68,16 @@ public class ValidateStageExecutor implements StageExecutor {
         artifactStore.writeText(ctx.session().id(), "raw/validation-" + validatorId + ".json", result.text());
 
         StructuredOutputParser.ValidationEnvelope parsed = parser.parseValidation(result.text());
-        ValidationArtifact artifact = new ValidationArtifact(
-                validatorId,
-                parsed.approved(),
-                parsed.confidence(),
-                parsed.issues() == null ? List.of() : parsed.issues(),
-                parsed.recommendedFixes() == null ? List.of() : parsed.recommendedFixes(),
-                parsed.criteria() == null ? Map.of() : parsed.criteria(),
-                parsed.requiresHumanReview(),
-                result.text());
+        ValidationArtifact artifact = ValidationEvidence.normalize(validatorId, parsed, result.text());
         ctx.setValidation(artifact);
         artifactStore.writeJson(ctx.session().id(), "final/validation.json", artifact);
 
         boolean valid = artifact.approved();
         if (!valid && ctx.policy().validationRequired()) {
-            ctx.markFailed(stage(), new IllegalStateException("Fresh Eyes validation rejected the answer"));
+            String reason = artifact.requiresHumanReview()
+                    ? "Model validation could not establish material correctness; human review is required"
+                    : "Fresh Eyes validation rejected the answer";
+            ctx.markFailed(stage(), new IllegalStateException(reason));
         }
         events.publish(ctx.session().id(), stage().name(),
                        valid ? "VALIDATION_PASSED" : "VALIDATION_FAILED",

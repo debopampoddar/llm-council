@@ -3,7 +3,10 @@ package com.debopam.llmcouncil.model;
 import com.debopam.llmcouncil.orchestration.StageType;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.retry.TransientAiException;
 
 import java.time.Duration;
@@ -79,6 +82,22 @@ class ModelClientResilienceTest {
 
         assertEquals(ModelFailureCategory.MODEL_TIMEOUT, failure.category());
         assertTrue(elapsedMillis < 1_000, "configured timeout was ignored; elapsed=" + elapsedMillis);
+    }
+
+    @Test
+    void springAiAdapterMakesOneProviderCallPerLogicalRequest() {
+        AtomicInteger calls = new AtomicInteger();
+        ChatModel counting = prompt -> {
+            calls.incrementAndGet();
+            return new ChatResponse(List.of(new Generation(new AssistantMessage("one response"))));
+        };
+        SpringAiModelClient client = new SpringAiModelClient(
+                "counting", ChatClient.create(counting));
+
+        ModelCallResult result = client.call(request(Duration.ofSeconds(1)));
+
+        assertEquals("one response", result.text());
+        assertEquals(1, calls.get(), "one logical request must make exactly one provider call");
     }
 
     @Test

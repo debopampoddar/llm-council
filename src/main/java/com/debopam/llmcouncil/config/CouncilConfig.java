@@ -8,10 +8,12 @@ import com.debopam.llmcouncil.model.MockModelClient;
 import com.debopam.llmcouncil.model.ModelClient;
 import com.debopam.llmcouncil.model.ModelProfile;
 import com.debopam.llmcouncil.model.ModelRegistry;
+import com.debopam.llmcouncil.model.MeteredModelClient;
 import com.debopam.llmcouncil.model.OllamaDirectModelClient;
 import com.debopam.llmcouncil.model.RetryableModelClient;
 import com.debopam.llmcouncil.model.SpringAiModelClient;
 import com.debopam.llmcouncil.model.UnavailableModelClient;
+import com.debopam.llmcouncil.observability.CouncilMetrics;
 import com.debopam.llmcouncil.config.user.CatalogMerger;
 import com.debopam.llmcouncil.config.user.UserConfigDocument;
 import com.debopam.llmcouncil.config.user.UserConfigLoader;
@@ -88,6 +90,7 @@ public class CouncilConfig {
     private final String openAiApiKey;
     private final String anthropicApiKey;
     private final String geminiProjectId;
+    private final CouncilMetrics metrics;
 
     // ── Provider ChatModel beans — injected optionally by Spring AI auto-config.
     // Each starter creates its bean when on the classpath; we only USE the bean
@@ -105,7 +108,8 @@ public class CouncilConfig {
                          @Value("${spring.ai.ollama.chat.options.keep_alive:10m}") String ollamaKeepAlive,
                          @Value("${spring.ai.openai.api-key:}") String openAiApiKey,
                          @Value("${spring.ai.anthropic.api-key:}") String anthropicApiKey,
-                         @Value("${spring.ai.vertex.ai.gemini.project-id:}") String geminiProjectId) {
+                         @Value("${spring.ai.vertex.ai.gemini.project-id:}") String geminiProjectId,
+                         CouncilMetrics metrics) {
         this.props = props;
         this.protocolRegistry = protocolRegistry;
         this.configurationValidator = configurationValidator;
@@ -116,6 +120,7 @@ public class CouncilConfig {
         this.openAiApiKey = openAiApiKey;
         this.anthropicApiKey = anthropicApiKey;
         this.geminiProjectId = geminiProjectId;
+        this.metrics = metrics;
     }
 
     /**
@@ -430,9 +435,15 @@ public class CouncilConfig {
         // its actual daemon/model availability is reported by health checks.
         ModelClient raw = buildRawProviderClient(mp, true);
 
+        if (raw instanceof MockModelClient || raw instanceof UnavailableModelClient) {
+            return raw;
+        }
+
+        ModelClient metered = new MeteredModelClient(raw, metrics, mp.getProvider());
+
         // Wrap with retry logic unless the client is a mock or unavailable
         // fallback (retrying those would be pointless).
-        return wrapWithRetry(raw, mp);
+        return wrapWithRetry(metered, mp);
     }
 
     /**
@@ -506,7 +517,7 @@ public class CouncilConfig {
         Duration baseDelay = Duration.ofMillis(mp.getRetryBaseDelayMs());
         log.debug("Wrapping model {} with RetryableModelClient (maxRetries={}, baseDelay={}ms)",
                   mp.getId(), maxRetries, baseDelay.toMillis());
-        return new RetryableModelClient(client, maxRetries, baseDelay);
+        return new RetryableModelClient(client, maxRetries, baseDelay, metrics);
     }
 
     private ModelClient fallbackClient(CouncilProperties.ModelProps mp, String reason) {

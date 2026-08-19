@@ -43,12 +43,12 @@ led to the current system. It is retained as historical reference.
 | 3. Provider factory cleanup | Still open; current wiring remains centralized |
 | 4. Retry/timeout/circuit breaker | Retry and timeout implemented; circuit breaker open |
 | 5. Configuration validation | Implemented and expanded |
-| 6. Observability | Partial: events, artifacts, usage, health, Actuator; dedicated metrics open |
+| 6. Observability | Partial: minimum cardinality-safe model/stage/admission metrics implemented; dashboards and remaining failure-path meters open |
 | 7. Runtime controls | Partial: async permit, cancellation, bounded retention; durable queue/distributed admission open |
 | 8. SSE | Implemented with durable cursor replay when JDBC is selected |
 | 9. Prompt/security boundary | Prompt boundaries implemented; API authentication/ownership open |
 | 10. Quality/calibration | Partially implemented; production policy quality and empirical calibration remain open |
-| 11. Tests | 932 deterministic tests plus PR CI; browser/load/fault and repeatable cloud-provider suites open |
+| 11. Tests | 942 deterministic tests plus PR CI; browser/load/fault and repeatable cloud-provider suites open |
 | 12. Chat API | Implemented, including optional durability, cancellation, cursor replay, and deletion cascade |
 
 ## Original implementation order (historical)
@@ -1071,6 +1071,15 @@ Add tests for:
 ---
 
 ## 6. Observability
+
+> **As-built update (2026-08-18):** The current implementation uses
+> `CouncilMetrics` and `MeteredModelClient` to record each physical provider
+> attempt, model/stage duration, reported tokens, retries, active async runs, and
+> rejected async submissions. The code sketch below is historical design context;
+> use the source as the contract. Session IDs and user/model text are deliberately
+> excluded from tags. Remaining work is dashboards/alerts and the additional
+> storage, cancellation, quorum, prompt-truncation, and synchronous-admission
+> signals listed in the production-readiness plan.
 
 ### Reason
 
@@ -2521,7 +2530,12 @@ public SseEmitter events(@PathVariable String chatId,
 Production note: event IDs need a stable ordering guarantee. A database sequence
 or monotonic `(occurred_at, id)` ordering is better than relying on UUID order.
 
-## Remaining Work Package D: Metrics And Run Observability
+## Remaining Work Package D: Complete Metrics And Run Observability
+
+The minimum model/stage/admission metric layer is implemented. This package now
+means completing the remaining run/chat/SSE and persistence signals and adding
+operational dashboards; the following code shape is historical rather than a
+drop-in replacement for the current `CouncilMetrics` implementation.
 
 ### Reason
 

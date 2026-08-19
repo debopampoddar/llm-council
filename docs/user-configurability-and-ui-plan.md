@@ -11,7 +11,7 @@ and current production-readiness plan
 > browser UI, Advisor, and an advanced YAML configuration workbench all exist.
 > Phase 2B resume/re-run and Phase 4 hot reload remain unimplemented. The
 > original four-tab form design from 3B was replaced by the schema-informed YAML
-> workbench rather than built literally. The current baseline has 932
+> workbench rather than built literally. The current baseline has 942
 > deterministic tests.
 > Current production priorities are in
 > [production-readiness-plan.md](production-readiness-plan.md).

@@ -123,7 +123,7 @@ function summarise(row) {
   const validation = find("VALIDATION_PASSED") || find("VALIDATION_FAILED");
   if (validation) {
     const verdict = validation.type === "VALIDATION_PASSED" ? "approved" : "rejected";
-    return `${verdict} · confidence ${validation.payload.confidence}`;
+    return `${verdict} · validator confidence ${validation.payload.confidence}`;
   }
   const synthesis = find("SYNTHESIS_COMPLETED");
   if (synthesis) return `${synthesis.payload.chars} characters synthesised`;

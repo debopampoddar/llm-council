@@ -1,5 +1,6 @@
 package com.debopam.llmcouncil.model;
 
+import com.debopam.llmcouncil.observability.CouncilMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,6 +52,7 @@ public class RetryableModelClient implements ModelClient {
     private final ModelClient delegate;
     private final int maxRetries;
     private final Duration baseDelay;
+    private final CouncilMetrics metrics;
 
     /**
      * Wraps the given client with retry logic.
@@ -63,6 +65,11 @@ public class RetryableModelClient implements ModelClient {
      *                                  {@code baseDelay} is null/negative
      */
     public RetryableModelClient(ModelClient delegate, int maxRetries, Duration baseDelay) {
+        this(delegate, maxRetries, baseDelay, CouncilMetrics.noop());
+    }
+
+    public RetryableModelClient(ModelClient delegate, int maxRetries, Duration baseDelay,
+                                CouncilMetrics metrics) {
         if (maxRetries < 0) {
             throw new IllegalArgumentException("maxRetries must be >= 0, got: " + maxRetries);
         }
@@ -72,6 +79,7 @@ public class RetryableModelClient implements ModelClient {
         this.delegate = delegate;
         this.maxRetries = maxRetries;
         this.baseDelay = baseDelay;
+        this.metrics = metrics;
     }
 
     /**
@@ -103,6 +111,7 @@ public class RetryableModelClient implements ModelClient {
 
                 // If we have retries left, back off and try again.
                 if (attempt < maxRetries) {
+                    metrics.retry(request, ex.category());
                     long delayMs = computeBackoffMs(attempt);
                     log.warn("Transient failure for model {} (attempt {}/{}): {}. "
                              + "Retrying in {} ms…",

@@ -98,7 +98,7 @@ Expected result:
 
 ```text
 BUILD SUCCESS
-Tests run: 932, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 942, Failures: 0, Errors: 0, Skipped: 0
 ```
 
 If Java 25 is not available on the Intel machine, rely on the Docker build path:

@@ -67,14 +67,14 @@ public class SpringAiModelClient implements ModelClient {
             // ChatClient#call() only builds a response spec; the provider call
             // is triggered by content()/chatResponse(). Keep the terminal
             // operations inside the timed task or the timeout is illusory.
-            FutureTask<SpringAiResponse> call = new FutureTask<>(() -> {
-                ChatClient.CallResponseSpec responseSpec = requestSpec.call();
-                String content = responseSpec.content();
-                ChatResponse response = responseSpec.chatResponse();
-                return new SpringAiResponse(content, response);
-            });
+            // A CallResponseSpec terminal operation performs the provider call.
+            // Calling content() and then chatResponse() therefore sends the same
+            // logical request twice on Spring AI providers. Fetch the structured
+            // response once and derive both content and usage from that object.
+            FutureTask<ChatResponse> call = new FutureTask<>(
+                    () -> requestSpec.call().chatResponse());
             Thread.startVirtualThread(call);
-            SpringAiResponse chatResponse;
+            ChatResponse chatResponse;
             try {
                 Duration timeout = request.timeout();
                 if (timeout == null) {
@@ -93,7 +93,10 @@ public class SpringAiModelClient implements ModelClient {
                 }
                 throw ex;
             }
-            String response = chatResponse.content();
+            String response = chatResponse == null || chatResponse.getResult() == null
+                    || chatResponse.getResult().getOutput() == null
+                    ? ""
+                    : chatResponse.getResult().getOutput().getText();
 
             // Extract token usage from Spring AI metadata if available.
             // Token tracking is best-effort; not all providers report usage.
@@ -102,7 +105,7 @@ public class SpringAiModelClient implements ModelClient {
             Long promptTokens = null;
             Long completionTokens = null;
             try {
-                var result = chatResponse.response();
+                var result = chatResponse;
                 if (result != null && result.getMetadata() != null
                         && result.getMetadata().getUsage() != null) {
                     var usage = result.getMetadata().getUsage();
@@ -130,9 +133,6 @@ public class SpringAiModelClient implements ModelClient {
                     + rootCauseMessage(ex),
                     ex);
         }
-    }
-
-    private record SpringAiResponse(String content, ChatResponse response) {
     }
 
     private String rootCauseMessage(Throwable throwable) {

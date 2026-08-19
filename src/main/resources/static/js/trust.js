@@ -24,10 +24,10 @@ import { el, pill } from "./dom.js";
 import { renderInline } from "./markdown.js";
 
 const INDEPENDENCE = {
-  INDEPENDENT: ["ok", "independent validator"],
-  CORRELATED: ["warn", "correlated validator"],
-  SELF_VALIDATION: ["qual", "self-validated"],
-  NOT_APPLICABLE: ["mute", "no validation"],
+  INDEPENDENT: ["ok", "validator independent of chair"],
+  CORRELATED: ["warn", "validator correlated with chair"],
+  SELF_VALIDATION: ["qual", "chair self-validation"],
+  NOT_APPLICABLE: ["mute", "no model validation"],
 };
 
 /**
@@ -51,7 +51,7 @@ function confidenceUnit(result) {
 
   const confidence = result.validation.confidence;
   return el(`span.conf-unit.tier-${tone}`, {}, [
-    el("span.v", { text: `${confidence == null ? "—" : Number(confidence).toFixed(2)} confidence` }),
+    el("span.v", { text: `${confidence == null ? "—" : Number(confidence).toFixed(2)} validator confidence` }),
     el("span.q", { text: label }),
   ]);
 }

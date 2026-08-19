@@ -25,7 +25,7 @@ Indicative assessment after fixes:
 | Configuration safety | 8/10 | Unusually thorough validation and warnings. Some shipped policies knowingly fall below the quality bar the warnings describe. |
 | User experience | 7/10 | Useful preflight, SSE timeline, trust signals, setup advisor, retry/cancel, and now honest send/delete behavior. Error contracts and cancellation presentation need cleanup. |
 | Persistence/privacy | 7/10 | JDBC session/event persistence, filesystem artifacts, retention, path containment, durable result artifacts, and deletion cascade exist. No encryption or user-level access control. |
-| Test confidence | 8/10 | 932 passing deterministic tests plus two live three-model Ollama runs. Browser E2E, load, fault-injection, and repeatable cloud-provider suites remain open. |
+| Test confidence | 8/10 | 942 passing deterministic tests plus two live three-model Ollama runs. Browser E2E, load, fault-injection, and repeatable cloud-provider suites remain open. |
 
 ## Review method
 
@@ -42,7 +42,7 @@ Verification performed:
 
 ```text
 JAVA_HOME=<JDK 25> mvn clean test
-Tests run: 932, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 942, Failures: 0, Errors: 0, Skipped: 0
 Total time: 12.172 s
 Ruby YAML parse: application.yml and all three Compose files valid
 Markdown relative-link scan: 9 files checked, 0 missing targets
@@ -214,7 +214,63 @@ Files: `StructuredOutputParser`, `ReviewEvidence`, `ReviewStageExecutor`,
 `ProtocolOrchestrator`, `CouncilService`, `CouncilRunResponse`,
 `ChatCouncilService`, `static/js/timeline.js`, and `static/css/app.css`.
 
-Implementation status: **all 18 concrete must-have defects in this report are
+### 19. Spring AI made two provider calls for one logical request
+
+The adapter read both `content()` and `chatResponse()` from the same Spring AI
+response specification. Both are terminal operations, so cloud-backed requests
+could execute twice, doubling cost and allowing the stored text and usage metadata
+to describe different generations. The adapter now performs exactly one terminal
+`chatResponse()` call inside the timeout boundary and derives text and usage from
+that single response. A counting fake-provider regression test pins one physical
+call per logical request.
+
+File: `SpringAiModelClient`, `ModelClientResilienceTest`.
+
+### 20. Spring integration tests used macOS-only artifact paths
+
+Several tests wrote artifacts under `/private/tmp`. GitHub's Linux runners do not
+provide that macOS path consistently, so otherwise-correct Spring contexts failed
+in CI. Each affected test now receives a JUnit `@TempDir` and publishes its resolved
+artifact root through `@DynamicPropertySource`. No test shares or assumes a
+platform-specific filesystem location.
+
+Files: seven Spring API/chat/protocol integration tests.
+
+### 21. Performance telemetry was insufficient
+
+Actuator existed, but there was no direct way to distinguish provider latency,
+retries, categorized model failures, slow protocol stages, token volume, or async
+admission pressure. The minimum Micrometer layer now records every physical model
+attempt, stage duration, reported input/output tokens, retries, active async runs,
+and rejected submissions. Tags are restricted to configured model/provider values,
+stage/outcome enums, and stable failure/rejection categories; user content and
+request identifiers are never tags.
+
+Files: `CouncilMetrics`, `MeteredModelClient`, `RetryableModelClient`,
+`ProtocolOrchestrator`, `CouncilRunExecutor`, `CouncilConfig`.
+
+Qualification: dashboards/alerts and meters for storage failure, cancellation,
+quorum loss, prompt truncation, and synchronous-run admission remain open. The
+synchronous endpoint's admission-control gap is still a should-have item for the
+current loopback personal-use scope and becomes mandatory before concurrent/shared
+deployment.
+
+### 22. Model validation could contradict its own evidence and still approve
+
+The validator's boolean was previously trusted even when a criterion failed,
+required criteria were absent/malformed, or the validator said human review was
+required. Validation now instructs the model to independently reason through the
+task, recompute material arithmetic, apply a threat model to security advice, and
+escalate material claims it cannot establish. Deterministic normalization overrides
+approval on any failed/missing/invalid criterion or human-review requirement.
+Warnings remain non-blocking. The UI now calls the number “validator confidence,”
+states that validation is a model assessment rather than external fact-checking,
+and explains independence relative to the chair.
+
+Files: `PromptBuilder`, `ValidationEvidence`, `ValidateStageExecutor`,
+`trust.js`, `artifacts.js`, `timeline.js`.
+
+Implementation status: **all 22 concrete must-have defects in this report are
 CLOSED in the reviewed worktree.** The next section contains conditional release
 gates that remain OPEN for shared/public deployment; they are not descriptions
 of unfixed items above.
@@ -280,7 +336,7 @@ failure sanitization, acknowledgement, strict parsing, credential refusal,
 throttling, the negative `System.nanoTime` origin edge case, and the guarantee
 that global mock fallback cannot fabricate a successful probe.
 
-The post-implementation verification is 932 tests with zero failures,
+The post-implementation verification is 942 tests with zero failures,
 errors, or skips on the reviewed machine.
 
 ### Live local verification after the review-output fix

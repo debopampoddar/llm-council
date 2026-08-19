@@ -30,7 +30,7 @@ The application already provides:
   catalog preview, atomic save, export, and a bounded live model probe;
 - pull-request CI for the clean Java 25 build and repository documentation/
   configuration checks;
-- 932 deterministic JUnit tests in the current baseline.
+- 942 deterministic JUnit tests in the current baseline.
 
 This is a capable local/personal application. It is not ready for untrusted or
 shared network deployment.
@@ -47,7 +47,7 @@ shared network deployment.
 | SSE recovery | Implemented | A shared per-chat sequence supports `Last-Event-ID` and query cursor replay. Live fan-out remains process-local. |
 | Cancellation | Implemented at orchestration boundaries | Provider work may continue briefly if its transport ignores interruption. Chat currently presents cancellation as failure. |
 | Concurrency control | Partial | Async chat uses a global permit and rejects saturation. The synchronous run endpoint bypasses that permit; there is no durable queue or distributed lease. |
-| Observability | Partial | Events, artifacts, usage, health, and Actuator exist. Dedicated latency/failure/queue metrics and production dashboards do not. |
+| Observability | Partial, strengthened | Events, artifacts, usage, health, and Actuator exist. Cardinality-safe physical model-call/stage latency, token, retry, active-run, and async-admission rejection metrics are implemented. Dashboards/alerts and storage, cancellation, quorum, prompt-truncation, and synchronous-admission meters remain open. |
 | API security | Not implemented | No authentication, authorization, ownership, rate limiting, or application-managed TLS. Default loopback binding is the only safe boundary. |
 | Structured output recovery | Partial | Review parsing recovers multiple envelopes, compact criteria, fractional scores, and valid siblings, enforces exact coverage, and makes one targeted call for omitted drafts. Wholly unparseable review output, validation output, and advisor output do not receive a bounded repair call. |
 | Real-provider verification | Partial | Two manual three-model Ollama runs now cover the conditional and forced full rigorous paths. The normal suite remains hermetic and there is no repeatable provider-contract Maven profile or cloud-provider gate. |
@@ -122,10 +122,12 @@ retryability and safe operator guidance without leaking credentials or prompts.
 
 ### 7. Metrics and operational limits
 
-Add Micrometer metrics for stage/model latency, retries, categorized failures,
-quorum loss, validation rejection, queue pressure, cancellation, prompt
-truncation, token usage, and artifact/storage failures. Define cardinality-safe
-tags and alert thresholds before adding dashboards.
+The minimum Micrometer layer now covers physical model-call and stage latency,
+tokens, retries, categorized provider failures, active async runs, and async
+admission rejection with cardinality-safe tags. Complete the operational set with
+quorum loss, validation rejection, cancellation, prompt truncation,
+artifact/storage failure, and synchronous-run admission metrics, then define alert
+thresholds and dashboards.
 
 ### 8. Structured-output repair
 

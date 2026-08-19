@@ -7,9 +7,13 @@ import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.application.EventPublisher;
 import com.debopam.llmcouncil.persistence.ArtifactStore;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,8 +39,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       shipped protocols.</li>
  * </ul>
  */
-@SpringBootTest(properties = "council.persistence.artifact-base-path=/private/tmp/llm-council-score-label-test")
+@SpringBootTest
 class ScorePassLabellingTest {
+
+    @TempDir
+    static Path tempDir;
+
+    @DynamicPropertySource
+    static void artifactPath(DynamicPropertyRegistry registry) {
+        registry.add("council.persistence.artifact-base-path",
+                () -> tempDir.resolve("artifacts").toString());
+    }
 
     @Autowired
     private CouncilService councilService;

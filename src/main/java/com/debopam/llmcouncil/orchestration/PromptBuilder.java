@@ -451,6 +451,24 @@ public class PromptBuilder {
                 review, debate, or synthesis. Evaluate only the final answer against
                 the original question and context.
 
+                Validate substance, not writing style:
+                1. Solve or reason through the task independently before comparing the answer.
+                2. Recompute material arithmetic and numerical conclusions. Do not accept a
+                   number merely because the answer states it confidently.
+                3. Check that factual claims are supported by the supplied context or by stable,
+                   well-established knowledge available to you. If a material claim needs live,
+                   specialist, private, or otherwise unavailable evidence, set
+                   requiresHumanReview=true and approved=false.
+                4. For security-sensitive advice, identify the assets, trust boundaries,
+                   plausible attacker actions, and failure impact before judging safety.
+                5. Use fail for a material error or unsafe omission; use warn only when the
+                   answer remains usable with a clearly disclosed limitation.
+
+                Every required criterion must begin with exactly pass, warn, or fail and then
+                give a short evidence-based reason. Set approved=true only when every criterion
+                is present, none is fail, and requiresHumanReview=false. Confidence describes
+                confidence in this assessment; it is not evidence and cannot override a failure.
+
                 Return ONLY valid JSON:
                 {
                   "approved": true|false,

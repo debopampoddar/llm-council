@@ -10,12 +10,16 @@ import com.debopam.llmcouncil.persistence.ArtifactStore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -25,11 +29,19 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties = {
-        "council.persistence.artifact-base-path=/tmp/llm-council-regenerated-tests",
         "logging.level.com.debopam.llmcouncil.application.DefaultEventPublisher=WARN"
 })
 @AutoConfigureMockMvc
 class ApiAndProtocolIntegrationTest {
+
+    @TempDir
+    static Path tempDir;
+
+    @DynamicPropertySource
+    static void artifactPath(DynamicPropertyRegistry registry) {
+        registry.add("council.persistence.artifact-base-path",
+                () -> tempDir.resolve("artifacts").toString());
+    }
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired CouncilService councils;
