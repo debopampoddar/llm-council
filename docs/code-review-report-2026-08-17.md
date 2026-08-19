@@ -25,7 +25,7 @@ Indicative assessment after fixes:
 | Configuration safety | 8/10 | Unusually thorough validation and warnings. Some shipped policies knowingly fall below the quality bar the warnings describe. |
 | User experience | 7/10 | Useful preflight, SSE timeline, trust signals, setup advisor, retry/cancel, and now honest send/delete behavior. Error contracts and cancellation presentation need cleanup. |
 | Persistence/privacy | 7/10 | JDBC session/event persistence, filesystem artifacts, retention, path containment, durable result artifacts, and deletion cascade exist. No encryption or user-level access control. |
-| Test confidence | 8/10 | 930 passing deterministic tests plus two live three-model Ollama runs. Browser E2E, load, fault-injection, and repeatable cloud-provider suites remain open. |
+| Test confidence | 8/10 | 932 passing deterministic tests plus two live three-model Ollama runs. Browser E2E, load, fault-injection, and repeatable cloud-provider suites remain open. |
 
 ## Review method
 
@@ -42,8 +42,8 @@ Verification performed:
 
 ```text
 JAVA_HOME=<JDK 25> mvn clean test
-Tests run: 930, Failures: 0, Errors: 0, Skipped: 0
-Total time: 14.284 s
+Tests run: 932, Failures: 0, Errors: 0, Skipped: 0
+Total time: 12.172 s
 Ruby YAML parse: application.yml and all three Compose files valid
 Markdown relative-link scan: 9 files checked, 0 missing targets
 mvn -DskipTests package: BUILD SUCCESS
@@ -204,7 +204,10 @@ to inflate quorum. Each reviewer publishes expected and actual non-self review
 counts plus exact missing draft IDs. Incomplete evidence marks the run
 `PARTIAL`, while the timeline distinguishes a partially scored stage from a
 stage that never ran. Both review passes request JSON mode where the adapter
-supports it.
+supports it. A subsequent hardening change also gives both review passes one
+bounded targeted call for the exact draft IDs omitted from an otherwise parseable
+response. Original and recovery outputs remain separate artifacts; coverage still
+missing afterward remains `PARTIAL`.
 
 Files: `StructuredOutputParser`, `ReviewEvidence`, `ReviewStageExecutor`,
 `ReviewPostDebateStageExecutor`, `ScoreStageExecutor`, `CouncilContext`,
@@ -277,7 +280,7 @@ failure sanitization, acknowledgement, strict parsing, credential refusal,
 throttling, the negative `System.nanoTime` origin edge case, and the guarantee
 that global mock fallback cannot fabricate a successful probe.
 
-The clean post-implementation verification is 930 tests with zero failures,
+The post-implementation verification is 932 tests with zero failures,
 errors, or skips on the reviewed machine.
 
 ### Live local verification after the review-output fix
@@ -340,7 +343,7 @@ The current `server.address=127.0.0.1` default is the correct safe default and s
 
 ### Model integration and structured output
 
-1. Use provider-supported structured output/schema controls where Spring AI exposes them. Ollama review calls now request JSON mode; `ModelCallRequest.jsonMode` is still not bound by `SpringAiModelClient`, so cloud correctness relies on prompt compliance plus tolerant parsing.
+1. Use provider-supported structured output/schema controls where Spring AI exposes them. Ollama review calls now request JSON mode and parseable incomplete review responses receive one targeted recovery call; `ModelCallRequest.jsonMode` is still not bound by `SpringAiModelClient`, so cloud correctness relies on prompt compliance plus tolerant parsing.
 2. Apply the review parser's balanced-object selection to validation and advisor output. Those paths still use first-`{`/last-`}` extraction and can fail when surrounding prose contains unrelated braces.
 3. Expand provider error mapping beyond `TransientAiException` and timeout. Rate limits, authentication, not-found model IDs, and provider 5xx errors should produce stable categories and retry decisions.
 4. Propagate a request/correlation ID into provider calls and logs. Session ID is useful, but a single stage can retry and call several models.
@@ -430,6 +433,7 @@ New/expanded scenarios include:
 - end-to-end quick/balanced/rigorous mock protocol and API boundaries.
 - observed multi-envelope, compact-criteria, fractional-score, duplicate,
   self-review, malformed-sibling, and missing-coverage review outputs;
+- bounded targeted recovery for omitted initial and post-debate reviews;
 - truthful `PARTIAL` propagation and partial-score timeline rendering.
 
 “Exhaustive” should not be used literally: no finite suite proves every model output, scheduler interleaving, filesystem race, browser, database, or provider behavior. This suite is broad and fast. Its material gaps are live-provider contracts, browser E2E, load/soak, transport fault injection, and measured branch/mutation coverage.

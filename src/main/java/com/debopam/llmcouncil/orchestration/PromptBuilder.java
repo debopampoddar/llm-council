@@ -228,6 +228,8 @@ public class PromptBuilder {
                 }
 
                 Scoring guidance:
+                - Return exactly one review object for every draft id listed by the user.
+                  Do not omit a draft and do not review any id that is not listed.
                 - "issues" should describe what is MISSING or could be IMPROVED,
                   not hypothetical errors. Frame as "What would make this better?"
                 - "constructiveness" measures whether your feedback is specific and
@@ -235,7 +237,11 @@ public class PromptBuilder {
                 - A high confidence means you are sure of your assessment.
                 """;
 
-        String userContent = "<question>\n" + question + "\n</question>\n\nDrafts to review:\n\n" + draftsText;
+        String requiredIds = drafts.stream().map(Draft::draftId).collect(Collectors.joining(", "));
+        String userContent = "<question>\n" + question + "\n</question>\n\n"
+                + "Required draft ids (" + drafts.size() + "): " + requiredIds + "\n"
+                + "Return exactly " + drafts.size() + " review objects, one for each required id.\n\n"
+                + "Drafts to review:\n\n" + draftsText;
 
         return List.of(ChatMessage.system(systemPrompt), ChatMessage.user(userContent));
     }
@@ -775,6 +781,8 @@ public class PromptBuilder {
                 }
 
                 Scoring guidance:
+                - Return exactly one review object for every draft id listed by the user.
+                  Do not omit a draft and do not review any id that is not listed.
                 - "issues" should describe what is MISSING or could be IMPROVED,
                   not hypothetical errors. Frame as "What would make this better?"
                 - "constructiveness" measures whether your feedback is specific and
@@ -782,10 +790,14 @@ public class PromptBuilder {
                 - A high confidence means you are sure of your assessment.
                 """;
 
+        String requiredIds = drafts.stream().map(Draft::draftId).collect(Collectors.joining(", "));
         String userContent = """
                 <question>
                 %s
                 </question>
+
+                Required draft ids (%d): %s
+                Return exactly %d review objects, one for each required id.
 
                 Drafts to review:
 
@@ -794,7 +806,7 @@ public class PromptBuilder {
                 Debate transcript:
 
                 %s
-                """.formatted(question, draftsText, debateText);
+                """.formatted(question, drafts.size(), requiredIds, drafts.size(), draftsText, debateText);
 
         return List.of(ChatMessage.system(systemPrompt), ChatMessage.user(userContent));
     }
