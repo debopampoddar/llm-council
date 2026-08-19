@@ -4,6 +4,13 @@ LLM Council is a Java 25 / Spring Boot library and service for running a configu
 
 The public API does not accept raw protocol IDs. Protocols are owned by application configuration so users cannot bypass validation, quorum, or cost controls.
 
+> **Read [Limitations](#limitations) before trusting a result.** Nothing in this
+> repository yet establishes that a council produces better answers than a single
+> good model — that question is being measured separately in
+> [llm-council-evaluation](https://github.com/debopampoddar/llm-council-evaluation),
+> and the result is not in. There is also no authentication; loopback binding is
+> the only access control.
+
 ## What This Implements
 
 ### Core Council Engine
@@ -91,6 +98,70 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
   and configuration synthesis across every requirement combination.
 - Pull requests and pushes to `main` run a clean Java 25 Maven build plus YAML, local Markdown-link, and removed-provider regression checks in `.github/workflows/ci.yml`.
 
+## Limitations
+
+Everything above describes what the system does. This section describes what it
+has not been shown to do. Read it before trusting a result.
+
+**Nothing here establishes that a council beats one good model.** The test suite
+verifies plumbing. No experiment in this repository shows that the extra stages,
+models, and tokens produce a better answer than a single well-prompted model
+given the same question. A rigorous run with three members costs roughly 20–23
+model calls against the baseline's one, so the burden of proof is real and it has
+not yet been met. The separate
+[llm-council-evaluation](https://github.com/debopampoddar/llm-council-evaluation)
+harness exists to answer this — blinded pairwise judging against a true one-call
+baseline plus a same-model-ensemble ablation. **The result is not in.** Until it
+is, treat the council's advantage as a hypothesis this project is testing, not a
+property it has.
+
+**The detection thresholds are uncalibrated starting points.** These four values
+in `application.yml` were chosen by reasoning, not fitted to recorded debate
+transcripts:
+
+| Option | Ships as |
+|---|---|
+| `debate-trigger-score-variance` | `40.0` |
+| `sycophancy-threshold` | `0.70` |
+| `sycophancy-confidence-delta` | `15.0` |
+| `convergence-confidence-delta` | `5.0` |
+
+Treat any of them as a hypothesis. Two related caveats on the sycophancy gate
+specifically: its Jaccard similarity runs over raw whitespace tokens with no
+stopword removal, so shared function words put a floor under every score; and
+because a flag requires confidence to have *moved toward* the majority, a member
+that agreed immediately and never wavered produces no movement and is never
+flagged, however completely its language converges on everyone else's. The most
+sycophantic case is the one the detector cannot currently see.
+
+**There is no authentication or authorization.** `server.address` defaults to
+`127.0.0.1`, and loopback binding is the only access control this application
+has. The Docker Compose files set `LLM_COUNCIL_BIND_ADDRESS=0.0.0.0` because a
+container must bind all interfaces to publish a port; a `NetworkExposureWarning`
+logs whenever the bind address is not loopback. Do not expose this to an
+untrusted network. Artifacts and events are stored unencrypted, and there is no
+user-level ownership model.
+
+**A green build does not prove a provider contract.** `mvn test` is hermetic — no
+network, no live model calls. It proves the orchestration is internally
+consistent. The shipped three-model Ollama council has been exercised live by
+hand; OpenAI, Anthropic, and Vertex call paths have not been covered by a
+repeatable suite.
+
+**Single-provider profiles cannot validate themselves independently.** The
+`openai`, `claude`, and `gemini` profiles draw chair and validator from one
+provider family, so `ValidationIndependence` classifies them `CORRELATED`. The
+application reports this honestly rather than hiding it, but a reported warning
+is not independence. `local-*` and `multi-cloud-*` are `INDEPENDENT`; `*-quick`
+is `NOT_APPLICABLE` because QUICK declares no validator at all.
+`ShippedValidationIndependenceTest` is the authority on the current tiers.
+
+**Its shape is a single-process local application.** One run at a time by default
+(`council.runtime.max-concurrent-runs: 1`), cancellation honoured at stage
+boundaries only, and an interrupted run is reported rather than resumed. This is
+a good personal tool and a strong platform to build on; it is not a distributed
+scheduler and not a multi-tenant service.
+
 ## Runtime Requirements
 
 - Java 25.
@@ -116,30 +187,13 @@ PATH=/Library/Java/JavaVirtualMachines/jdk-25.jdk/Contents/Home/bin:$PATH \
 mvn test
 ```
 
-## Codex Authentication Note
-
-Codex development authentication is separate from LLM Council runtime authentication.
-
-The current local Codex configuration uses ChatGPT auth in `~/.codex/auth.json`:
-
-```json
-{
-  "auth_mode": "chatgpt",
-  "OPENAI_API_KEY": null,
-  "tokens": {
-    "id_token": "<redacted>",
-    "access_token": "<redacted>",
-    "refresh_token": "<redacted>",
-    "account_id": "<redacted>"
-  }
-}
-```
-
-Do not read or reuse these Codex tokens from the Java service. They authenticate the Codex development tool, not this application backend.
+## Provider Credentials
 
 Configure runtime model providers with their own environment variables. Local Ollama calls use direct `/api/chat` HTTP requests against `spring.ai.ollama.base-url`; OpenAI and Anthropic calls use their Spring AI clients.
 
 `application.yml` supplies harmless placeholder keys for eager Spring AI auto-configuration so local/mock profiles can boot without OpenAI or Anthropic credentials. Those placeholders are not valid for runtime model calls. OpenAI and Claude runs require their respective real API keys.
+
+Credentials belong in the environment and never in the repository or in the user configuration overlay. The overlay contract is structurally incapable of carrying one: credential field names and credential-shaped values are refused before parsing, and the refusal never echoes the value.
 
 ## Operational Metrics
 

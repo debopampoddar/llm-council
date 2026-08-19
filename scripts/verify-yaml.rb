@@ -13,7 +13,9 @@ end.sort
 failures = []
 files.each do |path|
   begin
-    YAML.safe_load(File.read(path), permitted_classes: [Date, Time], aliases: true, filename: path)
+    # Pin the encoding for the same reason verify-markdown-links.rb does: File.read
+    # otherwise decodes using the locale's external encoding.
+    YAML.safe_load(File.read(path, encoding: "UTF-8"), permitted_classes: [Date, Time], aliases: true, filename: path)
   rescue Psych::Exception => e
     failures << "#{Pathname.new(path).relative_path_from(root)}: #{e.message.lines.first.strip}"
   end
