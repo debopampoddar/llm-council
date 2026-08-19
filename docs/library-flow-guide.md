@@ -558,9 +558,14 @@ What it does:
 5. Retains valid sibling reviews when another entry is malformed.
 6. Removes self-reviews, unknown draft IDs, and duplicate reviewer/draft pairs.
 7. Checks exact unique non-self coverage for each reviewer and publishes actual,
-   expected, and missing draft IDs. Incomplete coverage degrades the run to
-   `PARTIAL`; it cannot silently inflate quorum or produce clean completion.
-8. Writes raw and normalized review artifacts.
+   expected, and missing draft IDs.
+8. If the first valid response omitted required drafts, makes one bounded call
+   containing only those missing drafts. The recovery response cannot satisfy
+   coverage by repeating an already accepted or self review.
+9. Preserves both raw responses and records recovery start, completion, or failure
+   events. Evidence still missing after recovery degrades the run to `PARTIAL`; it
+   cannot silently inflate quorum or produce clean completion.
+10. Writes raw and normalized review artifacts.
 
 Expected review shape:
 
@@ -666,7 +671,7 @@ What it does:
 3. Post-debate reviews are kept separately from initial reviews, so the second
    SCORE pass uses only genuinely updated evidence.
 4. Applies the same resilient parsing, filtering, and exact non-self coverage
-   rules as the initial review stage.
+   rules as the initial review stage, including one targeted missing-review call.
 5. System prompt: "Do not simply copy your pre-debate review."
 6. If debate did not run, this stage and the second SCORE pass are explicitly
    skipped; the initial score remains authoritative.
@@ -1063,9 +1068,9 @@ Add a stage:
 - Spring AI provider-specific option support is intentionally conservative.
 - Review parsing recovers multiple complete JSON envelopes, compact criterion
   objects, fractional scores, and valid siblings of a malformed review. It also
-  enforces exact unique non-self coverage. Provider retry/repair prompts are not
-  implemented, so missing required evidence is reported as `PARTIAL` rather
-  than silently presented as a clean completion.
+  enforces exact unique non-self coverage and makes one targeted call for drafts
+  omitted from an otherwise parseable review response. Missing evidence after
+  that bounded attempt is reported as `PARTIAL`, never as a clean completion.
 - Authentication and authorization are not implemented on the API.
 - Chat cancellation, deletion cascade, durable JDBC history, interrupted-run
   recovery, and `Last-Event-ID`/query cursor replay are implemented. There is no
@@ -1074,8 +1079,8 @@ Add a stage:
   executor's global concurrency permit.
 - Chat renders a cancelled turn as failed; the persisted council result still
   correctly reports `CANCELLED`.
-- Provider-side structured-output retries, model-call metrics, browser E2E, and
-  repeatable cloud-provider contract tests remain open; see
+- Repair calls for wholly unparseable validation/advisor output, model-call
+  metrics, browser E2E, and repeatable cloud-provider contract tests remain open; see
   [production-readiness-plan.md](production-readiness-plan.md).
 
 These are deliberate next steps, not reasons to reintroduce user-selected protocol IDs or silent mock fallback.

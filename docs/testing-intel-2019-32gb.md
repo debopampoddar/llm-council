@@ -98,7 +98,7 @@ Expected result:
 
 ```text
 BUILD SUCCESS
-Tests run: 930, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 932, Failures: 0, Errors: 0, Skipped: 0
 ```
 
 If Java 25 is not available on the Intel machine, rely on the Docker build path:
@@ -260,8 +260,9 @@ Expected if successful:
 The review parser recovers the local-model shapes observed in practice:
 multiple JSON envelopes, compact criterion objects, fractional scores, and
 valid siblings of a malformed review. The timeline reports exact per-reviewer
-coverage. A missing required non-self review degrades the run to `PARTIAL`; it
-is never counted toward quorum or hidden behind a clean completion.
+coverage. An otherwise valid response that omits a required draft receives one
+targeted recovery call. Evidence still missing afterward degrades the run to
+`PARTIAL`; it is never counted toward quorum or hidden behind a clean completion.
 
 In `RIGOROUS`, debate is conditional even after complete review coverage. A
 measurable disagreement value below the configured trigger causes debate and

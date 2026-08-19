@@ -16,7 +16,8 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Structured model failure categories in run responses.
 - Chat API V1 with asynchronous council runs and server-sent progress events.
 - Anonymized draft IDs with private model mapping artifacts.
-- Resilient structured-review parsing with exact non-self coverage checks and per-draft scoring.
+- Resilient structured-review parsing with exact non-self coverage checks,
+  one bounded targeted call for omitted reviews, and per-draft scoring.
 - Debate trigger based on reviewer disagreement about the same draft.
 - Chair synthesis with score and dissent context.
 - Fresh Eyes validation with structured JSON output.
@@ -76,7 +77,7 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Credentials are structurally outside the request and overlay contracts; credential fields and credential-shaped values are refused without being echoed.
 
 ### Testing
-- 930 deterministic JUnit tests: policy resolution, confidence parsing, quorum, multi-envelope and compact local-model review output, exact review coverage, partial-state reporting, KS convergence math, sycophancy detection at the shipped thresholds, council-composition warnings, debate and post-debate evidence handling, all scoring strategies, retry and timeout logic, concurrent-run lifecycle, full protocol integration, path-containment and deletion-cascade security, durable stores against H2 and SQLite, Docker rigorous-model provisioning, the catalog, config-write/advisor/model-probe endpoints, static resource serving, cancellation, and configuration synthesis across every requirement combination.
+- 932 deterministic JUnit tests: policy resolution, confidence parsing, quorum, multi-envelope and compact local-model review output, exact review coverage and targeted recovery, partial-state reporting, KS convergence math, sycophancy detection at the shipped thresholds, council-composition warnings, debate and post-debate evidence handling, all scoring strategies, retry and timeout logic, concurrent-run lifecycle, full protocol integration, path-containment and deletion-cascade security, durable stores against H2 and SQLite, Docker rigorous-model provisioning, the catalog, config-write/advisor/model-probe endpoints, static resource serving, cancellation, and configuration synthesis across every requirement combination.
 - Pull requests and pushes to `main` run a clean Java 25 Maven build plus YAML, local Markdown-link, and removed-provider regression checks in `.github/workflows/ci.yml`.
 
 ## Runtime Requirements

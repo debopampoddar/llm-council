@@ -30,7 +30,7 @@ The application already provides:
   catalog preview, atomic save, export, and a bounded live model probe;
 - pull-request CI for the clean Java 25 build and repository documentation/
   configuration checks;
-- 930 deterministic JUnit tests in the current clean baseline.
+- 932 deterministic JUnit tests in the current baseline.
 
 This is a capable local/personal application. It is not ready for untrusted or
 shared network deployment.
@@ -49,7 +49,7 @@ shared network deployment.
 | Concurrency control | Partial | Async chat uses a global permit and rejects saturation. The synchronous run endpoint bypasses that permit; there is no durable queue or distributed lease. |
 | Observability | Partial | Events, artifacts, usage, health, and Actuator exist. Dedicated latency/failure/queue metrics and production dashboards do not. |
 | API security | Not implemented | No authentication, authorization, ownership, rate limiting, or application-managed TLS. Default loopback binding is the only safe boundary. |
-| Structured output recovery | Partial | Review parsing recovers multiple envelopes, compact criteria, fractional scores, and valid siblings, then enforces exact coverage. Validation output and irrecoverable responses do not receive a bounded repair call. |
+| Structured output recovery | Partial | Review parsing recovers multiple envelopes, compact criteria, fractional scores, and valid siblings, enforces exact coverage, and makes one targeted call for omitted drafts. Wholly unparseable review output, validation output, and advisor output do not receive a bounded repair call. |
 | Real-provider verification | Partial | Two manual three-model Ollama runs now cover the conditional and forced full rigorous paths. The normal suite remains hermetic and there is no repeatable provider-contract Maven profile or cloud-provider gate. |
 | Browser/load/fault testing | Not implemented | No browser E2E, load/soak, database contention, or network fault-injection suite. |
 | Pull-request CI | Implemented | Java 25 `clean verify`, YAML parsing, local Markdown/image links, and removed-provider regression checks run on pull requests and `main`. |
@@ -129,10 +129,10 @@ tags and alert thresholds before adding dashboards.
 
 ### 8. Structured-output repair
 
-For malformed review and validation JSON, allow one bounded repair request that
-contains only the invalid response and schema instructions. Record the original
-and repaired evidence, cost, and failure category. Never silently invent missing
-scores or confidence.
+The review stages now make one bounded targeted request when a parseable response
+omits required drafts and preserve the original and recovery artifacts, usage, and
+events. Extend bounded repair to wholly unparseable review output and malformed
+validation/advisor JSON. Never silently invent missing scores or confidence.
 
 ### 9. Browser, load, and fault testing
 

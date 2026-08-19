@@ -56,6 +56,9 @@ public class ReviewStageExecutor implements StageExecutor {
                         ctx, modelId, envelope.reviews(), result.text());
                 batch.reviews().forEach(ctx::addReview);
                 publishParserDiagnostics(ctx, modelId, envelope.diagnostics());
+                if (!batch.complete()) {
+                    batch = recoverMissing(ctx, model, batch);
+                }
                 recordCoverage(ctx, modelId, batch);
                 events.publish(ctx.session().id(), stage().name(), "REVIEW_COMPLETED", modelId,
                                Map.of("reviewCount", batch.reviews().size(),
@@ -77,6 +80,51 @@ public class ReviewStageExecutor implements StageExecutor {
         }
         artifactStore.writeJson(ctx.session().id(), "normalized/reviews.json", ctx.reviews());
         return ctx;
+    }
+
+    /**
+     * Makes one bounded semantic-recovery call for exactly the reviews omitted
+     * from a successful first response. Transport retries remain the model
+     * client's responsibility; this call addresses valid-but-incomplete JSON.
+     */
+    private ReviewEvidence.Batch recoverMissing(CouncilContext ctx, ModelProfile model,
+                                                 ReviewEvidence.Batch initial) {
+        String modelId = model.id();
+        List<Draft> missingDrafts = ctx.drafts().stream()
+                .filter(draft -> initial.missingDraftIds().contains(draft.draftId()))
+                .toList();
+        events.publish(ctx.session().id(), stage().name(), "REVIEW_RECOVERY_STARTED", modelId,
+                Map.of("missingDraftIds", initial.missingDraftIds(),
+                        "missingReviewCount", initial.missingDraftIds().size()));
+        try {
+            PromptBudget budget = PromptBudget.forModel(model);
+            List<ChatMessage> messages = promptBuilder.reviewMessages(
+                    ctx.session().question(), missingDrafts, budget);
+            PromptBudgets.record(ctx, events, stage(), modelId, budget);
+            ModelCallResult result = registry.clientForModel(modelId).call(
+                    new ModelCallRequest(ctx.session().id(), stage(), model.id(),
+                            model.providerModelId(), messages, model.defaultOutputTokens(),
+                            model.temperature(), true, model.defaultTimeout()));
+            ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
+            artifactStore.writeText(ctx.session().id(),
+                    "raw/review-recovery-" + modelId + "-attempt-1.json", result.text());
+            StructuredOutputParser.ReviewEnvelope envelope = parser.parseReviews(result.text());
+            ReviewEvidence.Batch recovery = ReviewEvidence.normalize(ctx, modelId,
+                    envelope.reviews(), result.text(), initial.missingDraftIds());
+            recovery.reviews().forEach(ctx::addReview);
+            publishParserDiagnostics(ctx, modelId, envelope.diagnostics());
+            ReviewEvidence.Batch merged = ReviewEvidence.merge(initial, recovery);
+            events.publish(ctx.session().id(), stage().name(), "REVIEW_RECOVERY_COMPLETED", modelId,
+                    Map.of("recoveredReviewCount", recovery.reviews().size(),
+                            "remainingDraftIds", merged.missingDraftIds(),
+                            "complete", merged.complete()));
+            return merged;
+        } catch (ModelCallException | IllegalArgumentException ex) {
+            events.publish(ctx.session().id(), stage().name(), "REVIEW_RECOVERY_FAILED", modelId,
+                    Map.of("error", ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage(),
+                            "missingDraftIds", initial.missingDraftIds()));
+            return initial;
+        }
     }
 
     private void publishParserDiagnostics(CouncilContext ctx, String modelId,

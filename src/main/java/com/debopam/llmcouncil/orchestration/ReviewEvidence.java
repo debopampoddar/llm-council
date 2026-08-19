@@ -23,6 +23,20 @@ final class ReviewEvidence {
     static Batch normalize(CouncilContext ctx, String reviewerId,
                            List<StructuredOutputParser.ReviewJson> parsed,
                            String rawText) {
+        return normalize(ctx, reviewerId, parsed, rawText, null);
+    }
+
+    /**
+     * Normalizes a targeted recovery response.
+     *
+     * <p>{@code requiredDraftIds} is {@code null} for the initial full review
+     * call. Recovery calls pass the exact ids that were missing so a model
+     * cannot satisfy recovery by returning a duplicate review that was already
+     * accepted from its first response.
+     */
+    static Batch normalize(CouncilContext ctx, String reviewerId,
+                           List<StructuredOutputParser.ReviewJson> parsed,
+                           String rawText, List<String> requiredDraftIds) {
         Map<String, Draft> draftsById = new LinkedHashMap<>();
         ctx.drafts().forEach(draft -> draftsById.put(draft.draftId(), draft));
 
@@ -31,6 +45,9 @@ final class ReviewEvidence {
                 .filter(draft -> !reviewerId.equals(draft.modelId()))
                 .map(Draft::draftId)
                 .forEach(expected::add);
+        if (requiredDraftIds != null) {
+            expected.retainAll(new LinkedHashSet<>(requiredDraftIds));
+        }
 
         Map<String, ReviewArtifact> accepted = new LinkedHashMap<>();
         int duplicateCount = 0;
@@ -45,6 +62,10 @@ final class ReviewEvidence {
             }
             if (reviewerId.equals(draft.modelId())) {
                 selfReviewCount++;
+                continue;
+            }
+            if (!expected.contains(review.draftId())) {
+                unknownDraftCount++;
                 continue;
             }
             ReviewArtifact artifact = new ReviewArtifact(
@@ -66,6 +87,19 @@ final class ReviewEvidence {
         return new Batch(List.copyOf(accepted.values()), List.copyOf(expected),
                          List.copyOf(missing), duplicateCount,
                          unknownDraftCount, selfReviewCount);
+    }
+
+    /** Combines an initial batch with one targeted recovery batch. */
+    static Batch merge(Batch initial, Batch recovery) {
+        Map<String, ReviewArtifact> accepted = new LinkedHashMap<>();
+        initial.reviews().forEach(review -> accepted.put(review.draftId(), review));
+        recovery.reviews().forEach(review -> accepted.putIfAbsent(review.draftId(), review));
+        List<String> missing = new ArrayList<>(initial.expectedDraftIds());
+        missing.removeAll(accepted.keySet());
+        return new Batch(List.copyOf(accepted.values()), initial.expectedDraftIds(),
+                List.copyOf(missing), initial.duplicateCount() + recovery.duplicateCount(),
+                initial.unknownDraftCount() + recovery.unknownDraftCount(),
+                initial.selfReviewCount() + recovery.selfReviewCount());
     }
 
     private static <T> List<T> safeList(List<T> values) {
