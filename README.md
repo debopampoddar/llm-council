@@ -131,8 +131,9 @@ specifically: its Jaccard similarity runs over raw whitespace tokens with no
 stopword removal, so shared function words put a floor under every score; and
 because a flag requires confidence to have *moved toward* the majority, a member
 that agreed immediately and never wavered produces no movement and is never
-flagged, however completely its language converges on everyone else's. The most
-sycophantic case is the one the detector cannot currently see.
+flagged, however completely its language converges on everyone else's. This is a
+detector blind spot: immediate agreement may be genuine or sycophantic, and the
+current signal cannot distinguish the two.
 
 **There is no authentication or authorization.** `server.address` defaults to
 `127.0.0.1`, and loopback binding is the only access control this application
@@ -148,9 +149,9 @@ consistent. The shipped three-model Ollama council has been exercised live by
 hand; OpenAI, Anthropic, and Vertex call paths have not been covered by a
 repeatable suite.
 
-**Single-provider profiles cannot validate themselves independently.** The
-`openai`, `claude`, and `gemini` profiles draw chair and validator from one
-provider family, so `ValidationIndependence` classifies them `CORRELATED`. The
+**Homogeneous single-family profiles cannot validate themselves independently.**
+The `openai`, `claude`, and `gemini` profiles draw chair and validator from one
+model family, so `ValidationIndependence` classifies them `CORRELATED`. The
 application reports this honestly rather than hiding it, but a reported warning
 is not independence. `local-*` and `multi-cloud-*` are `INDEPENDENT`; `*-quick`
 is `NOT_APPLICABLE` because QUICK declares no validator at all.
