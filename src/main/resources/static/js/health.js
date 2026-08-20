@@ -123,8 +123,8 @@ export function renderHealth(health, independence) {
  */
 export function independencePill(tier) {
   const map = {
-    INDEPENDENT: ["ok", "independent"],
-    CORRELATED: ["warn", "correlated validator"],
+    INDEPENDENT: ["ok", "independent of council producers"],
+    CORRELATED: ["warn", "correlated with a council producer"],
     SELF_VALIDATION: ["qual", "self-validated"],
     NOT_APPLICABLE: ["mute", "no validation"],
   };

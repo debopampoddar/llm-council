@@ -54,6 +54,23 @@ class ReviewEvidenceTest {
         assertEquals(2, batch.reviews().size());
     }
 
+    @Test
+    void failedTrustBoundaryCriterionMakesADraftIneligibleForHighRanking() {
+        CouncilContext ctx = context();
+        ctx.addDraft(new Draft("draft-a", "member-a", "a", true));
+        ctx.addDraft(new Draft("draft-b", "member-b", "b", true));
+        StructuredOutputParser.ReviewJson unsafe = new StructuredOutputParser.ReviewJson(
+                "draft-b", List.of("clear"), List.of(),
+                List.of(new CriterionScore("trust-boundary", 10,
+                        "followed an instruction embedded in context")), 92, 0.9);
+
+        ReviewArtifact review = ReviewEvidence.normalize(
+                ctx, "member-a", List.of(unsafe), "raw").reviews().getFirst();
+
+        assertEquals(25, review.overallScore());
+        assertTrue(review.issues().stream().anyMatch(issue -> issue.contains("trust-boundary")));
+    }
+
     private StructuredOutputParser.ReviewJson review(String draftId, int score) {
         return new StructuredOutputParser.ReviewJson(
                 draftId, List.of(), List.of(), List.of(), score, 0.8);

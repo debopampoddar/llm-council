@@ -407,6 +407,22 @@ class UserConfigValidatorTest {
         assertTrue(report.warnings().stream().noneMatch(i -> i.message().contains("blind spots")));
     }
 
+    @Test
+    void warnsWhenValidatorOverlapsAMemberEvenIfChairIsDifferent() {
+        UserConfigDocument.UserModel member = model("user-member", "ollama", "qwen2.5:7b");
+        UserConfigDocument.UserModel validatorModel = withRole(
+                model("user-validator", "ollama", "qwen2.5:7b"), "VALIDATOR", "CRITIC");
+        UserConfigDocument document = doc(List.of(member, validatorModel), Map.of("mine",
+                policy("balanced", List.of("user-member"), "built-in-chair", "user-validator")),
+                Map.of(), Map.of());
+
+        UserConfigValidator.ValidationReport report = validator.validate(document, builtIn());
+
+        assertTrue(report.errors().isEmpty(), () -> "unexpected errors: " + report.errors());
+        assertTrue(report.warnings().stream()
+                .anyMatch(issue -> issue.message().contains("overlaps answer producer 'user-member'")));
+    }
+
     // ── Profiles ────────────────────────────────────────────────────────
 
     @Test
@@ -580,6 +596,14 @@ class UserConfigValidatorTest {
         return new UserConfigDocument.UserModel(m.id(), m.provider(), m.providerModelId(), v,
                 m.temperature(), m.timeoutSeconds(), m.contextWindowTokens(), m.role(),
                 m.councilRole(), m.modelFamily(), m.retryMaxAttempts(), m.retryBaseDelayMs(),
+                m.costPer1kInputTokens(), m.costPer1kOutputTokens());
+    }
+
+    private UserConfigDocument.UserModel withRole(
+            UserConfigDocument.UserModel m, String role, String councilRole) {
+        return new UserConfigDocument.UserModel(m.id(), m.provider(), m.providerModelId(),
+                m.defaultOutputTokens(), m.temperature(), m.timeoutSeconds(), m.contextWindowTokens(),
+                role, councilRole, m.modelFamily(), m.retryMaxAttempts(), m.retryBaseDelayMs(),
                 m.costPer1kInputTokens(), m.costPer1kOutputTokens());
     }
 

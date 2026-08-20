@@ -171,21 +171,21 @@ council:
       role: MEMBER
       councilRole: PROPOSER
       modelFamily: ${LLM_COUNCIL_LOCAL_THIRD_MODEL_FAMILY:qwen}
-    # Fresh Eyes validator for local councils. Deliberately a different model
-    # family from local-chair: a validator sharing the chair's weights shares
-    # every one of its blind spots and cannot perform an independent check.
-    # This costs nothing extra — mistral:7b is already pulled for local-mistral
-    # and already resident, and VALIDATE runs alone after SYNTHESIZE so the
-    # validator never has to be co-resident with the members.
+    # Fresh Eyes validator for local councils. It must be independent of both
+    # the chair and every drafting member: reusing mistral:7b here let the same
+    # weights introduce an unsafe claim as a critic and later approve it as the
+    # validator. VALIDATE runs after SYNTHESIZE, so Ollama may unload another
+    # model before loading Gemma when memory is constrained.
+    # Requires: ollama pull gemma4:12b-it-qat
     - id: local-validator
       provider: ollama
-      providerModelId: ${LLM_COUNCIL_LOCAL_ALT_MODEL:mistral:7b}
-      defaultOutputTokens: ${LLM_COUNCIL_LOCAL_ALT_OUTPUT_TOKENS:1200}
+      providerModelId: ${LLM_COUNCIL_LOCAL_VALIDATOR_MODEL:gemma4:12b-it-qat}
+      defaultOutputTokens: ${LLM_COUNCIL_LOCAL_VALIDATOR_OUTPUT_TOKENS:1200}
       temperature: 0.2
       timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
       role: VALIDATOR
       councilRole: CRITIC
-      modelFamily: ${LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY:mistral}
+      modelFamily: ${LLM_COUNCIL_LOCAL_VALIDATOR_MODEL_FAMILY:gemma}
     - id: local-chair
       provider: ollama
       providerModelId: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:llama3.1:8b}
@@ -601,7 +601,9 @@ council:
       protocolId: balanced
       memberModelIds: [local-llama3, local-mistral, gemini-flash, claude-sonnet]
       chairModelId: gemini-pro
-      validatorModelId: claude-validator
+      # Gemma is outside every producer family in this policy. Reusing Claude
+      # here was correlated because claude-sonnet also produced a draft.
+      validatorModelId: local-validator
       minimumSuccessfulDrafts: 2
       minimumReviewsPerDraft: 1
       validationRequired: true
@@ -610,7 +612,7 @@ council:
       protocolId: rigorous
       memberModelIds: [local-llama3, local-mistral, gemini-flash, claude-sonnet, openai-gpt]
       chairModelId: gemini-pro
-      validatorModelId: claude-validator
+      validatorModelId: local-validator
       minimumSuccessfulDrafts: 3
       minimumReviewsPerDraft: 1
       validationRequired: true

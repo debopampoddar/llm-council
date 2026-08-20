@@ -101,7 +101,7 @@ public record CatalogResponse(
      * @param minimumReviewsPerDraft  review quorum
      * @param validationRequired      whether validation must succeed
      * @param allowPartial            whether partial results are acceptable
-     * @param validationIndependence  how independent the validator is from the chair
+     * @param validationIndependence  how independent the validator is from all answer producers
      * @param origin                  where this policy was defined
      */
     public record PolicySummary(

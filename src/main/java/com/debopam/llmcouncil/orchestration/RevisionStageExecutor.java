@@ -138,6 +138,18 @@ public class RevisionStageExecutor implements StageExecutor {
                                          false, model.defaultTimeout()));
             ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
 
+            TrustBoundaryGuard.Assessment trust = TrustBoundaryGuard.assess(
+                    ctx.session().context(), result.text());
+            if (trust.influenced()) {
+                String reason = "Revised draft from " + modelId + " was excluded: " + trust.reason();
+                ctx.excludeModel(modelId, reason);
+                ctx.markDegraded(reason);
+                events.publish(ctx.session().id(), stage().name(),
+                        "REVISION_TRUST_BOUNDARY_REJECTED", modelId,
+                        Map.of("reason", trust.reason(), "matchedTerms", trust.matchedTerms()));
+                return null;
+            }
+
             events.publish(ctx.session().id(), stage().name(), "REVISION_COMPLETED", modelId,
                            Map.of("chars", result.text().length(),
                                   "latencyMs", result.latency() != null ? result.latency().toMillis() : -1));

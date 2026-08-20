@@ -54,6 +54,8 @@ class PromptBudgetIntegrationTest {
         // longer know what it was asked or what format to answer in.
         assertTrue(messages.getFirst().content().contains("chair of an LLM council"));
         assertTrue(userContent(messages).contains("Should we migrate to Postgres?"));
+        assertTrue(userContent(messages).contains("\"instructionAuthority\":\"USER_TASK\""));
+        assertTrue(userContent(messages).contains("\"trust\":\"UNTRUSTED_MODEL_OUTPUT\""));
     }
 
     @Test

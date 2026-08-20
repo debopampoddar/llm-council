@@ -36,12 +36,14 @@ class OllamaDirectModelClientTest {
                     List.of(ChatMessage.system("Be terse."), ChatMessage.user("Say hello.")),
                     256,
                     0.2,
-                    false,
+                    true,
                     Duration.ofSeconds(5)));
 
             assertEquals("hello from ollama", result.text());
             assertTrue(handler.body.contains("\"model\":\"llama3.1:8b\""));
             assertTrue(handler.body.contains("\"stream\":true"));
+            assertTrue(handler.body.contains("\"format\":\"json\""));
+            assertTrue(handler.body.contains("\"think\":false"));
             assertTrue(handler.body.contains("\"keep_alive\":\"10m\""));
             assertTrue(handler.body.contains("\"num_predict\":256"));
             assertTrue(handler.body.contains("\"num_ctx\":4096"));

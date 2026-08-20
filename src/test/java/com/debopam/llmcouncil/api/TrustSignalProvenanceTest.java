@@ -80,8 +80,8 @@ class TrustSignalProvenanceTest {
                 Path.of("src/main/resources/static/js/artifacts.js"), StandardCharsets.UTF_8);
 
         assertTrue(trust.contains("validator confidence"));
-        assertTrue(trust.contains("validator independent of chair"));
-        assertTrue(trust.contains("validator correlated with chair"));
+        assertTrue(trust.contains("validator independent of council producers"));
+        assertTrue(trust.contains("validator correlated with a council producer"));
         assertTrue(trust.contains("chair self-validation"));
         assertTrue(artifacts.contains("not external fact-checking or human review"));
     }

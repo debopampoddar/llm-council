@@ -36,9 +36,8 @@ class ShippedValidationIndependenceTest {
 
     @ParameterizedTest
     @CsvSource({
-            // Local councils validate on mistral against a llama chair. This
-            // costs no extra download or memory: mistral:7b is already pulled
-            // for local-mistral, and VALIDATE runs alone after SYNTHESIZE.
+            // Local councils validate on Gemma, which is distinct from the
+            // Llama, Mistral, and Qwen models that can produce the answer.
             "local-balanced,    INDEPENDENT",
             "local-rigorous,    INDEPENDENT",
             "multi-cloud-balanced, INDEPENDENT",

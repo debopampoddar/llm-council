@@ -221,6 +221,18 @@ public class DebateStageExecutor implements StageExecutor {
                                          model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()));
             ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
 
+            TrustBoundaryGuard.Assessment trust = TrustBoundaryGuard.assess(
+                    ctx.session().context(), result.text());
+            if (trust.influenced()) {
+                String reason = "Debate contribution from " + modelId + " was excluded: " + trust.reason();
+                ctx.excludeModel(modelId, reason);
+                ctx.markDegraded(reason);
+                events.publish(ctx.session().id(), stage().name(),
+                        "DEBATE_TRUST_BOUNDARY_REJECTED", modelId,
+                        Map.of("reason", trust.reason(), "matchedTerms", trust.matchedTerms()));
+                return null;
+            }
+
             // Attempt to parse confidence; mark as -1 if unparseable
             // so that DebateRound.confidenceScores() can exclude the value from
             // the KS convergence calculation rather than injecting a misleading

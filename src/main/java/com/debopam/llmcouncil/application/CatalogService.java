@@ -12,6 +12,7 @@ import com.debopam.llmcouncil.model.ModelRegistry;
 import com.debopam.llmcouncil.model.OllamaModelDiscoveryService;
 import com.debopam.llmcouncil.model.UnavailableModelClient;
 import com.debopam.llmcouncil.model.ValidationIndependence;
+import com.debopam.llmcouncil.model.ValidationIndependenceClassifier;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -163,7 +164,7 @@ public class CatalogService {
     }
 
     /**
-     * Classify how independent a policy's validator is from its chair.
+     * Classify how independent a policy's validator is from all answer producers.
      *
      * <p>Reported on every policy so that a caller can see, before running,
      * whether a "validated" result will actually mean an independent check.
@@ -176,9 +177,14 @@ public class CatalogService {
         if (chair == null || validator == null) {
             return ValidationIndependence.NOT_APPLICABLE;
         }
-        return ValidationIndependence.between(
-                chair.id(), chair.modelFamily(), chair.providerModelId(),
-                validator.id(), validator.modelFamily(), validator.providerModelId());
+        return ValidationIndependenceClassifier.classify(
+                ValidationIndependenceClassifier.Identity.from(chair),
+                policy.memberModelIds().stream()
+                        .map(registry::findModel)
+                        .flatMap(java.util.Optional::stream)
+                        .map(ValidationIndependenceClassifier.Identity::from)
+                        .toList(),
+                ValidationIndependenceClassifier.Identity.from(validator));
     }
 
     private List<CatalogResponse.ModelSummary> models(CouncilCatalog catalog, Set<String> visibleModelIds) {

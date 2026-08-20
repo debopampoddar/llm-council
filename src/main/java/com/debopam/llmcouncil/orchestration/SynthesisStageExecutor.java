@@ -59,6 +59,22 @@ public class SynthesisStageExecutor implements StageExecutor {
 
         ctx.setSynthesisResult(result.text());
         artifactStore.writeText(ctx.session().id(), "final/answer.md", result.text());
+        TrustBoundaryGuard.Assessment trust = TrustBoundaryGuard.assess(
+                ctx.session().context(), result.text());
+        if (trust.influenced()) {
+            String reason = "Synthesized answer failed the trust-boundary guard: " + trust.reason();
+            // Keep the raw artifact for diagnosis, but never expose rejected
+            // prose as the run's answer through the API or UI.
+            ctx.setSynthesisResult(null);
+            ctx.markDegraded(reason);
+            // QUICK has no later VALIDATE stage. Fail here so no protocol can
+            // return an adopted context directive as a successful answer.
+            ctx.markFailed(stage(), new IllegalStateException(reason));
+            events.publish(ctx.session().id(), stage().name(),
+                    "SYNTHESIS_TRUST_BOUNDARY_REJECTED", chairId,
+                    Map.of("reason", trust.reason(), "matchedTerms", trust.matchedTerms()));
+            return ctx;
+        }
         events.publish(ctx.session().id(), stage().name(), "SYNTHESIS_COMPLETED", chairId,
                        Map.of("chars", result.text().length()));
         return ctx;

@@ -2,6 +2,8 @@ package com.debopam.llmcouncil.model;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -64,5 +66,29 @@ class ValidationIndependenceTest {
         assertTrue(ValidationIndependence.CORRELATED.isReduced());
         assertFalse(ValidationIndependence.INDEPENDENT.isReduced());
         assertFalse(ValidationIndependence.NOT_APPLICABLE.isReduced());
+    }
+
+    @Test
+    void validatorThatMatchesAnyMemberIsCorrelatedEvenWhenChairIsDifferent() {
+        ValidationIndependence tier = ValidationIndependenceClassifier.classify(
+                new ValidationIndependenceClassifier.Identity("chair", "llama", "llama3.1:8b"),
+                List.of(
+                        new ValidationIndependenceClassifier.Identity("member-a", "qwen", "qwen2.5:7b"),
+                        new ValidationIndependenceClassifier.Identity("member-b", "mistral", "mistral:7b")),
+                new ValidationIndependenceClassifier.Identity("validator", "mistral", "mistral:7b"));
+
+        assertEquals(ValidationIndependence.CORRELATED, tier);
+    }
+
+    @Test
+    void validatorDistinctFromChairAndEveryMemberIsIndependent() {
+        ValidationIndependence tier = ValidationIndependenceClassifier.classify(
+                new ValidationIndependenceClassifier.Identity("chair", "llama", "llama3.1:8b"),
+                List.of(
+                        new ValidationIndependenceClassifier.Identity("member-a", "qwen", "qwen2.5:7b"),
+                        new ValidationIndependenceClassifier.Identity("member-b", "mistral", "mistral:7b")),
+                new ValidationIndependenceClassifier.Identity("validator", "gemma", "gemma4:12b-it-qat"));
+
+        assertEquals(ValidationIndependence.INDEPENDENT, tier);
     }
 }

@@ -57,6 +57,7 @@ LLM_COUNCIL_LOCAL_MODEL=llama3.1:8b
 LLM_COUNCIL_LOCAL_ALT_MODEL=mistral:7b
 LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.1:8b
+LLM_COUNCIL_LOCAL_VALIDATOR_MODEL=gemma4:12b-it-qat
 ```
 
 If Docker inference is too slow, start with smaller models:
@@ -67,6 +68,8 @@ export LLM_COUNCIL_LOCAL_ALT_MODEL=qwen2.5:3b
 export LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY=qwen
 export LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 export LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.2:3b
+export LLM_COUNCIL_LOCAL_VALIDATOR_MODEL=gemma4:12b-it-qat
+export LLM_COUNCIL_LOCAL_VALIDATOR_MODEL_FAMILY=gemma
 ```
 
 ## Step 1: Confirm Machine And Docker
@@ -108,7 +111,7 @@ Expected result:
 
 ```text
 BUILD SUCCESS
-Tests run: 942, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 952, Failures: 0, Errors: 0, Skipped: 0
 ```
 
 If Java 25 is not installed, install it or run only the Docker build path.
@@ -131,6 +134,7 @@ In another terminal, pull the models:
 ollama pull "${LLM_COUNCIL_LOCAL_MODEL:-llama3.1:8b}"
 ollama pull "${LLM_COUNCIL_LOCAL_ALT_MODEL:-mistral:7b}"
 ollama pull "${LLM_COUNCIL_LOCAL_THIRD_MODEL:-qwen2.5:7b}"
+ollama pull "${LLM_COUNCIL_LOCAL_VALIDATOR_MODEL:-gemma4:12b-it-qat}"
 ```
 
 Confirm host Ollama is reachable:
@@ -371,7 +375,7 @@ Check the app's effective environment first:
 
 ```bash
 docker compose -f docker-compose.m1-32gb-app-only.yml exec app env \
-  | grep -E 'SPRING_AI_OLLAMA_BASE_URL|LLM_COUNCIL_LOCAL_MODEL|LLM_COUNCIL_LOCAL_ALT_MODEL|LLM_COUNCIL_LOCAL_THIRD_MODEL|LLM_COUNCIL_LOCAL_CHAIR_MODEL'
+  | grep -E 'SPRING_AI_OLLAMA_BASE_URL|LLM_COUNCIL_LOCAL_MODEL|LLM_COUNCIL_LOCAL_ALT_MODEL|LLM_COUNCIL_LOCAL_THIRD_MODEL|LLM_COUNCIL_LOCAL_CHAIR_MODEL|LLM_COUNCIL_LOCAL_VALIDATOR_MODEL'
 ```
 
 Expected for app-only M1 testing:
@@ -382,6 +386,7 @@ LLM_COUNCIL_LOCAL_MODEL=llama3.1:8b
 LLM_COUNCIL_LOCAL_ALT_MODEL=mistral:7b
 LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.1:8b
+LLM_COUNCIL_LOCAL_VALIDATOR_MODEL=gemma4:12b-it-qat
 ```
 
 Then confirm host Ollama has the same tagged model names:
@@ -562,6 +567,8 @@ export LLM_COUNCIL_LOCAL_ALT_MODEL=qwen2.5:3b
 export LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY=qwen
 export LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 export LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.2:3b
+export LLM_COUNCIL_LOCAL_VALIDATOR_MODEL=gemma4:12b-it-qat
+export LLM_COUNCIL_LOCAL_VALIDATOR_MODEL_FAMILY=gemma
 docker compose -f docker-compose.m1-32gb.yml up --build
 ```
 
@@ -594,6 +601,8 @@ export LLM_COUNCIL_LOCAL_ALT_MODEL=qwen2.5:3b
 export LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY=qwen
 export LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 export LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.2:3b
+export LLM_COUNCIL_LOCAL_VALIDATOR_MODEL=gemma4:12b-it-qat
+export LLM_COUNCIL_LOCAL_VALIDATOR_MODEL_FAMILY=gemma
 docker compose -f docker-compose.m1-32gb.yml up --build
 ```
 

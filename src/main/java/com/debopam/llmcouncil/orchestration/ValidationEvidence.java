@@ -67,6 +67,29 @@ final class ValidationEvidence {
                 rawText);
     }
 
+    /**
+     * Merge a deterministic trust-boundary finding with model validation.
+     *
+     * <p>The model validator is evidence, not an authority that can waive an
+     * application guard. Reusing the existing safety criterion and human-review
+     * flag keeps the REST contract stable while making the failure visible.
+     */
+    static ValidationArtifact enforceTrustBoundary(
+            ValidationArtifact artifact, TrustBoundaryGuard.Assessment trust) {
+        if (trust == null || !trust.influenced()) {
+            return artifact;
+        }
+        List<String> issues = new ArrayList<>(artifact.issues());
+        issues.add(trust.reason());
+        List<String> fixes = new ArrayList<>(artifact.recommendedFixes());
+        fixes.add("Remove claims or actions derived from instruction-like supporting context and re-run validation.");
+        Map<String, String> criteria = new LinkedHashMap<>(artifact.criteria());
+        criteria.put("safety", "fail: " + trust.reason());
+        return new ValidationArtifact(
+                artifact.validatorId(), false, artifact.confidence(), issues, fixes,
+                criteria, true, artifact.rawText());
+    }
+
     private static String verdict(String assessment) {
         if (assessment == null || assessment.isBlank()) {
             return null;

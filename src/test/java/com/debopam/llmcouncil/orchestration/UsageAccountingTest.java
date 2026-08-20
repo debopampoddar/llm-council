@@ -24,12 +24,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -85,6 +87,62 @@ class UsageAccountingTest {
                        "Stage " + stage + " called a model but recorded no usage, so its tokens "
                        + "are invisible to the run's cost report. Billed stages: " + billed);
         }
+    }
+
+    @Test
+    void validationRetriesOnceWithMoreRoomWhenStructuredOutputHitsItsLimit() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        List<Integer> outputAllowances = new ArrayList<>();
+        ModelProfile validator = TestModels.model("validator").provider("mock")
+                .providerModelId("thinking-validator").outputTokens(1200)
+                .temperature(0.1).timeout(Duration.ofSeconds(30))
+                .role(ModelRole.VALIDATOR).family("independent").build();
+        ModelClient client = request -> {
+            outputAllowances.add(request.maxOutputTokens());
+            if (calls.getAndIncrement() == 0) {
+                return new ModelCallResult("", 50L, (long) request.maxOutputTokens(),
+                                           Duration.ofMillis(10));
+            }
+            return new ModelCallResult("""
+                    {
+                      "approved": true,
+                      "confidence": 0.9,
+                      "issues": [],
+                      "recommendedFixes": [],
+                      "criteria": {
+                        "correctness": "pass: independently checked",
+                        "completeness": "pass: complete",
+                        "uncertainty": "pass: disclosed",
+                        "safety": "pass: safe",
+                        "actionability": "pass: actionable"
+                      },
+                      "requiresHumanReview": false
+                    }
+                    """, 50L, 150L, Duration.ofMillis(10));
+        };
+        ModelRegistry registry = TestModels.registry(List.of(validator), Map.of("validator", client));
+        CouncilPolicy policy = TestModels.policy("validation-policy").protocol("validation-only")
+                .members("validator").chair("validator").optionalValidator("validator").build();
+        CouncilContext context = new CouncilContext(
+                CouncilSession.create("validation-session", "question", null,
+                                      DepthMode.BALANCED, "mock"),
+                TestModels.profile("mock").displayName("Mock").testOnly(true)
+                        .defaultDepth(DepthMode.BALANCED)
+                        .depth(DepthMode.BALANCED, policy.id()).build(),
+                policy,
+                new ProtocolDefinition("validation-only", "validation-only",
+                        List.of(StageType.VALIDATE), Map.of()));
+        context.setSynthesisResult("A safe final answer.");
+
+        new ValidateStageExecutor(registry, new PromptBuilder(),
+                new StructuredOutputParser(new ObjectMapper()),
+                new DefaultEventPublisher(), new NoopArtifactStore())
+                .execute(context, ProtocolStageOptions.empty());
+
+        assertFalse(context.isTerminal());
+        assertTrue(context.validation().orElseThrow().approved());
+        assertEquals(List.of(1200, 2400), outputAllowances);
+        assertEquals(2, context.usage().size(), "both paid attempts must remain visible");
     }
 
     @Test

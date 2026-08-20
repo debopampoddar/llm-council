@@ -836,6 +836,7 @@ mvn test
 ollama pull llama3.1:8b
 ollama pull mistral:7b
 ollama pull qwen2.5:7b   # third distinct member for local-rigorous
+ollama pull gemma4:12b-it-qat # independent validator for balanced/rigorous
 ```
 
 ### 3. Run Service

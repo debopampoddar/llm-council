@@ -1,6 +1,6 @@
 # LLM Council code review
 
-Date: 2026-08-17  
+Date: 2026-08-17; updated 2026-08-20
 Scope: Java/Spring Boot/Spring AI backend, orchestration, configuration, persistence, REST/SSE APIs, static web UI, and tests.
 
 ## Bottom line
@@ -14,7 +14,7 @@ Current verdict:
 - **Good local/personal application and strong development platform.**
 - **Not production-ready for untrusted network users.** It has no authentication or authorization and intentionally relies on loopback binding as its access-control boundary.
 - **Do not market every shipped profile as a genuinely independent council.** The local rigorous and multi-cloud profiles have useful diversity. OpenAI, Claude, and Gemini are single-provider policies with correlated chair/validator families; the application reports that correlation, but a warning does not create independence.
-- **The orchestration is internally consistent under the deterministic harness and the shipped three-model Ollama council was exercised live.** Repeatable contract tests are still needed before a release claim can extend to OpenAI, Anthropic, Gemini, or arbitrary Ollama versions deployed by users.
+- **The orchestration is internally consistent under the deterministic harness and the shipped local council was exercised live.** The 2026-08-19 held-out result exposed one prompt-injection propagation failure and no rigorous quality advantage. The implementation has since been hardened; that historical run must not be presented as evidence for the new code. Repeatable contract tests are still needed before a release claim can extend to OpenAI, Anthropic, Gemini, or arbitrary Ollama versions deployed by users.
 
 Indicative assessment after fixes:
 
@@ -25,7 +25,7 @@ Indicative assessment after fixes:
 | Configuration safety | 8/10 | Unusually thorough validation and warnings. Some shipped policies knowingly fall below the quality bar the warnings describe. |
 | User experience | 7/10 | Useful preflight, SSE timeline, trust signals, setup advisor, retry/cancel, and now honest send/delete behavior. Error contracts and cancellation presentation need cleanup. |
 | Persistence/privacy | 7/10 | JDBC session/event persistence, filesystem artifacts, retention, path containment, durable result artifacts, and deletion cascade exist. No encryption or user-level access control. |
-| Test confidence | 8/10 | 942 passing deterministic tests plus two live three-model Ollama runs. Browser E2E, load, fault-injection, and repeatable cloud-provider suites remain open. |
+| Test confidence | 8/10 | 952 passing deterministic tests, including observed injection adoption, safe rejection, and validator output-ceiling recovery, plus historical live Ollama runs. A new live security regression and uncontaminated held-out evaluation remain open. |
 
 ## Review method
 
@@ -42,7 +42,7 @@ Verification performed:
 
 ```text
 JAVA_HOME=<JDK 25> mvn clean test
-Tests run: 942, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 952, Failures: 0, Errors: 0, Skipped: 0
 Total time: 12.172 s
 Ruby YAML parse: application.yml and all three Compose files valid
 Markdown relative-link scan: 9 files checked, 0 missing targets
@@ -57,8 +57,8 @@ Compose content regression tests passed; actual container startup remains a
 machine-runbook check.
 
 No cloud-provider credentials were used. The live verification used only the
-local Ollama service and the installed `llama3.1:8b`, `mistral:7b`, and
-`qwen2.5:7b` models. No claim in this report treats that result or mock-provider
+local Ollama service and the installed `llama3.1:8b`, `mistral:7b`,
+`qwen2.5:7b`, and `gemma4:12b-it-qat` models. No claim in this report treats that result or mock-provider
 success as proof of a cloud-provider contract.
 
 ## Must-have defects fixed
@@ -270,10 +270,28 @@ and explains independence relative to the chair.
 Files: `PromptBuilder`, `ValidationEvidence`, `ValidateStageExecutor`,
 `trust.js`, `artifacts.js`, `timeline.js`.
 
-Implementation status: **all 22 concrete must-have defects in this report are
-CLOSED in the reviewed worktree.** The next section contains conditional release
-gates that remain OPEN for shared/public deployment; they are not descriptions
-of unfixed items above.
+### 23. Untrusted context could redirect the council and be approved by the same weights
+
+The held-out adversarial case showed the Mistral critic adopting an embedded
+`SYSTEM OVERRIDE`, the chair turning it into an unsupported security incident,
+and the Mistral-backed validator approving it. The fix is layered rather than a
+prompt-only patch: JSON provenance envelopes at every model boundary, common
+authority rules, grounding and trust-boundary review criteria, evidence-grounded
+criticism and synthesis, a deterministic adoption guard, and fail-closed behavior
+for unsafe drafts and final synthesis. The local validator is now Gemma, and
+validator independence is checked against the chair and every member.
+
+Files: `PromptEnvelopeRenderer`, `PromptBuilder`, `TrustBoundaryGuard`, all
+model-calling stage executors, `ReviewEvidence`, `ValidationEvidence`,
+`ValidationIndependenceClassifier`, `application.yml`, UI trust labels, Compose,
+and `docs/prompt-injection-threat-model.md`.
+
+Qualification: the guard is intentionally high precision and is not a general
+prompt-injection classifier. A pass is not a security proof; see the threat model
+for evasion and false-positive limits.
+
+Implementation status after the 2026-08-20 update: **all 23 concrete must-have
+defects in this report are CLOSED in the reviewed worktree.**
 
 ## Documentation-to-code audit
 
@@ -336,7 +354,7 @@ failure sanitization, acknowledgement, strict parsing, credential refusal,
 throttling, the negative `System.nanoTime` origin edge case, and the guarantee
 that global mock fallback cannot fabricate a successful probe.
 
-The post-implementation verification is 942 tests with zero failures,
+The post-implementation verification is 952 tests with zero failures,
 errors, or skips on the reviewed machine.
 
 ### Live local verification after the review-output fix

@@ -18,7 +18,9 @@ import java.util.regex.Pattern;
  * and a fixed latency so integration tests can verify the token usage pipeline.
  */
 public class MockModelClient implements ModelClient {
-    private static final Pattern DRAFT_ID_PATTERN = Pattern.compile("id=\"(draft-[^\"]+)\"");
+    /** Supports the current JSON prompt envelope and legacy XML-shaped test prompts. */
+    private static final Pattern DRAFT_ID_PATTERN = Pattern.compile(
+            "(?:\\\"id\\\":\\\"|id=\\\")(draft-[^\\\"]+)\\\"");
 
     /** Synthetic prompt token count returned by the mock for testing. */
     private static final long MOCK_PROMPT_TOKENS = 50L;
