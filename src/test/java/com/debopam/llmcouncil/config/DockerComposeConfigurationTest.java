@@ -20,6 +20,8 @@ class DockerComposeConfigurationTest {
         assertTrue(compose.contains("host.lima.internal"));
         assertTrue(compose.contains("NO_PROXY"));
         assertTrue(compose.contains("LLM_COUNCIL_LOCAL_THIRD_MODEL"));
+        assertTrue(compose.contains(
+                "LLM_COUNCIL_LOCAL_VALIDATOR_MODEL: ${LLM_COUNCIL_LOCAL_VALIDATOR_MODEL:-gemma4:12b-it-qat}"));
     }
 
     @Test
@@ -32,5 +34,9 @@ class DockerComposeConfigurationTest {
         assertTrue(intel.contains("ollama pull \"${LLM_COUNCIL_LOCAL_THIRD_MODEL:-qwen2.5:7b}\""));
         assertTrue(intel.contains("LLM_COUNCIL_LOCAL_THIRD_MODEL: ${LLM_COUNCIL_LOCAL_THIRD_MODEL:-qwen2.5:7b}"));
         assertTrue(intel.contains("LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY: qwen"));
+        assertTrue(m1.contains("ollama pull \"${LLM_COUNCIL_LOCAL_VALIDATOR_MODEL:-gemma4:12b-it-qat}\""));
+        assertTrue(m1.contains("LLM_COUNCIL_LOCAL_VALIDATOR_MODEL_FAMILY: ${LLM_COUNCIL_LOCAL_VALIDATOR_MODEL_FAMILY:-gemma}"));
+        assertTrue(intel.contains("ollama pull \"${LLM_COUNCIL_LOCAL_VALIDATOR_MODEL:-gemma4:12b-it-qat}\""));
+        assertTrue(intel.contains("LLM_COUNCIL_LOCAL_VALIDATOR_MODEL_FAMILY: ${LLM_COUNCIL_LOCAL_VALIDATOR_MODEL_FAMILY:-gemma}"));
     }
 }

@@ -24,8 +24,8 @@ import { el, pill } from "./dom.js";
 import { renderInline } from "./markdown.js";
 
 const INDEPENDENCE = {
-  INDEPENDENT: ["ok", "validator independent of chair"],
-  CORRELATED: ["warn", "validator correlated with chair"],
+  INDEPENDENT: ["ok", "validator independent of council producers"],
+  CORRELATED: ["warn", "validator correlated with a council producer"],
   SELF_VALIDATION: ["qual", "chair self-validation"],
   NOT_APPLICABLE: ["mute", "no model validation"],
 };

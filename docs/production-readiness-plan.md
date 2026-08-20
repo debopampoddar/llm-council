@@ -30,7 +30,7 @@ The application already provides:
   catalog preview, atomic save, export, and a bounded live model probe;
 - pull-request CI for the clean Java 25 build and repository documentation/
   configuration checks;
-- 942 deterministic JUnit tests in the current baseline.
+- 952 deterministic JUnit tests in the current baseline.
 
 This is a capable local/personal application. It is not ready for untrusted or
 shared network deployment.
@@ -48,9 +48,10 @@ shared network deployment.
 | Cancellation | Implemented at orchestration boundaries | Provider work may continue briefly if its transport ignores interruption. Chat currently presents cancellation as failure. |
 | Concurrency control | Partial | Async chat uses a global permit and rejects saturation. The synchronous run endpoint bypasses that permit; there is no durable queue or distributed lease. |
 | Observability | Partial, strengthened | Events, artifacts, usage, health, and Actuator exist. Cardinality-safe physical model-call/stage latency, token, retry, active-run, and async-admission rejection metrics are implemented. Dashboards/alerts and storage, cancellation, quorum, prompt-truncation, and synchronous-admission meters remain open. |
+| Prompt/context integrity | Implemented with explicit limits | JSON provenance envelopes, common authority rules, grounding/trust-boundary review, deterministic adoption detection, and fail-closed synthesis cover explicit context redirection. This is not a general prompt-injection proof; encoded, paraphrased, multilingual, and indirect attacks remain evaluation targets. |
 | API security | Not implemented | No authentication, authorization, ownership, rate limiting, or application-managed TLS. Default loopback binding is the only safe boundary. |
-| Structured output recovery | Partial | Review parsing recovers multiple envelopes, compact criteria, fractional scores, and valid siblings, enforces exact coverage, and makes one targeted call for omitted drafts. Wholly unparseable review output, validation output, and advisor output do not receive a bounded repair call. |
-| Real-provider verification | Partial | Two manual three-model Ollama runs now cover the conditional and forced full rigorous paths. The normal suite remains hermetic and there is no repeatable provider-contract Maven profile or cloud-provider gate. |
+| Structured output recovery | Partial | Review parsing recovers multiple envelopes, compact criteria, fractional scores, and valid siblings, enforces exact coverage, and makes one targeted call for omitted drafts. Ollama thinking is disabled for structured calls, and validation makes one bounded larger-output recovery only after a parse failure at the exact token ceiling; both paid attempts remain visible. Wholly unparseable review output away from its ceiling and advisor output do not receive a repair call. |
+| Real-provider verification | Partial | Historical manual Ollama runs cover the conditional and forced full rigorous paths. The prompt-injection hardening and Gemma validator still need a fresh live regression. The normal suite remains hermetic and there is no repeatable provider-contract Maven profile or cloud-provider gate. |
 | Browser/load/fault testing | Not implemented | No browser E2E, load/soak, database contention, or network fault-injection suite. |
 | Pull-request CI | Implemented | Java 25 `clean verify`, YAML parsing, local Markdown/image links, and removed-provider regression checks run on pull requests and `main`. |
 | Configuration workbench | Implemented | Import, strict validation, diff preview, confirmed atomic save, export, restart guidance, and a guarded model-id probe are available at `/config.html`. |

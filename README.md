@@ -86,7 +86,7 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Credentials are structurally outside the request and overlay contracts; credential fields and credential-shaped values are refused without being echoed.
 
 ### Testing
-- 942 deterministic JUnit tests: policy resolution, confidence parsing, validation
+- 952 deterministic JUnit tests: policy resolution, confidence parsing, validation
   evidence consistency, quorum, multi-envelope and compact local-model review output,
   exact review coverage and targeted recovery, partial-state reporting, KS convergence
   math, sycophancy detection at the shipped thresholds, council-composition warnings,
@@ -145,7 +145,7 @@ user-level ownership model.
 
 **A green build does not prove a provider contract.** `mvn test` is hermetic — no
 network, no live model calls. It proves the orchestration is internally
-consistent. The shipped three-model Ollama council has been exercised live by
+consistent. A prior three-member Ollama council has been exercised live by
 hand; OpenAI, Anthropic, and Vertex call paths have not been covered by a
 repeatable suite.
 
@@ -153,9 +153,21 @@ repeatable suite.
 The `openai`, `claude`, and `gemini` profiles draw chair and validator from one
 model family, so `ValidationIndependence` classifies them `CORRELATED`. The
 application reports this honestly rather than hiding it, but a reported warning
-is not independence. `local-*` and `multi-cloud-*` are `INDEPENDENT`; `*-quick`
-is `NOT_APPLICABLE` because QUICK declares no validator at all.
+is not independence. Independence is checked against the chair and every drafting
+member, not just the chair. `local-*` and `multi-cloud-*` are `INDEPENDENT`
+because they use the dedicated Gemma validator; `*-quick` is `NOT_APPLICABLE`
+because QUICK declares no validator at all.
 `ShippedValidationIndependenceTest` is the authority on the current tiers.
+
+**Supporting context is untrusted data.** Every model-facing stage receives a
+JSON provenance envelope: only `task.text` has instruction authority; context,
+drafts, reviews, scores, and debate turns have none. Prompts reinforce that
+boundary, reviews score grounding and trust-boundary compliance, and a
+high-precision deterministic backstop rejects output that adopts explicit task
+redirections from context. A rejection fails closed, including in QUICK where no
+validator runs. This materially reduces a demonstrated injection path; it is not
+a proof that prompt injection is solved. See
+[the prompt-injection threat model](docs/prompt-injection-threat-model.md).
 
 **Its shape is a single-process local application.** One run at a time by default
 (`council.runtime.max-concurrent-runs: 1`), cancellation honoured at stage
@@ -420,6 +432,7 @@ Then pull the local models:
 ollama pull llama3.1:8b
 ollama pull mistral:7b
 ollama pull qwen2.5:7b   # third distinct member for local-rigorous
+ollama pull gemma4:12b-it-qat # validator, separate from all answer producers
 ```
 
 ### Building a council without writing YAML
@@ -532,9 +545,9 @@ The repository includes Docker Compose files for local Mac testing:
 
 | File | Target machine | Default local models |
 |---|---|---|
-| `docker-compose.m1-32gb.yml` | Apple Silicon M1 class Mac with 32 GB memory | `llama3.1:8b`, `mistral:7b`, `qwen2.5:7b` |
-| `docker-compose.m1-32gb-app-only.yml` | Apple Silicon M1 app container plus native/separate Ollama | `llama3.1:8b`, `mistral:7b`, `qwen2.5:7b` |
-| `docker-compose.intel-2019-32gb.yml` | 2019 Intel MacBook Pro with 32 GB memory | `llama3.2:3b`, `qwen2.5:3b`, `qwen2.5:7b` |
+| `docker-compose.m1-32gb.yml` | Apple Silicon M1 class Mac with 32 GB memory | `llama3.1:8b`, `mistral:7b`, `qwen2.5:7b`, `gemma4:12b-it-qat` validator |
+| `docker-compose.m1-32gb-app-only.yml` | Apple Silicon M1 app container plus native/separate Ollama | `llama3.1:8b`, `mistral:7b`, `qwen2.5:7b`, `gemma4:12b-it-qat` validator |
+| `docker-compose.intel-2019-32gb.yml` | 2019 Intel MacBook Pro with 32 GB memory | `llama3.2:3b`, `qwen2.5:3b`, `qwen2.5:7b`, `gemma4:12b-it-qat` validator |
 
 Validate and start on M1:
 
@@ -549,6 +562,7 @@ Recommended M1 path when Ollama runs natively or separately:
 ollama pull llama3.1:8b
 ollama pull mistral:7b
 ollama pull qwen2.5:7b   # third distinct member for local-rigorous
+ollama pull gemma4:12b-it-qat # independent local validator
 unset SPRING_AI_OLLAMA_BASE_URL
 docker compose -f docker-compose.m1-32gb-app-only.yml up --build
 ```

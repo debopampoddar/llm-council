@@ -326,7 +326,7 @@ Apache-2.0, logback is the dual case above. These are what §4.3's
 ## 7. Open risks
 
 1. **Hermetic tests do not prove general provider integration.** `mvn test`
-   never calls a model. Two manual three-model Ollama runs verified the shipped
+   never calls a model. Historical manual Ollama runs verified the then-shipped
    conditional rigorous path and every forced rigorous stage on the reviewed
    laptop, but that is evidence for one installed Ollama version and model set,
    not a repeatable contract and not evidence for Anthropic or Vertex. This is

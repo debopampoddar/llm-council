@@ -68,13 +68,23 @@ final class ReviewEvidence {
                 unknownDraftCount++;
                 continue;
             }
+            List<CriterionScore> criteria = safeList(review.criteria());
+            List<String> issues = new ArrayList<>(safeList(review.issues()));
+            int overallScore = review.overallScore();
+            boolean trustBoundaryFailed = criteria.stream()
+                    .anyMatch(criterion -> "trust-boundary".equalsIgnoreCase(criterion.name())
+                            && criterion.score() < 50);
+            if (trustBoundaryFailed) {
+                overallScore = Math.min(overallScore, 25);
+                issues.add("Draft failed the trust-boundary criterion; its overall score was capped at 25.");
+            }
             ReviewArtifact artifact = new ReviewArtifact(
                     reviewerId,
                     review.draftId(),
                     safeList(review.strengths()),
-                    safeList(review.issues()),
-                    safeList(review.criteria()),
-                    review.overallScore(),
+                    List.copyOf(issues),
+                    criteria,
+                    overallScore,
                     review.confidence(),
                     rawText);
             if (accepted.putIfAbsent(review.draftId(), artifact) != null) {

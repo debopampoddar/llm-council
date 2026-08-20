@@ -47,6 +47,11 @@ public class AggregationStageExecutor implements StageExecutor {
                 catch (Exception ex) { log.warn("Aggregation collection failed", ex); }
             }
         }
+        if (ctx.drafts().size() < ctx.policy().minimumSuccessfulDrafts()) {
+            ctx.markFailed(stage(), new IllegalStateException(
+                    "Draft quorum not met after aggregation: " + ctx.drafts().size() + "/"
+                    + ctx.policy().minimumSuccessfulDrafts()));
+        }
         return ctx;
     }
 
@@ -64,6 +69,17 @@ public class AggregationStageExecutor implements StageExecutor {
                                          model.providerModelId(), messages,
                                          model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()));
             ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
+            TrustBoundaryGuard.Assessment trust = TrustBoundaryGuard.assess(
+                    ctx.session().context(), result.text());
+            if (trust.influenced()) {
+                String reason = "Aggregated draft from " + modelId + " was excluded: " + trust.reason();
+                ctx.excludeModel(modelId, reason);
+                ctx.markDegraded(reason);
+                events.publish(ctx.session().id(), stage().name(),
+                        "AGGREGATE_TRUST_BOUNDARY_REJECTED", modelId,
+                        Map.of("reason", trust.reason(), "matchedTerms", trust.matchedTerms()));
+                return null;
+            }
             events.publish(ctx.session().id(), stage().name(), "AGGREGATE_COMPLETED", modelId, Map.of());
             return new Draft(modelId + "_agg", modelId, result.text());
         } catch (ModelCallException ex) {

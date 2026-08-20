@@ -114,6 +114,21 @@ class CouncilCompositionWarningTest {
     }
 
     @Test
+    @DisplayName("a member alias resolving to the chair model is warned about")
+    void chairProviderModelAliasAsMemberIsWarnedAbout() {
+        CouncilProperties props = validProps();
+        CouncilProperties.ModelProps alias = model("chair-alias", ModelRole.MEMBER);
+        alias.setProviderModelId("chair");
+        props.getModels().add(alias);
+        props.getPolicies().get("policy").setMemberModelIds(List.of("member", "chair-alias"));
+
+        validator.validate(props);
+
+        assertTrue(warned("seats its chair"),
+                "logical ids must not hide that the chair also produced a draft: " + warnings());
+    }
+
+    @Test
     @DisplayName("a chair outside the roster is not warned about")
     void chairOutsideRosterStaysSilent() {
         validator.validate(validProps());

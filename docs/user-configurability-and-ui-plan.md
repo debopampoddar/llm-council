@@ -11,7 +11,7 @@ and current production-readiness plan
 > browser UI, Advisor, and an advanced YAML configuration workbench all exist.
 > Phase 2B resume/re-run and Phase 4 hot reload remain unimplemented. The
 > original four-tab form design from 3B was replaced by the schema-informed YAML
-> workbench rather than built literally. The current baseline has 942
+> workbench rather than built literally. The current baseline has 952
 > deterministic tests.
 > Current production priorities are in
 > [production-readiness-plan.md](production-readiness-plan.md).
@@ -389,7 +389,10 @@ Add a test that `../../../etc/passwd` and an absolute path both return 400.
 
 ### 3.9 Validator independence tiers (fixes F1)
 
-`CouncilConfigurationValidator` gains a graduated check comparing chair to validator. It is a **warning, never a boot failure** — a single-model machine must still be able to run a council, consistent with how `warnLowDiversity` already behaves.
+`CouncilConfigurationValidator` has a graduated check comparing the validator to
+the chair and every drafting member. It is a **warning, never a boot failure** —
+a single-model machine must still be able to run a council, consistent with how
+`warnLowDiversity` already behaves.
 
 ```java
 public enum ValidationIndependence { INDEPENDENT, CORRELATED, SELF_VALIDATION }
@@ -397,8 +400,8 @@ public enum ValidationIndependence { INDEPENDENT, CORRELATED, SELF_VALIDATION }
 
 | Condition | Tier | Behaviour |
 |---|---|---|
-| Chair and validator have different `modelFamily` | `INDEPENDENT` | silent |
-| Different model id, but same `modelFamily` **or** same resolved `providerModelId` | `CORRELATED` | boot `WARN`; badge in the Phase 2 timeline |
+| Validator differs in family and resolved model from the chair and every member | `INDEPENDENT` | silent |
+| Different logical id, but same `modelFamily` **or** same resolved `providerModelId` as any producer | `CORRELATED` | boot `WARN`; badge in the Phase 2 timeline |
 | `chairModelId.equals(validatorModelId)` | `SELF_VALIDATION` | boot `WARN`; prominent badge; reported validation confidence capped at 0.6 |
 
 Details:
@@ -522,20 +525,22 @@ Then each issue on its own line at `WARN` (warnings) or `ERROR` (errors). Never 
 
 ### 4.7 Shipped-config fix for validator independence (fixes F1) ✅ IMPLEMENTED — shipped separately as 1C
 
-Config-only, no Java. The local fix costs nothing: `mistral:7b` is already pulled as part of the documented local setup and is already loaded during GENERATE, so using it as validator adds no download and no extra peak RAM. VALIDATE runs alone at the end of the pipeline, after SYNTHESIZE, so the validator never needs to be co-resident with the members — the ceiling is set by the GENERATE fan-out.
+The original config-only design reused `mistral:7b`, but the 2026-08-19 held-out run demonstrated why that was insufficient: the Mistral critic introduced an unsafe claim and the same weights later approved it. The shipped validator is now `gemma4:12b-it-qat`, independent of the Llama, Mistral, and Qwen answer producers. This adds one download but not a co-residency requirement because VALIDATE runs after SYNTHESIZE and Ollama can unload the prior model.
 
-`validatorModelId` cannot simply point at `local-mistral`, because the existing role check requires `VALIDATOR` or `CHAIR` and `local-mistral` is `MEMBER`. Add a second logical binding over the same provider model:
+`validatorModelId` cannot point at a member binding because the role check
+requires `VALIDATOR` or `CHAIR`, and reusing the same provider model would also
+be correlated. Add a dedicated binding over a different family:
 
 ```yaml
 - id: local-validator
   provider: ollama
-  providerModelId: ${LLM_COUNCIL_LOCAL_ALT_MODEL:mistral:7b}
+  providerModelId: ${LLM_COUNCIL_LOCAL_VALIDATOR_MODEL:gemma4:12b-it-qat}
   defaultOutputTokens: 1200
   temperature: 0.2
   timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
   role: VALIDATOR
   councilRole: CRITIC
-  modelFamily: mistral
+  modelFamily: gemma
 ```
 
 Then repoint:
@@ -1290,7 +1295,7 @@ Algorithm:
 
 1. **Candidate pool.** `LOCAL_ONLY` → only `ollama` models whose `providerModelId` is actually installed. `CLOUD_OK` / `PREFER_LOCAL` → add models whose provider has a real credential. **Never propose a model that is not installed or whose provider is inactive** — this is the single biggest quality win over an LLM writing YAML.
 2. **Diversity selection.** Choose `councilSize` members maximising distinct `modelFamily`. If only one family is available, emit a `WARNING` issue explaining that heterogeneity is reduced — do not silently proceed.
-3. **Roles.** Assign `councilRole` round-robin `PROPOSER → CRITIC → PROPOSER…`; with `adversarialEmphasis`, weight to ≥50% `CRITIC`. Chair prefers the largest-context model with `role=CHAIR`; validator prefers a **different family from the chair** (Fresh Eyes is pointless if the validator is the chair's twin).
+3. **Roles.** Assign `councilRole` round-robin `PROPOSER → CRITIC → PROPOSER…`; with `adversarialEmphasis`, weight to ≥50% `CRITIC`. Chair prefers the largest-context model with `role=CHAIR`; validator prefers a **family unused by the chair or any member** (Fresh Eyes is weakened when the validator shares a producer's blind spots).
 4. **Protocol.** `rigor` maps to `quick` / `balanced` / `rigorous`. `latency=FAST` with `rigor=RIGOROUS` derives a tuned protocol with `DEBATE.max-rounds: 2` and reports the trade-off.
 5. **Quorum.** `minimumSuccessfulDrafts = max(1, ceil(size * 0.6))`; `minimumReviewsPerDraft = size >= 3 ? 1 : 0`.
 6. Emit a `UserConfigDocument` for all three depths, plus a plain-English **rationale** list — one sentence per decision, quoting the requirement that drove it.
@@ -1327,7 +1332,7 @@ Interactive prompts, same synthesizer, prints the YAML, asks before writing, exi
 
 ### 10.7 Tests
 
-- `ConfigSynthesizerTest` — the bulk of the phase. One case per requirement combination: local-only with two installed models; local-only with **zero** installed models (must produce an actionable error, not an empty council); cloud-ok with only Ollama credentialed; `councilSize` exceeding available models; single-family pool warning; validator-family-differs-from-chair rule.
+- `ConfigSynthesizerTest` — the bulk of the phase. One case per requirement combination: local-only with two installed models; local-only with **zero** installed models (must produce an actionable error, not an empty council); cloud-ok with only Ollama credentialed; `councilSize` exceeding available models; single-family pool warning; validator-family-unused-by-producers rule.
 - `RequirementExtractorTest` — mocked `ModelClient` returning good JSON, malformed JSON, unknown enum values, and an outright refusal.
 - `AdvisorEndToEndTest` — synthesize → validate → merge produces a runnable catalog with zero errors.
 

@@ -31,7 +31,8 @@ led to the current system. It is retained as historical reference.
   fractional-score variants; exact unique non-self coverage controls quorum and
   incomplete evidence produces `PARTIAL`.
 - Pull-request CI and the advanced configuration workbench are implemented;
-  two manual three-model Ollama audits passed, while repeatable provider-contract
+  historical manual Ollama audits passed, while the prompt-injection hardening
+  and Gemma validator still require a fresh live regression and repeatable provider-contract
   suites and automated browser E2E remain open.
 
 ## As-built status
@@ -46,9 +47,9 @@ led to the current system. It is retained as historical reference.
 | 6. Observability | Partial: minimum cardinality-safe model/stage/admission metrics implemented; dashboards and remaining failure-path meters open |
 | 7. Runtime controls | Partial: async permit, cancellation, bounded retention; durable queue/distributed admission open |
 | 8. SSE | Implemented with durable cursor replay when JDBC is selected |
-| 9. Prompt/security boundary | Prompt boundaries implemented; API authentication/ownership open |
+| 9. Prompt/security boundary | Provenance envelopes, review criteria, deterministic adoption guard, and fail-closed synthesis implemented; broader injection evaluation and API authentication/ownership open |
 | 10. Quality/calibration | Partially implemented; production policy quality and empirical calibration remain open |
-| 11. Tests | 942 deterministic tests plus PR CI; browser/load/fault and repeatable cloud-provider suites open |
+| 11. Tests | 952 deterministic tests plus PR CI; browser/load/fault, fresh injection regression, and repeatable cloud-provider suites open |
 | 12. Chat API | Implemented, including optional durability, cancellation, cursor replay, and deletion cascade |
 
 ## Original implementation order (historical)

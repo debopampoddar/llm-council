@@ -45,6 +45,7 @@ LLM_COUNCIL_LOCAL_MODEL=llama3.2:3b
 LLM_COUNCIL_LOCAL_ALT_MODEL=qwen2.5:3b
 LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.2:3b
+LLM_COUNCIL_LOCAL_VALIDATOR_MODEL=gemma4:12b-it-qat
 ```
 
 The alternate is explicitly declared as family `qwen` in this compose file so
@@ -61,6 +62,8 @@ export LLM_COUNCIL_LOCAL_ALT_MODEL=mistral:7b
 export LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY=mistral
 export LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 export LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.1:8b
+export LLM_COUNCIL_LOCAL_VALIDATOR_MODEL=gemma4:12b-it-qat
+export LLM_COUNCIL_LOCAL_VALIDATOR_MODEL_FAMILY=gemma
 ```
 
 ## Step 1: Confirm Machine And Docker
@@ -98,7 +101,7 @@ Expected result:
 
 ```text
 BUILD SUCCESS
-Tests run: 942, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 952, Failures: 0, Errors: 0, Skipped: 0
 ```
 
 If Java 25 is not available on the Intel machine, rely on the Docker build path:
@@ -374,6 +377,7 @@ LLM_COUNCIL_LOCAL_ALT_MODEL=qwen2.5:3b
 LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY=qwen
 LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.2:3b
+LLM_COUNCIL_LOCAL_VALIDATOR_MODEL=gemma4:12b-it-qat
 ```
 
 ### Port Conflict
@@ -396,6 +400,8 @@ export LLM_COUNCIL_LOCAL_ALT_MODEL=qwen2.5:3b
 export LLM_COUNCIL_LOCAL_ALT_MODEL_FAMILY=qwen
 export LLM_COUNCIL_LOCAL_THIRD_MODEL=qwen2.5:7b
 export LLM_COUNCIL_LOCAL_CHAIR_MODEL=llama3.2:3b
+export LLM_COUNCIL_LOCAL_VALIDATOR_MODEL=gemma4:12b-it-qat
+export LLM_COUNCIL_LOCAL_VALIDATOR_MODEL_FAMILY=gemma
 docker compose -f docker-compose.intel-2019-32gb.yml up --build
 ```
 

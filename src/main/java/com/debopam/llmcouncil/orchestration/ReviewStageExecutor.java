@@ -42,7 +42,8 @@ public class ReviewStageExecutor implements StageExecutor {
             try {
                 PromptBudget budget = PromptBudget.forModel(model);
                 List<ChatMessage> messages =
-                        promptBuilder.reviewMessages(ctx.session().question(), ctx.drafts(), budget);
+                        promptBuilder.reviewMessages(ctx.session().question(), ctx.session().context(),
+                                                     ctx.drafts(), budget);
                 PromptBudgets.record(ctx, events, stage(), modelId, budget);
 
                 ModelCallResult result = registry.clientForModel(modelId).call(
@@ -99,7 +100,7 @@ public class ReviewStageExecutor implements StageExecutor {
         try {
             PromptBudget budget = PromptBudget.forModel(model);
             List<ChatMessage> messages = promptBuilder.reviewMessages(
-                    ctx.session().question(), missingDrafts, budget);
+                    ctx.session().question(), ctx.session().context(), missingDrafts, budget);
             PromptBudgets.record(ctx, events, stage(), modelId, budget);
             ModelCallResult result = registry.clientForModel(modelId).call(
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),

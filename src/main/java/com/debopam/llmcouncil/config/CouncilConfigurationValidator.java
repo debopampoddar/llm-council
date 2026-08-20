@@ -3,6 +3,7 @@ package com.debopam.llmcouncil.config;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.model.ModelRole;
 import com.debopam.llmcouncil.model.ValidationIndependence;
+import com.debopam.llmcouncil.model.ValidationIndependenceClassifier;
 import com.debopam.llmcouncil.orchestration.StageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -183,13 +184,19 @@ public class CouncilConfigurationValidator {
             }
         }
 
-        // (2) The chair is also a member.
-        if (policy.getMemberModelIds().contains(policy.getChairModelId())) {
-            log.warn("Policy {} seats its chair '{}' as a council member. The chair will synthesise "
-                     + "a pool of drafts containing one it wrote itself, which anonymisation cannot "
-                     + "correct for. Remove it from memberModelIds unless the self-preference is "
-                     + "understood and accepted.",
-                     policyId, policy.getChairModelId());
+        // (2) The chair is also a member, including under a second logical id.
+        CouncilProperties.ModelProps chair = modelsById.get(policy.getChairModelId());
+        CouncilProperties.ModelProps overlappingMember = members.stream()
+                .filter(member -> member.getId().equals(policy.getChairModelId())
+                        || (chair != null && resolvesToSameModel(member, chair)))
+                .findFirst()
+                .orElse(null);
+        if (overlappingMember != null) {
+            log.warn("Policy {} seats its chair '{}' on the same underlying model as member '{}'. "
+                     + "The chair will synthesise a pool containing work from its own weights, which "
+                     + "anonymisation cannot correct for. Use a distinct chair model unless the "
+                     + "self-preference is understood and accepted.",
+                     policyId, policy.getChairModelId(), overlappingMember.getId());
         }
 
         // (3) A scoring strategy with nothing to work on.
@@ -242,7 +249,7 @@ public class CouncilConfigurationValidator {
     }
 
     /**
-     * Warn (do not fail) when a policy's validator is not independent of its chair.
+     * Warn (do not fail) when a validator overlaps any answer producer.
      *
      * <p>The validation stage exists to catch errors the chair made while
      * synthesising, which only works if the validator does not share the chair's
@@ -276,10 +283,10 @@ public class CouncilConfigurationValidator {
                      policyId, policy.getChairModelId());
             return;
         }
-        log.warn("Policy {} chair '{}' and validator '{}' share a model family or resolve to the same "
-                 + "provider model, so validation errors are likely to be correlated. Prefer a validator "
-                 + "from a different model family.",
-                 policyId, policy.getChairModelId(), policy.getValidatorModelId());
+        log.warn("Policy {} validator '{}' shares a model family or resolved provider model with its "
+                 + "chair '{}' or a council member, so validation errors are likely to be correlated. "
+                 + "Prefer a validator from a family not used by any answer producer.",
+                 policyId, policy.getValidatorModelId(), policy.getChairModelId());
     }
 
     /**
@@ -341,7 +348,7 @@ public class CouncilConfigurationValidator {
     }
 
     /**
-     * Classify how independent a policy's validator is from its chair.
+     * Classify how independent a policy's validator is from all answer producers.
      *
      * @param policy     the policy configuration
      * @param modelsById all configured models, keyed by id
@@ -356,9 +363,20 @@ public class CouncilConfigurationValidator {
         if (chair == null || validator == null) {
             return ValidationIndependence.NOT_APPLICABLE;
         }
-        return ValidationIndependence.between(
-                chair.getId(), chair.getModelFamily(), chair.getProviderModelId(),
-                validator.getId(), validator.getModelFamily(), validator.getProviderModelId());
+        return ValidationIndependenceClassifier.classify(
+                identity(chair),
+                policy.getMemberModelIds().stream()
+                        .map(modelsById::get)
+                        .filter(Objects::nonNull)
+                        .map(CouncilConfigurationValidator::identity)
+                        .toList(),
+                identity(validator));
+    }
+
+    private static ValidationIndependenceClassifier.Identity identity(
+            CouncilProperties.ModelProps model) {
+        return new ValidationIndependenceClassifier.Identity(
+                model.getId(), model.getModelFamily(), model.getProviderModelId());
     }
 
     private void validateProfiles(CouncilProperties props,

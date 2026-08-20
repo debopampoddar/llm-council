@@ -109,6 +109,11 @@ public class OllamaDirectModelClient implements ModelClient {
         body.put("stream", true);
         if (request.jsonMode()) {
             body.put("format", "json");
+            // Thinking-capable local models can otherwise spend the entire
+            // num_predict allowance in message.thinking and return no content.
+            // Structured stages need a short machine-readable answer, not a
+            // hidden reasoning transcript.
+            body.put("think", false);
         }
         if (keepAlive != null && !keepAlive.isBlank()) {
             body.put("keep_alive", keepAlive);

@@ -9,6 +9,7 @@ import com.debopam.llmcouncil.model.ModelCallException;
 import com.debopam.llmcouncil.model.ModelFailureCategory;
 import com.debopam.llmcouncil.model.ModelProfile;
 import com.debopam.llmcouncil.model.ValidationIndependence;
+import com.debopam.llmcouncil.model.ValidationIndependenceClassifier;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -19,7 +20,7 @@ import java.util.stream.Collectors;
  * <p>This is where a reader finds out not just what the council concluded but
  * how much to trust it. {@code sycophancyWarnings} names members that merely
  * echoed the previous speaker during debate, {@code validationIndependence}
- * says whether the Fresh Eyes check was actually independent of the chair, and
+ * says whether the Fresh Eyes check was independent of every answer producer, and
  * {@code warnings} carries anything that degraded the run — a truncated
  * synthesis prompt, an excluded model. A run that hid those would look
  * identical to one that earned its confidence.
@@ -141,7 +142,7 @@ public record CouncilRunResponse(
     }
 
     /**
-     * Report how independent this run's validator was from its chair.
+     * Report how independent this run's validator was from all answer producers.
      *
      * <p>Surfaced on every run so a reader can tell whether a validated answer
      * was actually checked by something with different blind spots. A run whose
@@ -161,9 +162,14 @@ public record CouncilRunResponse(
         if (chair == null || validator == null) {
             return ValidationIndependence.NOT_APPLICABLE;
         }
-        return ValidationIndependence.between(
-                chair.id(), chair.modelFamily(), chair.providerModelId(),
-                validator.id(), validator.modelFamily(), validator.providerModelId());
+        return ValidationIndependenceClassifier.classify(
+                ValidationIndependenceClassifier.Identity.from(chair),
+                ctx.policy().memberModelIds().stream()
+                        .map(registry::findModel)
+                        .flatMap(java.util.Optional::stream)
+                        .map(ValidationIndependenceClassifier.Identity::from)
+                        .toList(),
+                ValidationIndependenceClassifier.Identity.from(validator));
     }
 
     private static String failureCategory(CouncilContext ctx) {

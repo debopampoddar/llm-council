@@ -492,33 +492,45 @@ public class UserConfigValidator {
                     + "acknowledgeSelfValidation: true to accept this deliberately."));
             return;
         }
-        String chairFamily = familyOf(policy.chairModelId(), builtIn, userModels);
-        String validatorFamily = familyOf(policy.validatorModelId(), builtIn, userModels);
-        if (chairFamily != null && chairFamily.equals(validatorFamily)) {
-            issues.add(warning(key, "validatorModelId",
-                    "Chair and validator are both from the '" + chairFamily + "' family, so their "
-                    + "errors are likely to be correlated.",
-                    "Prefer a validator from a different model family."));
+        ModelIdentity validator = identityOf(policy.validatorModelId(), builtIn, userModels);
+        List<String> producerIds = new ArrayList<>(policy.memberModelIds());
+        producerIds.add(policy.chairModelId());
+        for (String producerId : producerIds) {
+            ModelIdentity producer = identityOf(producerId, builtIn, userModels);
+            if (validator == null || producer == null) {
+                continue;
+            }
+            boolean sameResolvedModel = validator.provider() != null
+                    && validator.provider().equalsIgnoreCase(producer.provider())
+                    && validator.providerModelId() != null
+                    && validator.providerModelId().equalsIgnoreCase(producer.providerModelId());
+            boolean sameFamily = validator.family() != null
+                    && validator.family().equals(producer.family());
+            if (sameResolvedModel || sameFamily) {
+                issues.add(warning(key, "validatorModelId",
+                        "Validator '" + policy.validatorModelId() + "' overlaps answer producer '"
+                        + producerId + "' by resolved model or family, so their errors are likely "
+                        + "to be correlated.",
+                        "Prefer a validator from a family not used by the chair or any member."));
+                return;
+            }
         }
     }
 
-    /**
-     * Resolve a model's family tag in canonical form.
-     *
-     * <p>Normalised because the overlay is raw text: a user who writes
-     * {@code Claude} for the chair and {@code claude} for the validator has
-     * configured one family, and the correlation warning below must say so.
-     */
-    private String familyOf(String modelId, CouncilCatalog builtIn,
-                            Map<String, UserConfigDocument.UserModel> userModels) {
+    private ModelIdentity identityOf(String modelId, CouncilCatalog builtIn,
+                                     Map<String, UserConfigDocument.UserModel> userModels) {
         UserConfigDocument.UserModel userModel = userModels.get(modelId);
         if (userModel != null) {
-            return ModelProfile.normaliseFamily(userModel.modelFamily());
+            return new ModelIdentity(userModel.provider(), userModel.providerModelId(),
+                                     ModelProfile.normaliseFamily(userModel.modelFamily()));
         }
         return builtIn.modelRegistry().findModel(modelId)
-                      .map(model -> ModelProfile.normaliseFamily(model.modelFamily()))
-                      .orElse(null);
+                .map(model -> new ModelIdentity(model.provider(), model.providerModelId(),
+                                                ModelProfile.normaliseFamily(model.modelFamily())))
+                .orElse(null);
     }
+
+    private record ModelIdentity(String provider, String providerModelId, String family) {}
 
     private void checkModelReference(String key, String field, String modelId, CouncilCatalog builtIn,
                                      Map<String, UserConfigDocument.UserModel> userModels,

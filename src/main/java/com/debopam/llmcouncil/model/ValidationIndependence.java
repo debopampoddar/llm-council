@@ -1,7 +1,7 @@
 package com.debopam.llmcouncil.model;
 
 /**
- * How independent a policy's Fresh Eyes validator is from its chair.
+ * How independent a policy's Fresh Eyes validator is from answer producers.
  *
  * <p>The council's validation stage exists to catch errors the chair made while
  * synthesising. That only works when the validator does not share the chair's
@@ -18,7 +18,7 @@ package com.debopam.llmcouncil.model;
  */
 public enum ValidationIndependence {
 
-    /** Chair and validator come from different model families. */
+    /** Chair, members, and validator come from different model families. */
     INDEPENDENT,
 
     /**

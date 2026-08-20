@@ -69,7 +69,8 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
                 // Use post-debate review prompt that includes debate transcript
                 PromptBudget budget = PromptBudget.forModel(model);
                 List<ChatMessage> messages = promptBuilder.postDebateReviewMessages(
-                        ctx.session().question(), ctx.drafts(), ctx.debateRounds(), budget);
+                        ctx.session().question(), ctx.session().context(), ctx.drafts(),
+                        ctx.debateRounds(), budget);
                 PromptBudgets.record(ctx, events, stage(), modelId, budget);
 
                 ModelCallResult result = registry.clientForModel(modelId).call(
@@ -133,7 +134,8 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
         try {
             PromptBudget budget = PromptBudget.forModel(model);
             List<ChatMessage> messages = promptBuilder.postDebateReviewMessages(
-                    ctx.session().question(), missingDrafts, ctx.debateRounds(), budget);
+                    ctx.session().question(), ctx.session().context(), missingDrafts,
+                    ctx.debateRounds(), budget);
             PromptBudgets.record(ctx, events, stage(), modelId, budget);
             ModelCallResult result = registry.clientForModel(modelId).call(
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),
