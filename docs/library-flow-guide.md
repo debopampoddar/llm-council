@@ -508,9 +508,13 @@ What it does:
 1. Fans out the question to each member model in the policy.
 2. Runs calls on virtual threads.
 3. Uses role-aware prompts — `PROPOSER` gets standard generation, `CRITIC` gets adversarial prompts, `SYNTHESIZER` gets bridge-building prompts.
-4. Stores successful drafts in `CouncilContext`.
-5. Records failed models in `excludedModels`.
-6. Enforces `minimumSuccessfulDrafts`.
+4. Checks explicit supporting-context directive adoption with sentence-local
+   polarity, so “retry” and “do not retry” are not equivalent.
+5. Makes one bounded regeneration with the directive removed when the first
+   draft crosses that boundary; both calls remain in usage and raw artifacts.
+6. Stores successful drafts in `CouncilContext`.
+7. Records models that remain unsafe or fail in `excludedModels`.
+8. Enforces `minimumSuccessfulDrafts`.
 
 Business rule:
 
@@ -689,7 +693,10 @@ What it does:
 1. Checks draft quorum again.
 2. Sends drafts, reviews, score summary, and debate history to the chair.
 3. Requires the chair to include recommendation, rationale, dissent, unresolved risks, and confidence.
-4. Writes final answer to:
+4. If the answer adopts an injected directive or leaks internal metadata, makes
+   one clean retry using sanitized context and identifier-free evidence; score
+   artifacts and council labels are omitted from that recovery prompt.
+5. Writes only an accepted final answer to:
 
 ```text
 final/answer.md
@@ -713,6 +720,9 @@ What it does:
    a required criterion is missing/malformed, any criterion fails, or the model
    requires human review.
 6. Fails the session when validation is required and the effective verdict rejects.
+7. If validator recommendations adopt an embedded directive, discards that
+   assessment and makes one clean-room retry with the directive removed. A
+   repeated violation is invalid model output.
 
 This is model-based validation, not external fact-checking. “Human review
 required” means the model validator could not establish a material claim from the
@@ -803,6 +813,7 @@ Typical balanced artifacts:
 
 ```text
 raw/generate-local-llama3.txt
+raw/generate-local-llama3-attempt-2.txt  # only after trust recovery
 raw/review-local-mistral.json
 normalized/drafts-generation.json
 normalized/anonymized-drafts.json

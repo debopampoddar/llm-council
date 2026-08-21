@@ -2,6 +2,7 @@
 package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.application.EventPublisher;
+import com.debopam.llmcouncil.model.ChatMessage;
 import com.debopam.llmcouncil.model.ModelCallException;
 import com.debopam.llmcouncil.model.ModelCallRequest;
 import com.debopam.llmcouncil.model.ModelCallResult;
@@ -12,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 
@@ -66,24 +68,34 @@ public class GenerationStageExecutor implements StageExecutor {
         try {
             // Use role-aware prompt so CRITIC and SYNTHESIZER models
             // receive persona-specific system instructions.
-            ModelCallResult result = registry.clientForModel(modelId).call(
-                    new ModelCallRequest(ctx.session().id(), stage(), model.id(),
-                                         model.providerModelId(),
-                                         promptBuilder.generationMessagesForRole(ctx.session().question(),
-                                                                                  ctx.session().context(), model.councilRole()),
-                                         model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()));
-            ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
+            ModelCallResult result = callAndRecord(ctx, model,
+                    promptBuilder.generationMessagesForRole(
+                            ctx.session().question(), ctx.session().context(), model.councilRole()));
             artifactStore.writeText(ctx.session().id(), "raw/generate-" + modelId + ".txt", result.text());
             TrustBoundaryGuard.Assessment trust = TrustBoundaryGuard.assess(
                     ctx.session().context(), result.text());
             if (trust.influenced()) {
-                String reason = "Draft from " + modelId + " was excluded: " + trust.reason();
-                ctx.excludeModel(modelId, reason);
-                ctx.markDegraded(reason);
                 events.publish(ctx.session().id(), stage().name(),
-                        "MODEL_OUTPUT_TRUST_BOUNDARY_REJECTED", modelId,
+                        "MODEL_OUTPUT_TRUST_RECOVERY_STARTED", modelId,
                         Map.of("reason", trust.reason(), "matchedTerms", trust.matchedTerms()));
-                return null;
+                result = callAndRecord(ctx, model,
+                        promptBuilder.generationRecoveryMessagesForRole(
+                                ctx.session().question(), ctx.session().context(), model.councilRole()));
+                artifactStore.writeText(ctx.session().id(),
+                        "raw/generate-" + modelId + "-attempt-2.txt", result.text());
+                trust = TrustBoundaryGuard.assess(ctx.session().context(), result.text());
+                if (trust.influenced()) {
+                    String reason = "Draft from " + modelId
+                            + " was excluded after trust recovery: " + trust.reason();
+                    ctx.excludeModel(modelId, reason);
+                    ctx.markDegraded(reason);
+                    events.publish(ctx.session().id(), stage().name(),
+                            "MODEL_OUTPUT_TRUST_BOUNDARY_REJECTED", modelId,
+                            Map.of("reason", trust.reason(), "matchedTerms", trust.matchedTerms()));
+                    return null;
+                }
+                events.publish(ctx.session().id(), stage().name(),
+                        "MODEL_OUTPUT_TRUST_RECOVERED", modelId, Map.of());
             }
             events.publish(ctx.session().id(), stage().name(), "MODEL_CALL_COMPLETED", modelId,
                            Map.of("chars", result.text().length(),
@@ -96,5 +108,16 @@ public class GenerationStageExecutor implements StageExecutor {
             ctx.excludeModel(modelId, ex.getMessage());
             return null;
         }
+    }
+
+    private ModelCallResult callAndRecord(
+            CouncilContext ctx, ModelProfile model, List<ChatMessage> messages) {
+        ModelCallResult result = registry.clientForModel(model.id()).call(
+                new ModelCallRequest(ctx.session().id(), stage(), model.id(),
+                        model.providerModelId(), messages, model.defaultOutputTokens(),
+                        model.temperature(), false, model.defaultTimeout()));
+        ctx.recordUsage(model.id(), stage(), result.promptTokens(),
+                result.completionTokens(), result.latency());
+        return result;
     }
 }
