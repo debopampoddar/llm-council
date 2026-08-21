@@ -25,7 +25,7 @@ Indicative assessment after fixes:
 | Configuration safety | 8/10 | Unusually thorough validation and warnings. Some shipped policies knowingly fall below the quality bar the warnings describe. |
 | User experience | 7/10 | Useful preflight, SSE timeline, trust signals, setup advisor, retry/cancel, and now honest send/delete behavior. Error contracts and cancellation presentation need cleanup. |
 | Persistence/privacy | 7/10 | JDBC session/event persistence, filesystem artifacts, retention, path containment, durable result artifacts, and deletion cascade exist. No encryption or user-level access control. |
-| Test confidence | 8/10 | 953 passing deterministic tests, including observed injection adoption, safe rejection, bounded synthesis recovery, validator trust/output recovery, and internal-output rejection, plus historical live Ollama runs. A new live security regression and uncontaminated held-out evaluation remain open. |
+| Test confidence | 8/10 | 953 passing deterministic tests, including exact hostile-literal outcomes, safe explanatory and negative prose, Unicode normalization, bounded synthesis recovery, validator trust/output recovery, and reserved internal-output rejection, plus historical live Ollama runs. A new live security regression and uncontaminated held-out evaluation remain open. |
 
 ## Review method
 
@@ -204,10 +204,11 @@ to inflate quorum. Each reviewer publishes expected and actual non-self review
 counts plus exact missing draft IDs. Incomplete evidence marks the run
 `PARTIAL`, while the timeline distinguishes a partially scored stage from a
 stage that never ran. Both review passes request JSON mode where the adapter
-supports it. A subsequent hardening change also gives both review passes one
-bounded targeted call for the exact draft IDs omitted from an otherwise parseable
-response. Original and recovery outputs remain separate artifacts; coverage still
-missing afterward remains `PARTIAL`.
+supports it. A subsequent hardening change also gives both review passes one bounded
+call for malformed output or the exact draft IDs omitted from an otherwise
+parseable response. Recovery removes explicit supporting-context directives.
+Original and recovery outputs remain separate artifacts; coverage still missing
+afterward remains `PARTIAL`.
 
 Files: `StructuredOutputParser`, `ReviewEvidence`, `ReviewStageExecutor`,
 `ReviewPostDebateStageExecutor`, `ScoreStageExecutor`, `CouncilContext`,
@@ -277,22 +278,24 @@ The held-out adversarial case showed the Mistral critic adopting an embedded
 and the Mistral-backed validator approving it. The fix is layered rather than a
 prompt-only patch: JSON provenance envelopes at every model boundary, common
 authority rules, grounding and trust-boundary review criteria, evidence-grounded
-criticism and synthesis, sentence-local polarity-aware adoption checks, one
-sanitized regeneration for an unsafe initial draft, identifier-free synthesis
-recovery, sanitized validator recovery, and fail-closed behavior after bounded
-recovery. The local validator is now Gemma, and validator independence is checked
-against the chair and every member.
+criticism and synthesis, a closed explicit-literal output invariant with Unicode
+normalization, one sanitized regeneration for an objective violation,
+identifier-free synthesis recovery, sanitized validator recovery, and fail-closed
+behavior after bounded recovery. The guard performs no stemming, synonym,
+sentiment, or polarity inference. The local validator is Gemma, and validator
+independence is checked against the chair and every member.
 
 Files: `PromptEnvelopeRenderer`, `PromptBuilder`, `TrustBoundaryGuard`, all
 model-calling stage executors, `ReviewEvidence`, `ValidationEvidence`,
 `ValidationIndependenceClassifier`, `application.yml`, UI trust labels, Compose,
 and `docs/prompt-injection-threat-model.md`.
 
-Qualification: the guard is intentionally high precision and is not a general
-prompt-injection classifier. The live 2026-08-21 regression exposed unsafe model
-adoption as well as false positives around negative actions and benign analysis;
-the current recovery/polarity changes require a fresh run. A pass is not a
-security proof; see the threat model for evasion and false-positive limits.
+Qualification: the guard is intentionally narrow and is not a general
+prompt-injection classifier. The live 2026-08-21 regression exposed both unsafe
+literal outcomes and the impossibility of using lexical overlap to classify
+negative actions or benign analysis. The replacement rejects only declared,
+objective output invariants and requires a fresh run. A pass is not a security
+proof; see the threat model for scope and evasion limits.
 
 Implementation status after the 2026-08-20 update: **all 23 concrete must-have
 defects in this report are CLOSED in the reviewed worktree.**
@@ -421,7 +424,7 @@ The current `server.address=127.0.0.1` default is the correct safe default and s
 
 ### Model integration and structured output
 
-1. Use provider-supported structured output/schema controls where Spring AI exposes them. Ollama review calls now request JSON mode and parseable incomplete review responses receive one targeted recovery call; `ModelCallRequest.jsonMode` is still not bound by `SpringAiModelClient`, so cloud correctness relies on prompt compliance plus tolerant parsing.
+1. Use provider-supported structured output/schema controls where Spring AI exposes them. Ollama review calls now request JSON mode and malformed or incomplete review responses receive one sanitized bounded recovery call; `ModelCallRequest.jsonMode` is still not bound by `SpringAiModelClient`, so cloud correctness relies on prompt compliance plus tolerant parsing.
 2. Apply the review parser's balanced-object selection to validation and advisor output. Those paths still use first-`{`/last-`}` extraction and can fail when surrounding prose contains unrelated braces.
 3. Expand provider error mapping beyond `TransientAiException` and timeout. Rate limits, authentication, not-found model IDs, and provider 5xx errors should produce stable categories and retry decisions.
 4. Propagate a request/correlation ID into provider calls and logs. Session ID is useful, but a single stage can retry and call several models.
@@ -511,7 +514,7 @@ New/expanded scenarios include:
 - end-to-end quick/balanced/rigorous mock protocol and API boundaries.
 - observed multi-envelope, compact-criteria, fractional-score, duplicate,
   self-review, malformed-sibling, and missing-coverage review outputs;
-- bounded targeted recovery for omitted initial and post-debate reviews;
+- bounded sanitized recovery for malformed or omitted initial and post-debate reviews;
 - truthful `PARTIAL` propagation and partial-score timeline rendering.
 
 “Exhaustive” should not be used literally: no finite suite proves every model output, scheduler interleaving, filesystem race, browser, database, or provider behavior. This suite is broad and fast. Its material gaps are live-provider contracts, browser E2E, load/soak, transport fault injection, and measured branch/mutation coverage.

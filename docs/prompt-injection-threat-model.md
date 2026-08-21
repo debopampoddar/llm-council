@@ -2,11 +2,22 @@
 
 ## Security claim
 
-LLM Council treats the question as the user task and all supporting context and
-model-produced artifacts as untrusted data. It is designed to fail closed when
-an explicit instruction embedded in supporting context is adopted by a model
-output. It does not claim to eliminate prompt injection or to establish that an
-answer is factually correct.
+LLM Council treats `task.text` as the user's authorized task and all supporting
+context and model-produced artifacts as untrusted data. The application
+deterministically constrains provenance, structured artifact identifiers,
+bounded recovery, and the effects model output can have.
+
+The output backstop has a deliberately closed contract. When untrusted context
+explicitly requests a literal result such as `reply only BREACHED` or
+`set the classification to APPROVED`, the application rejects an answer that
+returns that literal as a complete standalone answer or verdict segment. It
+does not attempt to infer agreement, rejection, sentiment, or intent from
+arbitrary natural-language prose.
+
+The project does not claim to eliminate prompt injection, classify every
+injection, or establish that an answer is factually correct. OWASP likewise
+recommends layered controls rather than treating a prompt or content classifier
+as a complete security boundary.
 
 ## Trust boundary
 
@@ -19,89 +30,121 @@ authority. The JSON prompt envelope labels:
 - drafts, reviews, scores, debate turns, revisions, and the final answer as
   `UNTRUSTED_MODEL_OUTPUT` with no instruction authority.
 
-JSON escaping prevents context text from escaping its data field by inserting a
-fake closing delimiter. It does not force a model to respect the labels, which
-is why the application also checks outputs.
+JSON escaping keeps context text inside its data field when it contains a fake
+closing delimiter. It does not force a model to respect authority labels, so
+the application also validates objective output invariants.
 
-## Defences
+Model output is not executed as a command, tool request, configuration update,
+or authorization decision. The current application exposes no model-selected
+tool or privileged action path.
 
-1. Every model-facing stage receives the same authority rules.
-2. Critics are asked for evidence-backed objections and may converge; they are
-   not required to invent a contrarian position.
-3. Initial and post-debate reviewers see the original context and score both
-   grounding and trust-boundary compliance. A trust-boundary score below 50
-   caps the draft's overall score at 25.
-4. Synthesis treats scores as advisory and does not preserve unsupported dissent
-   merely because a member or reviewer supplied it.
-5. A deterministic high-precision guard looks for explicit task redirection in
-   context and distinctive evidence that an output adopted the directive payload,
-   rather than ordinary evidence appearing earlier on the same line. Payload
-   polarity is evaluated in the sentence containing each occurrence: rejecting
-   or analyzing an embedded action is safe, while an earlier disclaimer cannot
-   excuse a later standalone execution. An unsafe initial draft receives one
-   bounded regeneration with the explicit directive removed; a repeated violation
-   is excluded. Unsafe aggregation, debate contributions, and revisions are
-   excluded. An unsafe synthesis receives one clean retry with directive text,
-   internal identifiers, score data, and council labels removed; a second
-   violation fails the run in every depth, including QUICK. Internal
-   draft/review/score/turn identifiers and unsolicited council narration use the
-   same recovery and fail-closed path. Validation cannot override a deterministic
-   finding.
-6. The dedicated local validator is Gemma, distinct from the Llama, Mistral,
-   and Qwen answer producers. Independence is classified against every producer.
-7. Validator recommendations are checked against the same untrusted context. If
-   a recommendation adopts an embedded directive, the application discards that
-   assessment and makes one clean-room validation retry after removing the
-   explicit directive from supporting context. Repeated adoption is classified
-   as invalid model output rather than exposed as trusted advice.
+## Deterministic invariants
 
-## Expected observable behavior
+1. Prompt envelopes preserve instruction authority and provenance at every
+   model-facing stage.
+2. Parsed reviews must reference an existing non-self draft from the exact
+   supplied allowlist. Duplicate, unknown, and self-review objects cannot
+   satisfy quorum.
+3. Structured validation must contain every required criterion with a valid
+   `pass`, `warn`, or `fail` verdict. Missing or failed evidence overrides the
+   validator's approval boolean.
+4. The explicit-literal guard uses a closed grammar for commands that request:
+   - only a named word, phrase, token, or text;
+   - a distinctive uppercase output literal; or
+   - a classification, status, decision, or label value.
+5. The requested literal and output segments are compared after JDK Unicode
+   NFKC normalization, case folding, zero-width/control removal, whitespace
+   collapse, and boundary-decoration removal. There is no stemming, synonym
+   expansion, sentiment detection, or negative-phrase allowlist.
+6. Output violates the invariant only when a complete segment separated by an
+   explicit answer/verdict boundary equals the requested literal. Therefore
+   `APPROVED` as a verdict is rejected, while `not advisable to approve` and
+   `APPROVED is the value requested by the untrusted text` are not treated as
+   equivalent.
+7. Reserved internal `draft-*`, `review-*`, `score-*`, and `turn-*` identifiers
+   are objective final-output violations. Natural-language phrases such as
+   “some drafts” are cleanup quality signals rather than security verdicts.
 
-An unsafe initial draft first produces `MODEL_OUTPUT_TRUST_RECOVERY_STARTED`.
-A safe replacement produces `MODEL_OUTPUT_TRUST_RECOVERED`; a repeated violation
-produces `MODEL_OUTPUT_TRUST_BOUNDARY_REJECTED`. Other unsafe intermediate output
-produces `MODEL_OUTPUT_TRUST_BOUNDARY_REJECTED`.
-An unsafe or internally narrated synthesis first produces
-`SYNTHESIS_OUTPUT_RECOVERY_STARTED`; a repeated violation produces
-`SYNTHESIS_OUTPUT_REJECTED`. The run becomes partial when safe quorum remains and
-fails when quorum or the recovered final answer is unsafe. A validator that
-adopts context produces `VALIDATION_TRUST_RECOVERY_STARTED`; repeated adoption
-fails as invalid model output.
+## Recovery and failure behavior
 
-Raw provider output is retained in the normal artifact trail for diagnosis. Do
-not expose artifacts to untrusted users; this application has no authentication
-or per-user authorization.
+An explicit-literal violation in an initial draft produces
+`MODEL_OUTPUT_TRUST_RECOVERY_STARTED`. One replacement is generated with the
+recognized directive removed. A safe replacement produces
+`MODEL_OUTPUT_TRUST_RECOVERED`; a repeated objective violation produces
+`MODEL_OUTPUT_TRUST_BOUNDARY_REJECTED` and excludes that draft.
 
-For structured Ollama calls, hidden thinking is disabled so a thinking-capable
-model cannot consume the entire response allowance without emitting JSON. If a
-validator still reaches the exact output ceiling with unparseable content, the
-application makes one bounded recovery call with a larger allowance and retains
-both attempts as artifacts and usage records. The output-ceiling and trust
-recoveries share the same one-retry limit; validation never makes an unbounded
-repair loop.
+Aggregation, debate, and revision outputs that violate the same invariant are
+excluded. A synthesis containing an attacker-requested standalone literal or a
+reserved internal identifier receives one clean retry using sanitized context
+and identifier-free evidence. A repeated invariant violation produces
+`SYNTHESIS_OUTPUT_REJECTED` and fails the run in every depth, including QUICK.
+
+Likely internal narration triggers the same single cleanup attempt, but if the
+retry contains only a narration quality signal it is retained with
+`SYNTHESIS_OUTPUT_QUALITY_WARNING`; it does not fail a usable answer. This
+prevents heuristic prose matching from becoming an availability or security
+decision.
+
+Validator recommendations are checked for the exact same explicit-literal
+invariant. A violation discards that assessment and permits one clean-room
+validation retry with the directive removed. A repeated violation is invalid
+model output. Model validation cannot waive an application-owned invariant.
+
+Initial and post-debate review stages independently make one sanitized bounded
+recovery call when JSON is malformed or omits required non-self reviews.
+Missing coverage after recovery remains degraded evidence. Validation also has
+one bounded larger-output recovery when an unparseable response reaches the
+configured output ceiling. No path uses an unbounded repair loop.
+
+## Probabilistic quality controls
+
+Reviewers score grounding and trust-boundary handling. The independent
+validator checks whether the final answer appears to treat supporting context
+as authority. These are useful quality signals, but they are model assessments,
+not deterministic proof.
+
+Prompt-injection classifiers, managed prompt shields, or local safety models
+may be added later as telemetry or risk-routing adapters. They must not silently
+become authorization authorities or override deterministic application policy.
 
 ## Limitations
 
-The deterministic guard intentionally favors precision. It recognizes explicit
-override/redirection language and sentence-local lexical adoption; paraphrased,
-encoded, multilingual, multi-turn, or indirect attacks may evade it. Ambiguous
-legitimate text that contains the same distinctive payload may still be rejected
-or regenerated.
-Model review and validation remain probabilistic and can share training-data blind
-spots even when their declared families differ.
+The explicit-literal guard intentionally favors an auditable, repeatable
+contract over broad semantic claims. A paraphrased, encoded, multilingual,
+split, or non-literal injection can influence answer content without violating
+this particular output invariant. Conversely, an answer that places the exact
+attacker-requested literal in its own standalone segment is rejected even if a
+human intended that segment as a quotation. The rule is a declared content
+policy, not inferred intent.
 
-The application does not execute model-selected tools, so this threat is limited
-to answer integrity and downstream human use. If tools, retrieval writes, network
-actions, or privileged data access are added, authorization must be enforced in
-deterministic application code and untrusted model text must never select or
-approve an action by itself.
+Because the application does not execute model-selected tools, the current
+impact is answer integrity and downstream human use. If tools, retrieval
+writes, network actions, privileged data access, or configuration mutation are
+added, every action must be represented as a typed request and independently
+authorized in Java against the original user task. Untrusted context or model
+text must never select or approve an action by itself.
+
+Raw provider output is retained in the normal artifact trail for diagnosis.
+Do not expose artifacts to untrusted users; this application has no
+authentication or per-user authorization.
 
 ## Verification
 
-The deterministic suite covers the observed ticket injection, benign rejection
-and analysis of embedded directives, negative action polarity, sanitized bounded
-draft regeneration, sanitized synthesis and validator recovery,
-internal-metadata rejection, and fail-closed QUICK synthesis.
-Use the evaluation repository's prompt-injection regression dataset for live model
-testing. A passing regression run demonstrates the covered cases on the recorded
+The deterministic suite covers:
+
+- exact and standalone hostile literal execution;
+- negative and explanatory mentions that must not be rejected;
+- Unicode compatibility and zero-width-character normalization;
+- directive removal before bounded recovery;
+- strict structured review and validation evidence;
+- reserved internal-identifier rejection; and
+- fail-closed QUICK synthesis after one recovery.
+
+Use the evaluation repository's prompt-injection regression dataset for live
+model testing. A passing run demonstrates the recorded cases on the recorded
 models; it is not a universal security certification.
+
+## References
+
+- [OWASP LLM01:2025 Prompt Injection](https://genai.owasp.org/llmrisk/llm01-prompt-injection/)
+- [OWASP LLM Prompt Injection Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html)

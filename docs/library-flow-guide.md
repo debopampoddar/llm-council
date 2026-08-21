@@ -508,12 +508,12 @@ What it does:
 1. Fans out the question to each member model in the policy.
 2. Runs calls on virtual threads.
 3. Uses role-aware prompts — `PROPOSER` gets standard generation, `CRITIC` gets adversarial prompts, `SYNTHESIZER` gets bridge-building prompts.
-4. Checks explicit supporting-context directive adoption with sentence-local
-   polarity, so “retry” and “do not retry” are not equivalent.
+4. Checks whether an explicit attacker-requested literal is returned as a
+   complete standalone answer or verdict; it does not infer prose polarity.
 5. Makes one bounded regeneration with the directive removed when the first
    draft crosses that boundary; both calls remain in usage and raw artifacts.
 6. Stores successful drafts in `CouncilContext`.
-7. Records models that remain unsafe or fail in `excludedModels`.
+7. Records models that repeat the objective violation or fail in `excludedModels`.
 8. Enforces `minimumSuccessfulDrafts`.
 
 Business rule:
@@ -563,9 +563,11 @@ What it does:
 6. Removes self-reviews, unknown draft IDs, and duplicate reviewer/draft pairs.
 7. Checks exact unique non-self coverage for each reviewer and publishes actual,
    expected, and missing draft IDs.
-8. If the first valid response omitted required drafts, makes one bounded call
-   containing only those missing drafts. The recovery response cannot satisfy
-   coverage by repeating an already accepted or self review.
+8. If the first response is malformed or omitted required drafts, makes one bounded
+   call containing all required non-self drafts or only the missing drafts. Recovery
+   removes explicit supporting-context directives so the same reviewer is not asked
+   to resist the same payload twice. The recovery response cannot satisfy coverage
+   by repeating an already accepted or self review.
 9. Preserves both raw responses and records recovery start, completion, or failure
    events. Evidence still missing after recovery degrades the run to `PARTIAL`; it
    cannot silently inflate quorum or produce clean completion.
@@ -693,9 +695,10 @@ What it does:
 1. Checks draft quorum again.
 2. Sends drafts, reviews, score summary, and debate history to the chair.
 3. Requires the chair to include recommendation, rationale, dissent, unresolved risks, and confidence.
-4. If the answer adopts an injected directive or leaks internal metadata, makes
-   one clean retry using sanitized context and identifier-free evidence; score
-   artifacts and council labels are omitted from that recovery prompt.
+4. If the answer returns an attacker-requested standalone literal or a reserved
+   internal identifier, makes one clean retry using sanitized context and
+   identifier-free evidence; likely internal narration also requests cleanup but
+   cannot fail the run by itself.
 5. Writes only an accepted final answer to:
 
 ```text
@@ -720,9 +723,10 @@ What it does:
    a required criterion is missing/malformed, any criterion fails, or the model
    requires human review.
 6. Fails the session when validation is required and the effective verdict rejects.
-7. If validator recommendations adopt an embedded directive, discards that
-   assessment and makes one clean-room retry with the directive removed. A
-   repeated violation is invalid model output.
+7. If validator recommendations return an attacker-requested literal as a
+   standalone segment, discards that assessment and makes one clean-room retry
+   with the directive removed. A repeated objective violation is invalid model
+   output.
 
 This is model-based validation, not external fact-checking. “Human review
 required” means the model validator could not establish a material claim from the
@@ -1090,9 +1094,9 @@ Add a stage:
 - Spring AI provider-specific option support is intentionally conservative.
 - Review parsing recovers multiple complete JSON envelopes, compact criterion
   objects, fractional scores, and valid siblings of a malformed review. It also
-  enforces exact unique non-self coverage and makes one targeted call for drafts
-  omitted from an otherwise parseable review response. Missing evidence after
-  that bounded attempt is reported as `PARTIAL`, never as a clean completion.
+  enforces exact unique non-self coverage and makes one sanitized bounded call for
+  malformed output or omitted drafts. Missing evidence after that bounded attempt
+  is reported as `PARTIAL`, never as a clean completion.
 - Authentication and authorization are not implemented on the API.
 - Chat cancellation, deletion cascade, durable JDBC history, interrupted-run
   recovery, and `Last-Event-ID`/query cursor replay are implemented. There is no

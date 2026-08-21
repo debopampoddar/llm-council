@@ -140,13 +140,13 @@ public class RevisionStageExecutor implements StageExecutor {
 
             TrustBoundaryGuard.Assessment trust = TrustBoundaryGuard.assess(
                     ctx.session().context(), result.text());
-            if (trust.influenced()) {
+            if (trust.violated()) {
                 String reason = "Revised draft from " + modelId + " was excluded: " + trust.reason();
                 ctx.excludeModel(modelId, reason);
                 ctx.markDegraded(reason);
                 events.publish(ctx.session().id(), stage().name(),
                         "REVISION_TRUST_BOUNDARY_REJECTED", modelId,
-                        Map.of("reason", trust.reason(), "matchedTerms", trust.matchedTerms()));
+                        Map.of("reason", trust.reason(), "matchedTerms", trust.matchedLiterals()));
                 return null;
             }
 

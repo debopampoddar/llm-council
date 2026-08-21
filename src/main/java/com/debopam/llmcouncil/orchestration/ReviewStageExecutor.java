@@ -61,10 +61,7 @@ public class ReviewStageExecutor implements StageExecutor {
                     batch = recoverMissing(ctx, model, batch);
                 }
                 recordCoverage(ctx, modelId, batch);
-                events.publish(ctx.session().id(), stage().name(), "REVIEW_COMPLETED", modelId,
-                               Map.of("reviewCount", batch.reviews().size(),
-                                      "expectedReviewCount", batch.expectedDraftIds().size(),
-                                      "complete", batch.complete()));
+                publishCompleted(ctx, modelId, batch);
             } catch (ModelCallException ex) {
                 events.publish(ctx.session().id(), stage().name(), "REVIEW_FAILED", modelId,
                                Map.of("error", ex.getMessage()));
@@ -74,9 +71,14 @@ public class ReviewStageExecutor implements StageExecutor {
             } catch (IllegalArgumentException ex) {
                 events.publish(ctx.session().id(), stage().name(), "REVIEW_PARSE_FAILED", modelId,
                                Map.of("error", ex.getMessage()));
-                ctx.excludeModel(modelId, "review parse failed: " + ex.getMessage());
-                recordCoverage(ctx, modelId,
+                ReviewEvidence.Batch batch = recoverMissing(ctx, model,
                         ReviewEvidence.normalize(ctx, modelId, List.of(), ""));
+                if (batch.reviews().isEmpty()) {
+                    ctx.excludeModel(modelId, "review parse failed after recovery: "
+                            + ex.getMessage());
+                }
+                recordCoverage(ctx, modelId, batch);
+                publishCompleted(ctx, modelId, batch);
             }
         }
         artifactStore.writeJson(ctx.session().id(), "normalized/reviews.json", ctx.reviews());
@@ -85,8 +87,9 @@ public class ReviewStageExecutor implements StageExecutor {
 
     /**
      * Makes one bounded semantic-recovery call for exactly the reviews omitted
-     * from a successful first response. Transport retries remain the model
-     * client's responsibility; this call addresses valid-but-incomplete JSON.
+     * from a successful response, or for all required non-self reviews when the
+     * first response is malformed. Transport retries remain the model client's
+     * responsibility.
      */
     private ReviewEvidence.Batch recoverMissing(CouncilContext ctx, ModelProfile model,
                                                  ReviewEvidence.Batch initial) {
@@ -100,7 +103,8 @@ public class ReviewStageExecutor implements StageExecutor {
         try {
             PromptBudget budget = PromptBudget.forModel(model);
             List<ChatMessage> messages = promptBuilder.reviewMessages(
-                    ctx.session().question(), ctx.session().context(), missingDrafts, budget);
+                    ctx.session().question(), TrustBoundaryGuard.sanitize(ctx.session().context()),
+                    missingDrafts, budget);
             PromptBudgets.record(ctx, events, stage(), modelId, budget);
             ModelCallResult result = registry.clientForModel(modelId).call(
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),
@@ -126,6 +130,14 @@ public class ReviewStageExecutor implements StageExecutor {
                             "missingDraftIds", initial.missingDraftIds()));
             return initial;
         }
+    }
+
+    private void publishCompleted(CouncilContext ctx, String modelId,
+                                  ReviewEvidence.Batch batch) {
+        events.publish(ctx.session().id(), stage().name(), "REVIEW_COMPLETED", modelId,
+                Map.of("reviewCount", batch.reviews().size(),
+                        "expectedReviewCount", batch.expectedDraftIds().size(),
+                        "complete", batch.complete()));
     }
 
     private void publishParserDiagnostics(CouncilContext ctx, String modelId,

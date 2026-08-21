@@ -92,12 +92,7 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
                     batch = recoverMissing(ctx, model, batch);
                 }
                 recordCoverage(ctx, modelId, batch);
-
-                events.publish(ctx.session().id(), stage().name(),
-                               "POST_DEBATE_REVIEW_COMPLETED", modelId,
-                               Map.of("reviewCount", batch.reviews().size(),
-                                      "expectedReviewCount", batch.expectedDraftIds().size(),
-                                      "complete", batch.complete()));
+                publishCompleted(ctx, modelId, batch);
             } catch (ModelCallException ex) {
                 events.publish(ctx.session().id(), stage().name(),
                                "POST_DEBATE_REVIEW_FAILED", modelId,
@@ -109,9 +104,14 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
                 events.publish(ctx.session().id(), stage().name(),
                                "POST_DEBATE_REVIEW_PARSE_FAILED", modelId,
                                Map.of("error", ex.getMessage()));
-                ctx.excludeModel(modelId, "post-debate review parse failed: " + ex.getMessage());
-                recordCoverage(ctx, modelId,
+                ReviewEvidence.Batch batch = recoverMissing(ctx, model,
                         ReviewEvidence.normalize(ctx, modelId, List.of(), ""));
+                if (batch.reviews().isEmpty()) {
+                    ctx.excludeModel(modelId, "post-debate review parse failed after recovery: "
+                            + ex.getMessage());
+                }
+                recordCoverage(ctx, modelId, batch);
+                publishCompleted(ctx, modelId, batch);
             }
         }
 
@@ -120,7 +120,7 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
         return ctx;
     }
 
-    /** One bounded recovery call for valid-but-incomplete post-debate evidence. */
+    /** One bounded recovery call for malformed or valid-but-incomplete evidence. */
     private ReviewEvidence.Batch recoverMissing(CouncilContext ctx, ModelProfile model,
                                                  ReviewEvidence.Batch initial) {
         String modelId = model.id();
@@ -134,8 +134,8 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
         try {
             PromptBudget budget = PromptBudget.forModel(model);
             List<ChatMessage> messages = promptBuilder.postDebateReviewMessages(
-                    ctx.session().question(), ctx.session().context(), missingDrafts,
-                    ctx.debateRounds(), budget);
+                    ctx.session().question(), TrustBoundaryGuard.sanitize(ctx.session().context()),
+                    missingDrafts, ctx.debateRounds(), budget);
             PromptBudgets.record(ctx, events, stage(), modelId, budget);
             ModelCallResult result = registry.clientForModel(modelId).call(
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),
@@ -163,6 +163,15 @@ public class ReviewPostDebateStageExecutor implements StageExecutor {
                             "missingDraftIds", initial.missingDraftIds()));
             return initial;
         }
+    }
+
+    private void publishCompleted(CouncilContext ctx, String modelId,
+                                  ReviewEvidence.Batch batch) {
+        events.publish(ctx.session().id(), stage().name(),
+                "POST_DEBATE_REVIEW_COMPLETED", modelId,
+                Map.of("reviewCount", batch.reviews().size(),
+                        "expectedReviewCount", batch.expectedDraftIds().size(),
+                        "complete", batch.complete()));
     }
 
     private void publishParserDiagnostics(CouncilContext ctx, String modelId,

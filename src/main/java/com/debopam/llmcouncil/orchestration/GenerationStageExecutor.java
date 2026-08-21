@@ -74,24 +74,24 @@ public class GenerationStageExecutor implements StageExecutor {
             artifactStore.writeText(ctx.session().id(), "raw/generate-" + modelId + ".txt", result.text());
             TrustBoundaryGuard.Assessment trust = TrustBoundaryGuard.assess(
                     ctx.session().context(), result.text());
-            if (trust.influenced()) {
+            if (trust.violated()) {
                 events.publish(ctx.session().id(), stage().name(),
                         "MODEL_OUTPUT_TRUST_RECOVERY_STARTED", modelId,
-                        Map.of("reason", trust.reason(), "matchedTerms", trust.matchedTerms()));
+                        Map.of("reason", trust.reason(), "matchedTerms", trust.matchedLiterals()));
                 result = callAndRecord(ctx, model,
                         promptBuilder.generationRecoveryMessagesForRole(
                                 ctx.session().question(), ctx.session().context(), model.councilRole()));
                 artifactStore.writeText(ctx.session().id(),
                         "raw/generate-" + modelId + "-attempt-2.txt", result.text());
                 trust = TrustBoundaryGuard.assess(ctx.session().context(), result.text());
-                if (trust.influenced()) {
+                if (trust.violated()) {
                     String reason = "Draft from " + modelId
                             + " was excluded after trust recovery: " + trust.reason();
                     ctx.excludeModel(modelId, reason);
                     ctx.markDegraded(reason);
                     events.publish(ctx.session().id(), stage().name(),
                             "MODEL_OUTPUT_TRUST_BOUNDARY_REJECTED", modelId,
-                            Map.of("reason", trust.reason(), "matchedTerms", trust.matchedTerms()));
+                            Map.of("reason", trust.reason(), "matchedTerms", trust.matchedLiterals()));
                     return null;
                 }
                 events.publish(ctx.session().id(), stage().name(),

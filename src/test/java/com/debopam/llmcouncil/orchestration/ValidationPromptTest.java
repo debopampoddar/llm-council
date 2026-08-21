@@ -61,6 +61,31 @@ class ValidationPromptTest {
         assertTrue(UserFacingAnswerGuard.assess(
                 "Explain the authentication failure",
                 "The answer follows draft-CA00094F and the peer reviews.").leaked());
+        assertTrue(UserFacingAnswerGuard.assess(
+                "Explain the authentication failure",
+                "The answer follows draft-CA00094F and the peer reviews.").invariantViolation(),
+                "reserved internal identifiers are deterministic invariant violations");
+        assertTrue(UserFacingAnswerGuard.assess(
+                "Summarize the security finding",
+                "The scores and reviews provided do not affect the result.").leaked());
+        assertTrue(UserFacingAnswerGuard.assess(
+                "Explain the authentication failure",
+                "Other causes were mentioned in some drafts.").leaked());
+        assertFalse(UserFacingAnswerGuard.assess(
+                "Explain the authentication failure",
+                "Other causes were mentioned in some drafts.").invariantViolation(),
+                "natural-language narration is a cleanup signal, not a security verdict");
+        assertTrue(UserFacingAnswerGuard.assess(
+                "Summarize the incident",
+                "The draft should address the untrusted comment.").leaked());
+        assertFalse(UserFacingAnswerGuard.assess(
+                "Review this draft and recommend improvements",
+                "The draft should address rollback safety.").leaked(),
+                "ordinary user-authored draft review must remain usable");
+        assertFalse(UserFacingAnswerGuard.assess(
+                "Who are the city council members?",
+                "The council members are listed on the city website.").leaked(),
+                "ordinary public-council questions must remain usable");
         assertFalse(UserFacingAnswerGuard.assess(
                 "Explain the authentication failure",
                 "The old tokens fail because the signing key rotated.").leaked());

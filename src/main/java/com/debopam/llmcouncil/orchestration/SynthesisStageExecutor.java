@@ -55,30 +55,38 @@ public class SynthesisStageExecutor implements StageExecutor {
         artifactStore.writeText(ctx.session().id(),
                 "raw/synthesis-" + chairId + "-attempt-1.md", result.text());
 
-        OutputViolation violation = assessOutput(ctx, result.text());
-        if (violation.rejected()) {
+        OutputAssessment assessment = assessOutput(ctx, result.text());
+        if (assessment.recoveryRecommended()) {
             events.publish(ctx.session().id(), stage().name(),
                     "SYNTHESIS_OUTPUT_RECOVERY_STARTED", chairId,
-                    Map.of("reason", violation.reason()));
+                    Map.of("reason", assessment.reason()));
             List<ChatMessage> recoveryMessages = promptBuilder.synthesisRecoveryMessages(
                     ctx.session().question(), ctx.session().context(), ctx.drafts(), ctx.reviews(),
                     ctx.scores(), ctx.debateRounds(), preserveDissent, budget);
             result = callAndRecord(ctx, chair, recoveryMessages);
             artifactStore.writeText(ctx.session().id(),
                     "raw/synthesis-" + chairId + "-attempt-2.md", result.text());
-            violation = assessOutput(ctx, result.text());
+            assessment = assessOutput(ctx, result.text());
         }
 
-        if (violation.rejected()) {
+        if (assessment.invariantViolation()) {
             String reason = "Synthesized answer failed the user-facing output guard after recovery: "
-                    + violation.reason();
+                    + assessment.reason();
             ctx.setSynthesisResult(null);
             ctx.markDegraded(reason);
             ctx.markFailed(stage(), new IllegalStateException(reason));
             events.publish(ctx.session().id(), stage().name(),
                     "SYNTHESIS_OUTPUT_REJECTED", chairId,
-                    Map.of("reason", violation.reason()));
+                    Map.of("reason", assessment.reason()));
             return ctx;
+        }
+        if (assessment.recoveryRecommended()) {
+            String warning = "Synthesized answer retained after bounded cleanup because only a "
+                    + "non-authoritative narration quality signal remained: " + assessment.reason();
+            ctx.addWarning(warning);
+            events.publish(ctx.session().id(), stage().name(),
+                    "SYNTHESIS_OUTPUT_QUALITY_WARNING", chairId,
+                    Map.of("reason", assessment.reason()));
         }
 
         ctx.setSynthesisResult(result.text());
@@ -99,22 +107,27 @@ public class SynthesisStageExecutor implements StageExecutor {
         return result;
     }
 
-    private OutputViolation assessOutput(CouncilContext ctx, String answer) {
+    private OutputAssessment assessOutput(CouncilContext ctx, String answer) {
         TrustBoundaryGuard.Assessment trust = TrustBoundaryGuard.assess(
                 ctx.session().context(), answer);
-        if (trust.influenced()) {
-            return new OutputViolation(true, trust.reason());
+        if (trust.violated()) {
+            return new OutputAssessment(true, true, trust.reason());
         }
         UserFacingAnswerGuard.Assessment userFacing = UserFacingAnswerGuard.assess(
                 ctx.session().question(), answer);
-        return userFacing.leaked()
-                ? new OutputViolation(true, userFacing.reason())
-                : OutputViolation.clear();
+        if (userFacing.invariantViolation()) {
+            return new OutputAssessment(true, true, userFacing.reason());
+        }
+        return userFacing.qualityFindings().isEmpty()
+                ? OutputAssessment.clear()
+                : new OutputAssessment(false, true, userFacing.reason());
     }
 
-    private record OutputViolation(boolean rejected, String reason) {
-        static OutputViolation clear() {
-            return new OutputViolation(false, null);
+    private record OutputAssessment(boolean invariantViolation,
+                                    boolean recoveryRecommended,
+                                    String reason) {
+        static OutputAssessment clear() {
+            return new OutputAssessment(false, false, null);
         }
     }
 }

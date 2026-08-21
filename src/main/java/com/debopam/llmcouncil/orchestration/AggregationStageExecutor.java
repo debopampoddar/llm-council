@@ -71,13 +71,13 @@ public class AggregationStageExecutor implements StageExecutor {
             ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
             TrustBoundaryGuard.Assessment trust = TrustBoundaryGuard.assess(
                     ctx.session().context(), result.text());
-            if (trust.influenced()) {
+            if (trust.violated()) {
                 String reason = "Aggregated draft from " + modelId + " was excluded: " + trust.reason();
                 ctx.excludeModel(modelId, reason);
                 ctx.markDegraded(reason);
                 events.publish(ctx.session().id(), stage().name(),
                         "AGGREGATE_TRUST_BOUNDARY_REJECTED", modelId,
-                        Map.of("reason", trust.reason(), "matchedTerms", trust.matchedTerms()));
+                        Map.of("reason", trust.reason(), "matchedTerms", trust.matchedLiterals()));
                 return null;
             }
             events.publish(ctx.session().id(), stage().name(), "AGGREGATE_COMPLETED", modelId, Map.of());
