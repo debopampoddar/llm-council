@@ -1,15 +1,80 @@
 # LLM Council
 
+[![Pull request checks](https://github.com/debopampoddar/llm-council/actions/workflows/ci.yml/badge.svg)](https://github.com/debopampoddar/llm-council/actions/workflows/ci.yml)
+[![Java 25](https://img.shields.io/badge/Java-25-007396.svg)](https://openjdk.org/projects/jdk/25/)
+[![Spring Boot 3.5](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F.svg)](https://spring.io/projects/spring-boot)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+
 LLM Council is a Java 25 / Spring Boot library and service for running a configurable council of language models. A caller submits a question, chooses a profile such as `local`, `openai`, `claude`, `gemini`, or `multi-cloud`, and chooses a depth mode such as `QUICK`, `BALANCED`, or `RIGOROUS`. The application resolves that request to an internal policy and protocol, collects model drafts, reviews and scores them, optionally debates disagreements, synthesizes a final answer, and validates it with a Fresh Eyes model.
 
 The public API does not accept raw protocol IDs. Protocols are owned by application configuration so users cannot bypass validation, quorum, or cost controls.
 
-> **Read [Limitations](#limitations) before trusting a result.** Nothing in this
-> repository yet establishes that a council produces better answers than a single
-> good model — that question is being measured separately in
-> [llm-council-evaluation](https://github.com/debopampoddar/llm-council-evaluation),
-> and the result is not in. There is also no authentication; loopback binding is
-> the only access control.
+This project is designed for engineers who want to study or demonstrate
+multi-model orchestration with inspectable intermediate evidence—not merely put
+several model calls behind a voting prompt.
+
+## Why This Project Is Useful
+
+- **Inspectable:** every stage emits events and artifacts instead of hiding the
+  council behind one opaque response.
+- **Configurable:** models, policies, profiles, and safe protocol tuning can be
+  changed without editing orchestration code.
+- **Honest about trust:** validation independence, partial evidence, dissent,
+  retries, and prompt-injection limits are visible to the user.
+- **Evaluation-ready:** the separate
+  [evaluation harness](https://github.com/debopampoddar/llm-council-evaluation)
+  compares the council with direct-model and same-model-ensemble baselines.
+- **Java-first:** the implementation, APIs, persistence, configuration, tests,
+  and operational controls are built with Java and Spring Boot.
+
+## Current Status
+
+| Area | Status |
+|---|---|
+| Personal/local use | Ready for controlled use on loopback |
+| Deterministic build | 953 tests plus repository YAML/link/provider checks |
+| Local Ollama | QUICK, BALANCED, and RIGOROUS profiles are implemented |
+| Cloud providers | OpenAI, Anthropic, Gemini, and multi-cloud profiles are implemented; repeatable live contract suites remain open |
+| Security boundary | Layered prompt/data separation and bounded recovery are implemented; this is not universal prompt-injection prevention |
+| Quality evidence | Historical local evidence did not demonstrate that RIGOROUS beats the direct or same-model-ensemble baselines |
+| Shared/public deployment | Not ready: authentication, authorization, ownership, and distributed admission are not implemented |
+
+The tracked historical 36-case ablation found no rigorous-council advantage and
+also exposed partial runs and an adversarial failure. Those findings drove the
+current hardening, so that dataset is now contaminated for confirmation. A fresh
+security regression and new held-out evidence are required before publishing a
+quality claim. See the
+[evaluation repository](https://github.com/debopampoddar/llm-council-evaluation)
+for the reports and methodology.
+
+> **Read [Limitations](#limitations) before trusting a result.** There is no
+> authentication; loopback binding is the only access control. A green build
+> establishes deterministic implementation behavior, not model quality.
+
+## Quick Local Demo
+
+Prerequisites: Java 25, Maven 3.9+, and a running Ollama service.
+
+```bash
+ollama pull llama3.1:8b
+ollama pull mistral:7b
+ollama pull qwen2.5:7b
+ollama pull gemma4:12b-it-qat
+
+mvn --batch-mode --no-transfer-progress clean verify
+java -jar target/llm-council-2.0.0.jar
+```
+
+Open <http://127.0.0.1:8080>, choose `local` and `QUICK`, and ask a question.
+Move to `BALANCED` or `RIGOROUS` only after the fast path works. The setup wizard
+at <http://127.0.0.1:8080/setup.html> can build a configuration from the models
+available on the machine; the advanced workbench is at
+<http://127.0.0.1:8080/config.html>.
+
+For Docker, cloud-provider credentials, API examples, and troubleshooting, use
+the [documentation index](docs/README.md). For a concise demo, screenshot plan,
+and evidence-safe blog outline, use the
+[showcase and blog guide](docs/showcase-and-blog-guide.md).
 
 ## What This Implements
 
@@ -39,14 +104,14 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Local artifact storage for raw, normalized, final, export metadata, and the
   durable terminal run response at `final/result.json`.
 
-### Anti-Sycophancy & Quality (Phase 3)
+### Deliberation And Anti-Sycophancy
 - **Adversarial debate roles**: `PROPOSER`, `CRITIC`, and `SYNTHESIZER` council personas with role-specific system prompts. CRITIC models receive explicit instructions to challenge emerging consensus.
 - **Sycophancy detection**: a two-condition gate, each condition in its own unit. A member is flagged when its confidence moved at least `sycophancy-confidence-delta` points toward the majority **and** its reasoning stood still — either its own text barely changed, or its new text has migrated onto the other members' prior language (`alignmentToOthers`). Both components are reported whether or not the member was flagged.
 - **Post-debate draft revision** (`REVISE` stage): each model revises its draft incorporating debate arguments before re-scoring.
 - **Post-debate re-review** (`REVIEW_POST_DEBATE` stage): reviewers re-evaluate drafts considering debate transcript, so the second SCORE pass uses genuinely updated evidence.
 - **Model heterogeneity enforcement**: startup warning when all council members share the same `modelFamily`.
 
-### Scoring & Resilience (Phases 1–2)
+### Scoring, Resilience, And Observability
 - **Confidence-weighted scoring** (default): reviewer scores weighted by self-reported confidence.
 - **Pluggable scoring strategies**: `average`, `confidence-weighted`, `median`, `trimmed-mean` — selectable per protocol stage.
 - **Disagreement escalation**: `SYNTHESIZE_WITH_DISSENT` or `HALT_AND_ESCALATE` when reviewers still disagree about the same draft after debate. Escalation is only claimed when that disagreement was measurable — it needs two reviewers on one draft, which a two-member council never has once self-review is excluded.
@@ -68,14 +133,14 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - **Startup provider banner**: logs which providers were auto-detected at boot.
 - **Graceful degradation**: models on disabled providers fall through to `UnavailableModelClient` with actionable error messages.
 
-### Web UI (Phase 2)
+### Web UI
 - Chat view at `/`, served straight from the static classpath root — no Node, no bundler, no build step.
 - Preflight health gate before the send button, with three states: verified, unverified, blocked.
 - Live council stage timeline over SSE, with per-stage evidence expanded from the run's own artifacts.
 - A trust strip above every answer carrying confidence with its independence tier, member roster, sycophancy findings, and preserved dissent.
 - Cancel a running council from the browser.
 
-### Requirement Advisor (Phase 5)
+### Requirement Advisor
 - Setup wizard at `/setup.html`: describe the council you want in plain language, review what was understood, and get a configuration built from the models this machine can actually run.
 - **The model produces intent; deterministic Java produces configuration.** An LLM's only output is a small record of closed choices — it cannot emit a model id, a provider, or a stage type, because the record has nowhere to put one.
 - Nothing uncallable is ever proposed: an Ollama tag you have not pulled, a provider with no credential, and a mock model are all excluded before selection rather than configured and discovered at run time.
@@ -109,17 +174,18 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 Everything above describes what the system does. This section describes what it
 has not been shown to do. Read it before trusting a result.
 
-**Nothing here establishes that a council beats one good model.** The test suite
-verifies plumbing. No experiment in this repository shows that the extra stages,
-models, and tokens produce a better answer than a single well-prompted model
-given the same question. A rigorous run with three members costs roughly 20–23
-model calls against the baseline's one, so the burden of proof is real and it has
-not yet been met. The separate
+**Current evidence does not establish that a council beats one good model.** The
+deterministic test suite verifies implementation behavior, not answer superiority.
+The tracked historical local ablation favored the direct and same-model-ensemble
+baselines over RIGOROUS under one local judge, while several council candidates
+were partial. That run predates the latest hardening and its dataset subsequently
+informed changes, so it is historical diagnostic evidence rather than confirmation
+of the current code. A rigorous run can cost many times the baseline's one call,
+so the burden of proof is real and has not been met. The separate
 [llm-council-evaluation](https://github.com/debopampoddar/llm-council-evaluation)
 harness exists to answer this — blinded pairwise judging against a true one-call
-baseline plus a same-model-ensemble ablation. **The result is not in.** Until it
-is, treat the council's advantage as a hypothesis this project is testing, not a
-property it has.
+baseline plus a same-model-ensemble ablation. Treat the council's advantage as a
+hypothesis this project is testing, not a property it has.
 
 **The detection thresholds are uncalibrated starting points.** These four values
 in `application.yml` were chosen by reasoning, not fitted to recorded debate
@@ -944,12 +1010,14 @@ mvn --batch-mode --no-transfer-progress clean verify
 The script parses every repository YAML document, checks local Markdown and
 image targets, and rejects reintroduction of the removed provider configuration.
 
+## License
+
+The repository currently contains the GNU General Public License version 3. The
+[LICENSE](LICENSE) file is the legal authority. The future licensing options in
+[the licensing decision record](docs/licensing-and-distribution.md) have not been
+applied and must not be presented as the current license.
+
 ## More Detail
 
-See [docs/library-flow-guide.md](docs/library-flow-guide.md) for a simple but detailed explanation of the business logic, execution sequence, configuration model, and extension points.
-
-See [docs/production-readiness-plan.md](docs/production-readiness-plan.md) for the prioritized robustness and production-readiness plan.
-
-See [docs/production-readiness-implementation-guide.md](docs/production-readiness-implementation-guide.md) for the historical implementation sequence, current status matrix, and remaining implementation guidance. Code sketches in that document are design history, not drop-in current code.
-
-See [docs/testing-m1-32gb.md](docs/testing-m1-32gb.md) for the Apple Silicon/Rancher or Docker Desktop runbook, and [docs/testing-intel-2019-32gb.md](docs/testing-intel-2019-32gb.md) for the Intel Docker runbook.
+Use the [documentation index](docs/README.md) to choose between current references,
+hardware runbooks, threat and readiness documents, and historical design records.

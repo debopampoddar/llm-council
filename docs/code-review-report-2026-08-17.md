@@ -3,6 +3,12 @@
 Date: 2026-08-17; updated 2026-08-20
 Scope: Java/Spring Boot/Spring AI backend, orchestration, configuration, persistence, REST/SSE APIs, static web UI, and tests.
 
+> **Document role:** historical review record with closure updates. Use
+> [production-readiness-plan.md](production-readiness-plan.md) for the current
+> deployment backlog and [prompt-injection-threat-model.md](prompt-injection-threat-model.md)
+> for the current security contract. The latest trust-boundary changes are
+> deterministically tested but still require a fresh live Ollama regression.
+
 ## Bottom line
 
 This is a serious implementation, not a toy prompt loop. The stage registry, pinned catalog snapshot, quorum handling, prompt budgeting, explicit partial/failure states, replayable event model, retention policy, configuration validator, and artifact trail are all sound design choices.

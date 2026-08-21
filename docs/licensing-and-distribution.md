@@ -1,12 +1,21 @@
-# Licensing and Distribution — decisions, and what is left to do
+# Licensing And Distribution Decision Record
 
-Plan status: **blocked on registering `contextruntime.io`.**
+Plan status: **deferred pending a final legal/licensing decision. Do not execute
+the migration steps in this document yet.**
 
-> **Current legal/build state, audited 2026-08-17:** the repository is still
+> **Current legal/build state, checked 2026-08-20:** the repository is still
 > version `2.0.0`, groupId `com.debopam`, and carries the GPL-3.0 license text.
 > The AGPL/commercial model, `io.contextruntime` coordinates, Maven Central, CLA,
 > NOTICE, and SPDX work below are decisions for a future 2.1.0 release; they are
-> not claims about the code users receive today.
+> not claims about the code users receive today. The separate evaluation
+> repository currently has no `LICENSE` file and must receive an explicit license
+> before it is marketed for reuse.
+
+The intended future copyright holder is ContextRuntime LLC. A GitHub issue in the
+relevant repository is acceptable as the interim public contact for commercial
+licensing questions; a custom domain or mailbox is not a prerequisite for that
+contact path. Copyright ownership, contributor assignments, and final license
+language still require legal verification.
 
 This is an engineering release plan, not legal advice. Revalidate the licence
 strategy with counsel before changing the repository licence or selling
@@ -22,17 +31,17 @@ should be re-run only when dependencies change.
 
 | # | Decision | Chosen | Status |
 |---|---|---|---|
-| D1 | Licence model | **AGPL-3.0-or-later + commercial**, public repository | agreed |
-| D2 | Version carrying the new licence | **2.1.0** | agreed |
-| D3 | `<licenses>` block | **Both entries** — Maven reads multiple `<license>` as "at your option", which is what dual licensing means | agreed |
-| D4 | Distribution | **Maven Central** for the AGPL artifact, **GitHub Packages** for commercial and pre-release builds | agreed |
-| D5 | Commercial contact | `licensing@contextruntime.io` | pending domain |
-| D6 | groupId | **`io.contextruntime`**, artifactId `llm-council` | pending domain |
+| D1 | Licence model | AGPL-3.0-or-later + commercial was explored; personal/non-commercial source-available terms were also discussed | **not final** |
+| D2 | Version carrying any new licence | A future version only; never retroactive | agreed principle |
+| D3 | `<licenses>` block | Both entries if dual licensing is selected | conditional |
+| D4 | Distribution | Maven Central and/or GitHub Packages | under consideration |
+| D5 | Commercial contact | GitHub issue in the relevant repository | interim choice |
+| D6 | groupId | `io.contextruntime`, artifactId `llm-council` | deferred pending namespace ownership |
 | D7 | Publish a thin library jar as well | **No.** This is an application; the fat jar is the deliverable | agreed |
 | D8 | Fail the build on an unknown dependency licence | **Yes** — otherwise the notices file goes stale silently | agreed |
 | D9 | SPDX header scope | `src/main/java`, `src/test/java`, static JS/CSS/HTML (~220 files) | agreed |
 
-### Why AGPL rather than GPL
+### Why AGPL was considered rather than GPL
 
 GPL obligations trigger on **distribution**, not on use. This application is a
 service people run. A company deploying it internally never distributes it, so
@@ -44,7 +53,7 @@ software **over a network**, which is exactly this deployment shape. That is
 what makes the commercial tier real: the paying customers are the organisations
 whose policies forbid AGPL.
 
-### Why the repository must stay public
+### Why a dual-licensed repository would stay public
 
 Dual licensing means *anyone may use it under AGPL; pay if you cannot accept
 AGPL*. If the source is not reachable, nobody can take the first option and
@@ -56,18 +65,20 @@ coherent arrangement.
 - **v2.0.0 and earlier remain GPL-3.0 permanently.** GPL grants are irrevocable
   (§2). Anyone who already has that code keeps the right to use, modify, and
   redistribute it. Making the repository private would not have changed this.
-- **Future versions can carry any licence**, because the copyright is held
-  solely by Debopam Poddar. Verified: 90 commits, two author identities on one
-  email address, no merged pull requests from forks. No CLA problem to unwind.
-- **This only stays true if it is maintained.** Every future outside
-  contribution needs a CLA or DCO assigning rights, or the ability to sell
-  exceptions is lost for the files it touches.
+- **A future version can use different terms only if the necessary rights are
+  held.** Do not rely on the old contributor-history snapshot in this document.
+  Re-run the audit and have counsel verify any assignment to ContextRuntime LLC
+  before relicensing or selling exceptions.
+- **Outside contributions affect future relicensing.** Choose and document a CLA,
+  copyright assignment, or other counsel-approved contribution policy before
+  accepting contributions intended for dual licensing.
 
 ---
 
-## 2. Blocked on the domain
+## 2. Future Distribution Work
 
-Do these in order once `contextruntime.io` is registered.
+Do these only after the license model, copyright ownership, public contact path,
+and release coordinates are final.
 
 ### 2.1 Claim the Maven Central namespace
 
@@ -99,10 +110,11 @@ Store as repository secrets: `GPG_PRIVATE_KEY`, `GPG_PASSPHRASE`.
 **The private key never enters this repository.** Same rule the application
 follows for provider credentials.
 
-### 2.3 Set up the mailbox
+### 2.3 Confirm the commercial contact
 
-`licensing@contextruntime.io` must receive mail before the first release — it is
-the address on the commercial licence and in `LICENSING.md`.
+Use a GitHub issue link as the interim public contact. If a dedicated mailbox is
+added later, verify that it is monitored before placing it in a license or release
+artifact.
 
 ---
 
@@ -120,7 +132,11 @@ The dependency/package changes and Requirement Advisor are on `main`.
 
 ---
 
-## 4. Changes required, file by file
+## 4. Conditional Changes, File By File
+
+This section is an implementation sketch for the AGPL-plus-commercial option. It
+must be revalidated or discarded after the final license decision; none of it is
+authorized merely because it appears here.
 
 ### 4.1 `pom.xml` — coordinates
 
@@ -151,9 +167,9 @@ renaming 220 files buys nothing.
   </license>
   <license>
     <name>Commercial License</name>
-    <url>https://contextruntime.io/llm-council/licensing</url>
+    <url>https://github.com/debopampoddar/llm-council/issues</url>
     <distribution>manual</distribution>
-    <comments>For use that cannot accept the AGPL terms. Contact licensing@contextruntime.io.</comments>
+    <comments>Illustrative only. Final terms require legal review; use the repository issue tracker as the interim contact.</comments>
   </license>
 </licenses>
 
@@ -162,7 +178,6 @@ renaming 220 files buys nothing.
     <id>debopampoddar</id>
     <name>Debopam Poddar</name>
     <organization>ContextRuntime LLC</organization>
-    <organizationUrl>https://contextruntime.io</organizationUrl>
   </developer>
 </developers>
 
@@ -344,13 +359,15 @@ Apache-2.0, logback is the dual case above. These are what §4.3's
 
 ---
 
-## 8. Resume checklist
+## 8. Resume Checklist
 
-Once `contextruntime.io` is live:
+After legal review and an explicit final decision:
 
+- [ ] Choose the license for each repository; do not assume the evaluation repo inherits the application license
+- [ ] Verify and document copyright ownership or assignment to ContextRuntime LLC
+- [ ] Confirm the GitHub issue contact and whether private security/licensing contact is also required
 - [ ] Claim `io.contextruntime` on the Central Portal; publish the DNS TXT record
 - [ ] Generate the GPG key, publish it, add `GPG_PRIVATE_KEY` / `GPG_PASSPHRASE` secrets
-- [ ] Create the `licensing@contextruntime.io` mailbox
 - [ ] Apply §4.1–4.4 to `pom.xml`; bump to 2.1.0
 - [ ] Swap `LICENSE` to AGPL-3.0; write `LICENSING.md` and `NOTICE`
 - [ ] Script the SPDX headers across ~220 files

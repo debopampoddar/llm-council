@@ -3,6 +3,9 @@
 This guide tests the application on a 2019 Intel MacBook Pro with 32 GB memory
 using `docker-compose.intel-2019-32gb.yml`.
 
+> **Document role:** current constrained-hardware runbook. It prioritizes a
+> reliable demonstration path over completing the most expensive protocol.
+
 This machine class is CPU-bound for local LLM inference. Start with mock and
 `QUICK` local tests. Run `BALANCED` only after the quick path is reliable.
 

@@ -2,6 +2,10 @@
 
 This guide tests the application on an Apple Silicon Mac with 32 GB memory.
 
+> **Document role:** current hardware runbook. Start with QUICK and treat the
+> longer BALANCED/RIGOROUS paths as optional validation, not as proof of better
+> answer quality.
+
 There are two supported local paths:
 
 - Full Docker stack: `docker-compose.m1-32gb.yml` runs Ollama, pulls models, and
