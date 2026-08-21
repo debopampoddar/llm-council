@@ -26,10 +26,14 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Resilient structured-review parsing with exact non-self coverage checks,
   one bounded targeted call for omitted reviews, and per-draft scoring.
 - Debate trigger based on reviewer disagreement about the same draft.
+- One bounded member regeneration with explicit context directives removed when
+  an initial draft crosses the deterministic trust boundary.
 - Chair synthesis with score and dissent context plus one bounded recovery when
-  the first output adopts untrusted instructions or exposes internal metadata.
+  the first output adopts untrusted instructions or exposes internal metadata;
+  recovery receives sanitized, identifier-free evidence.
 - Fresh Eyes validation with structured JSON output and one bounded clean-room
-  retry when the validator's recommendation adopts untrusted context.
+  retry against sanitized context when the validator's recommendation adopts
+  untrusted context.
 - Bounded in-memory persistence by default, with optional JDBC persistence for
   sessions, chats, events, and chat sequence state on H2 or SQLite.
 - Local artifact storage for raw, normalized, final, export metadata, and the
@@ -166,9 +170,13 @@ JSON provenance envelope: only `task.text` has instruction authority; context,
 drafts, reviews, scores, and debate turns have none. Prompts reinforce that
 boundary, reviews score grounding and trust-boundary compliance, and a
 high-precision deterministic backstop rejects output that adopts explicit task
-redirections from context. Synthesis first makes one clean retry without the
-rejected prose; a second violation fails closed, including in QUICK where no
-validator runs. Validator recommendations receive the same treatment. This
+redirections from context. Its polarity check is sentence-local, so a safe
+negative decision cannot be confused with the injected action and an earlier
+disclaimer cannot excuse a later payload. An unsafe initial draft receives one
+regeneration with the directive removed. Synthesis makes one clean retry using
+sanitized, identifier-free evidence; a second violation fails closed, including
+in QUICK where no validator runs. Validator recovery also removes the detected
+directive rather than presenting it to the same model twice. This
 materially reduces a demonstrated injection path; it is not
 a proof that prompt injection is solved. See
 [the prompt-injection threat model](docs/prompt-injection-threat-model.md).

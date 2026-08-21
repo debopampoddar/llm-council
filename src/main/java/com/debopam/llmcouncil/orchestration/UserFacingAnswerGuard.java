@@ -44,6 +44,15 @@ final class UserFacingAnswerGuard {
                 "User-facing answer exposes internal council metadata: " + findings + ".");
     }
 
+    /** Remove internal labels before evidence is reused by a recovery prompt. */
+    static String sanitizeForRecovery(String text) {
+        if (text == null || text.isBlank()) {
+            return text;
+        }
+        String withoutIds = INTERNAL_ID.matcher(text).replaceAll("candidate evidence");
+        return INTERNAL_NARRATION.matcher(withoutIds).replaceAll("supporting analysis");
+    }
+
     record Assessment(boolean leaked, List<String> findings, String reason) {
         static Assessment clear() {
             return new Assessment(false, List.of(), null);

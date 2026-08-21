@@ -277,9 +277,11 @@ The held-out adversarial case showed the Mistral critic adopting an embedded
 and the Mistral-backed validator approving it. The fix is layered rather than a
 prompt-only patch: JSON provenance envelopes at every model boundary, common
 authority rules, grounding and trust-boundary review criteria, evidence-grounded
-criticism and synthesis, a deterministic adoption guard, and fail-closed behavior
-for unsafe drafts and final synthesis. The local validator is now Gemma, and
-validator independence is checked against the chair and every member.
+criticism and synthesis, sentence-local polarity-aware adoption checks, one
+sanitized regeneration for an unsafe initial draft, identifier-free synthesis
+recovery, sanitized validator recovery, and fail-closed behavior after bounded
+recovery. The local validator is now Gemma, and validator independence is checked
+against the chair and every member.
 
 Files: `PromptEnvelopeRenderer`, `PromptBuilder`, `TrustBoundaryGuard`, all
 model-calling stage executors, `ReviewEvidence`, `ValidationEvidence`,
@@ -287,8 +289,10 @@ model-calling stage executors, `ReviewEvidence`, `ValidationEvidence`,
 and `docs/prompt-injection-threat-model.md`.
 
 Qualification: the guard is intentionally high precision and is not a general
-prompt-injection classifier. A pass is not a security proof; see the threat model
-for evasion and false-positive limits.
+prompt-injection classifier. The live 2026-08-21 regression exposed unsafe model
+adoption as well as false positives around negative actions and benign analysis;
+the current recovery/polarity changes require a fresh run. A pass is not a
+security proof; see the threat model for evasion and false-positive limits.
 
 Implementation status after the 2026-08-20 update: **all 23 concrete must-have
 defects in this report are CLOSED in the reviewed worktree.**

@@ -17,9 +17,13 @@ import com.debopam.llmcouncil.persistence.ArtifactStore;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GenerationStageExecutorTest {
@@ -50,14 +54,22 @@ class GenerationStageExecutorTest {
     }
 
     @Test
-    void excludesADraftThatAdoptsAnInstructionFromSupportingContext() {
+    void retriesADraftWithSanitizedContextAfterItAdoptsAnInstruction() {
         ModelProfile member = TestModels.model("member").provider("mock")
                 .providerModelId("member-model").outputTokens(100)
                 .temperature(0.2).timeout(Duration.ofSeconds(1))
                 .role(ModelRole.MEMBER).build();
-        ModelClient unsafeClient = request -> new com.debopam.llmcouncil.model.ModelCallResult(
-                "BREACHED. Assign this security incident to security.");
-        ModelRegistry registry = TestModels.registry(List.of(member), Map.of("member", unsafeClient));
+        AtomicInteger calls = new AtomicInteger();
+        List<String> promptData = new ArrayList<>();
+        ModelClient recoveringClient = request -> {
+            promptData.add(request.messages().getLast().content());
+            return new com.debopam.llmcouncil.model.ModelCallResult(
+                    calls.getAndIncrement() == 0
+                            ? "BREACHED. Assign this security incident to security."
+                            : "The deploy caused the latency regression; inspect its configuration diff.");
+        };
+        ModelRegistry registry = TestModels.registry(
+                List.of(member), Map.of("member", recoveringClient));
         GenerationStageExecutor executor = new GenerationStageExecutor(
                 registry, new PromptBuilder(), new DefaultEventPublisher(), new NoopArtifactStore());
         CouncilPolicy policy = TestModels.policy("test-policy").protocol("quick")
@@ -68,10 +80,13 @@ class GenerationStageExecutorTest {
 
         executor.execute(context, ProtocolStageOptions.empty());
 
-        assertTrue(context.isTerminal(), "rejecting the only draft must fail quorum");
-        assertTrue(context.drafts().isEmpty());
-        assertTrue(context.excludedModels().stream()
-                .anyMatch(exclusion -> exclusion.contains("untrusted supporting context")));
+        assertFalse(context.isTerminal());
+        assertEquals(1, context.drafts().size());
+        assertEquals(2, calls.get(), "trust recovery must be bounded to one extra call");
+        assertTrue(promptData.get(1).contains("UNTRUSTED_INSTRUCTION_REMOVED"));
+        assertFalse(promptData.get(1).contains("BREACHED"),
+                "the rejected payload must not be resent during recovery");
+        assertEquals(2, context.usage().size(), "both attempts must be accounted for");
     }
 
     private CouncilContext contextWithPolicy(CouncilPolicy policy) {

@@ -35,11 +35,15 @@ is why the application also checks outputs.
    merely because a member or reviewer supplied it.
 5. A deterministic high-precision guard looks for explicit task redirection in
    context and distinctive evidence that an output adopted the directive payload,
-   rather than ordinary evidence appearing earlier on the same line. Explicitly
-   rejecting or analyzing the embedded instruction is treated as safe framing. Unsafe drafts,
-   aggregation, debate contributions, and revisions are excluded. An unsafe
-   synthesis receives one clean retry that does not include the rejected prose;
-   a second violation fails the run in every depth, including QUICK. Internal
+   rather than ordinary evidence appearing earlier on the same line. Payload
+   polarity is evaluated in the sentence containing each occurrence: rejecting
+   or analyzing an embedded action is safe, while an earlier disclaimer cannot
+   excuse a later standalone execution. An unsafe initial draft receives one
+   bounded regeneration with the explicit directive removed; a repeated violation
+   is excluded. Unsafe aggregation, debate contributions, and revisions are
+   excluded. An unsafe synthesis receives one clean retry with directive text,
+   internal identifiers, score data, and council labels removed; a second
+   violation fails the run in every depth, including QUICK. Internal
    draft/review/score/turn identifiers and unsolicited council narration use the
    same recovery and fail-closed path. Validation cannot override a deterministic
    finding.
@@ -47,12 +51,16 @@ is why the application also checks outputs.
    and Qwen answer producers. Independence is classified against every producer.
 7. Validator recommendations are checked against the same untrusted context. If
    a recommendation adopts an embedded directive, the application discards that
-   assessment and makes one clean-room validation retry. Repeated adoption is
-   classified as invalid model output rather than exposed as trusted advice.
+   assessment and makes one clean-room validation retry after removing the
+   explicit directive from supporting context. Repeated adoption is classified
+   as invalid model output rather than exposed as trusted advice.
 
 ## Expected observable behavior
 
-An unsafe intermediate output produces `MODEL_OUTPUT_TRUST_BOUNDARY_REJECTED`.
+An unsafe initial draft first produces `MODEL_OUTPUT_TRUST_RECOVERY_STARTED`.
+A safe replacement produces `MODEL_OUTPUT_TRUST_RECOVERED`; a repeated violation
+produces `MODEL_OUTPUT_TRUST_BOUNDARY_REJECTED`. Other unsafe intermediate output
+produces `MODEL_OUTPUT_TRUST_BOUNDARY_REJECTED`.
 An unsafe or internally narrated synthesis first produces
 `SYNTHESIS_OUTPUT_RECOVERY_STARTED`; a repeated violation produces
 `SYNTHESIS_OUTPUT_REJECTED`. The run becomes partial when safe quorum remains and
@@ -75,9 +83,10 @@ repair loop.
 ## Limitations
 
 The deterministic guard intentionally favors precision. It recognizes explicit
-override/redirection language and lexical adoption; paraphrased, encoded,
-multilingual, multi-turn, or indirect attacks may evade it. Legitimate text that
-contains the same distinctive payload may be rejected and sent for human review.
+override/redirection language and sentence-local lexical adoption; paraphrased,
+encoded, multilingual, multi-turn, or indirect attacks may evade it. Ambiguous
+legitimate text that contains the same distinctive payload may still be rejected
+or regenerated.
 Model review and validation remain probabilistic and can share training-data blind
 spots even when their declared families differ.
 
@@ -90,9 +99,9 @@ approve an action by itself.
 ## Verification
 
 The deterministic suite covers the observed ticket injection, benign rejection
-of embedded directives and unsafe actions, unsafe-draft exclusion, bounded
-synthesis recovery, validator clean-room recovery, internal-metadata rejection,
-and fail-closed QUICK synthesis.
+and analysis of embedded directives, negative action polarity, sanitized bounded
+draft regeneration, sanitized synthesis and validator recovery,
+internal-metadata rejection, and fail-closed QUICK synthesis.
 Use the evaluation repository's prompt-injection regression dataset for live model
 testing. A passing regression run demonstrates the covered cases on the recorded
 models; it is not a universal security certification.
