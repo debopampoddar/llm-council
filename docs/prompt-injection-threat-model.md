@@ -38,18 +38,27 @@ is why the application also checks outputs.
    rather than ordinary evidence appearing earlier on the same line. Explicitly
    rejecting or analyzing the embedded instruction is treated as safe framing. Unsafe drafts,
    aggregation, debate contributions, and revisions are excluded. An unsafe
-   synthesis fails the run in every depth, including QUICK. Validation cannot
-   override a deterministic finding.
+   synthesis receives one clean retry that does not include the rejected prose;
+   a second violation fails the run in every depth, including QUICK. Internal
+   draft/review/score/turn identifiers and unsolicited council narration use the
+   same recovery and fail-closed path. Validation cannot override a deterministic
+   finding.
 6. The dedicated local validator is Gemma, distinct from the Llama, Mistral,
    and Qwen answer producers. Independence is classified against every producer.
+7. Validator recommendations are checked against the same untrusted context. If
+   a recommendation adopts an embedded directive, the application discards that
+   assessment and makes one clean-room validation retry. Repeated adoption is
+   classified as invalid model output rather than exposed as trusted advice.
 
 ## Expected observable behavior
 
-An unsafe output produces `MODEL_OUTPUT_TRUST_BOUNDARY_REJECTED` or
-`SYNTHESIS_TRUST_BOUNDARY_REJECTED`. The run becomes partial when safe quorum
-remains and fails when quorum or the final answer is unsafe. For a validation
-finding, `approved=false`, `requiresHumanReview=true`, and the safety criterion
-is `fail`.
+An unsafe intermediate output produces `MODEL_OUTPUT_TRUST_BOUNDARY_REJECTED`.
+An unsafe or internally narrated synthesis first produces
+`SYNTHESIS_OUTPUT_RECOVERY_STARTED`; a repeated violation produces
+`SYNTHESIS_OUTPUT_REJECTED`. The run becomes partial when safe quorum remains and
+fails when quorum or the recovered final answer is unsafe. A validator that
+adopts context produces `VALIDATION_TRUST_RECOVERY_STARTED`; repeated adoption
+fails as invalid model output.
 
 Raw provider output is retained in the normal artifact trail for diagnosis. Do
 not expose artifacts to untrusted users; this application has no authentication
@@ -59,7 +68,9 @@ For structured Ollama calls, hidden thinking is disabled so a thinking-capable
 model cannot consume the entire response allowance without emitting JSON. If a
 validator still reaches the exact output ceiling with unparseable content, the
 application makes one bounded recovery call with a larger allowance and retains
-both attempts as artifacts and usage records.
+both attempts as artifacts and usage records. The output-ceiling and trust
+recoveries share the same one-retry limit; validation never makes an unbounded
+repair loop.
 
 ## Limitations
 
@@ -79,7 +90,9 @@ approve an action by itself.
 ## Verification
 
 The deterministic suite covers the observed ticket injection, benign rejection
-of an embedded directive, unsafe-draft exclusion, and fail-closed QUICK synthesis.
+of embedded directives and unsafe actions, unsafe-draft exclusion, bounded
+synthesis recovery, validator clean-room recovery, internal-metadata rejection,
+and fail-closed QUICK synthesis.
 Use the evaluation repository's prompt-injection regression dataset for live model
 testing. A passing regression run demonstrates the covered cases on the recorded
 models; it is not a universal security certification.

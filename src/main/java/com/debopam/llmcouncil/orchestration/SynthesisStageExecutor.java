@@ -51,32 +51,70 @@ public class SynthesisStageExecutor implements StageExecutor {
                 ctx.scores(), ctx.debateRounds(), preserveDissent, budget);
         PromptBudgets.record(ctx, events, stage(), chairId, budget);
 
-        ModelCallResult result = registry.clientForModel(chairId).call(
-                new ModelCallRequest(ctx.session().id(), stage(), chair.id(),
-                                     chair.providerModelId(), messages,
-                                     chair.defaultOutputTokens(), chair.temperature(), false, chair.defaultTimeout()));
-        ctx.recordUsage(chair.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
+        ModelCallResult result = callAndRecord(ctx, chair, messages);
+        artifactStore.writeText(ctx.session().id(),
+                "raw/synthesis-" + chairId + "-attempt-1.md", result.text());
+
+        OutputViolation violation = assessOutput(ctx, result.text());
+        if (violation.rejected()) {
+            events.publish(ctx.session().id(), stage().name(),
+                    "SYNTHESIS_OUTPUT_RECOVERY_STARTED", chairId,
+                    Map.of("reason", violation.reason()));
+            List<ChatMessage> recoveryMessages = promptBuilder.synthesisRecoveryMessages(
+                    ctx.session().question(), ctx.session().context(), ctx.drafts(), ctx.reviews(),
+                    ctx.scores(), ctx.debateRounds(), preserveDissent, budget);
+            result = callAndRecord(ctx, chair, recoveryMessages);
+            artifactStore.writeText(ctx.session().id(),
+                    "raw/synthesis-" + chairId + "-attempt-2.md", result.text());
+            violation = assessOutput(ctx, result.text());
+        }
+
+        if (violation.rejected()) {
+            String reason = "Synthesized answer failed the user-facing output guard after recovery: "
+                    + violation.reason();
+            ctx.setSynthesisResult(null);
+            ctx.markDegraded(reason);
+            ctx.markFailed(stage(), new IllegalStateException(reason));
+            events.publish(ctx.session().id(), stage().name(),
+                    "SYNTHESIS_OUTPUT_REJECTED", chairId,
+                    Map.of("reason", violation.reason()));
+            return ctx;
+        }
 
         ctx.setSynthesisResult(result.text());
         artifactStore.writeText(ctx.session().id(), "final/answer.md", result.text());
-        TrustBoundaryGuard.Assessment trust = TrustBoundaryGuard.assess(
-                ctx.session().context(), result.text());
-        if (trust.influenced()) {
-            String reason = "Synthesized answer failed the trust-boundary guard: " + trust.reason();
-            // Keep the raw artifact for diagnosis, but never expose rejected
-            // prose as the run's answer through the API or UI.
-            ctx.setSynthesisResult(null);
-            ctx.markDegraded(reason);
-            // QUICK has no later VALIDATE stage. Fail here so no protocol can
-            // return an adopted context directive as a successful answer.
-            ctx.markFailed(stage(), new IllegalStateException(reason));
-            events.publish(ctx.session().id(), stage().name(),
-                    "SYNTHESIS_TRUST_BOUNDARY_REJECTED", chairId,
-                    Map.of("reason", trust.reason(), "matchedTerms", trust.matchedTerms()));
-            return ctx;
-        }
         events.publish(ctx.session().id(), stage().name(), "SYNTHESIS_COMPLETED", chairId,
                        Map.of("chars", result.text().length()));
         return ctx;
+    }
+
+    private ModelCallResult callAndRecord(
+            CouncilContext ctx, ModelProfile chair, List<ChatMessage> messages) {
+        ModelCallResult result = registry.clientForModel(chair.id()).call(
+                new ModelCallRequest(ctx.session().id(), stage(), chair.id(),
+                        chair.providerModelId(), messages, chair.defaultOutputTokens(),
+                        chair.temperature(), false, chair.defaultTimeout()));
+        ctx.recordUsage(chair.id(), stage(), result.promptTokens(),
+                result.completionTokens(), result.latency());
+        return result;
+    }
+
+    private OutputViolation assessOutput(CouncilContext ctx, String answer) {
+        TrustBoundaryGuard.Assessment trust = TrustBoundaryGuard.assess(
+                ctx.session().context(), answer);
+        if (trust.influenced()) {
+            return new OutputViolation(true, trust.reason());
+        }
+        UserFacingAnswerGuard.Assessment userFacing = UserFacingAnswerGuard.assess(
+                ctx.session().question(), answer);
+        return userFacing.leaked()
+                ? new OutputViolation(true, userFacing.reason())
+                : OutputViolation.clear();
+    }
+
+    private record OutputViolation(boolean rejected, String reason) {
+        static OutputViolation clear() {
+            return new OutputViolation(false, null);
+        }
     }
 }

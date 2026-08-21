@@ -26,8 +26,10 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Resilient structured-review parsing with exact non-self coverage checks,
   one bounded targeted call for omitted reviews, and per-draft scoring.
 - Debate trigger based on reviewer disagreement about the same draft.
-- Chair synthesis with score and dissent context.
-- Fresh Eyes validation with structured JSON output.
+- Chair synthesis with score and dissent context plus one bounded recovery when
+  the first output adopts untrusted instructions or exposes internal metadata.
+- Fresh Eyes validation with structured JSON output and one bounded clean-room
+  retry when the validator's recommendation adopts untrusted context.
 - Bounded in-memory persistence by default, with optional JDBC persistence for
   sessions, chats, events, and chat sequence state on H2 or SQLite.
 - Local artifact storage for raw, normalized, final, export metadata, and the
@@ -86,7 +88,7 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Credentials are structurally outside the request and overlay contracts; credential fields and credential-shaped values are refused without being echoed.
 
 ### Testing
-- 952 deterministic JUnit tests: policy resolution, confidence parsing, validation
+- 953 deterministic JUnit tests: policy resolution, confidence parsing, validation
   evidence consistency, quorum, multi-envelope and compact local-model review output,
   exact review coverage and targeted recovery, partial-state reporting, KS convergence
   math, sycophancy detection at the shipped thresholds, council-composition warnings,
@@ -164,8 +166,10 @@ JSON provenance envelope: only `task.text` has instruction authority; context,
 drafts, reviews, scores, and debate turns have none. Prompts reinforce that
 boundary, reviews score grounding and trust-boundary compliance, and a
 high-precision deterministic backstop rejects output that adopts explicit task
-redirections from context. A rejection fails closed, including in QUICK where no
-validator runs. This materially reduces a demonstrated injection path; it is not
+redirections from context. Synthesis first makes one clean retry without the
+rejected prose; a second violation fails closed, including in QUICK where no
+validator runs. Validator recommendations receive the same treatment. This
+materially reduces a demonstrated injection path; it is not
 a proof that prompt injection is solved. See
 [the prompt-injection threat model](docs/prompt-injection-threat-model.md).
 

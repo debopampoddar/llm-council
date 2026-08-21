@@ -49,7 +49,7 @@ led to the current system. It is retained as historical reference.
 | 8. SSE | Implemented with durable cursor replay when JDBC is selected |
 | 9. Prompt/security boundary | Provenance envelopes, review criteria, deterministic adoption guard, and fail-closed synthesis implemented; broader injection evaluation and API authentication/ownership open |
 | 10. Quality/calibration | Partially implemented; production policy quality and empirical calibration remain open |
-| 11. Tests | 952 deterministic tests plus PR CI; browser/load/fault, fresh injection regression, and repeatable cloud-provider suites open |
+| 11. Tests | 953 deterministic tests plus PR CI; browser/load/fault, fresh injection regression, and repeatable cloud-provider suites open |
 | 12. Chat API | Implemented, including optional durability, cancellation, cursor replay, and deletion cascade |
 
 ## Original implementation order (historical)

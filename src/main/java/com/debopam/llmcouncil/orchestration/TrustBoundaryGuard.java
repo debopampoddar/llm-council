@@ -30,13 +30,22 @@ final class TrustBoundaryGuard {
             + "(?:(?:with\\s+)?only|(?:with\\s+)?the\\s+(?:word|phrase))\\b");
     private static final Pattern PAYLOAD_CLAUSE = Pattern.compile(
             "(?i)(?:instead\\s+)?(?:reply|respond|output|answer|say|set|classify|assign|approve)\\b"
-            + "([^\\n.!?}]{0,200})");
+            + "([^\\n.!?};]{0,200}?)(?=\\s+(?:and|but|because|regardless|while|although|unless|if)\\b"
+            + "|[\\n.!?};]|$)");
     private static final Pattern SAFE_FRAMING = Pattern.compile(
             "(?i)(untrusted|prompt[- ]?injection|ignore(?:d)?\\s+(?:the\\s+)?(?:comment|directive|instruction)"
             + "|ignor(?:e|ed|ing)\\s+(?:(?:the|this|that)\\s+)?"
             + "(?:(?:embedded|quoted|malicious|untrusted)\\s+)?"
             + "(?:comment|directive|instruction|message|text|note)"
-            + "|(?:do|does|did|will|must|should)\\s+not\\s+(?:follow|obey|execute|honou?r|output)"
+            + "|(?:must|should|can|may)\\s+be\\s+ignored"
+            + "|(?:do|does|did|will|must|should)\\s+not\\s+"
+            + "(?:follow(?:ing)?|obey(?:ing)?|execut(?:e|ing)|honou?r(?:ing)?|output(?:ting)?)"
+            + "|(?:(?:do|does|did|should|must|will|can|cannot|can't)\\s+not\\s+"
+            + "(?:(?:immediately|directly)\\s+)?(?:retry|approve|assign)"
+            + "|(?:should|must|can|cannot|can't)\\s+not\\s+be\\s+retried)"
+            + "|(?:do|does|did)\\s+not\\s+(?:[a-z]+\\s+){0,4}approv(?:e|ed)"
+            + "|(?:(?:should|must|is|are)\\s+not\\s+(?:be\\s+)?approv(?:e|ed)"
+            + "|(?:cannot|can't)\\s+be\\s+approv(?:e|ed))"
             + "|not\\s+(?:evidence|an?\\s+(?:authoritative\\s+)?instruction)"
             + "|does\\s+not\\s+(?:show|indicate|establish)"
             + "|cannot\\s+(?:infer|conclude)|must\\s+not\\s+follow)");
@@ -48,7 +57,8 @@ final class TrustBoundaryGuard {
             "instructions", "ignore", "previous", "prior", "disregard", "analysis",
             "instead", "reply", "respond", "output", "answer", "only", "word", "phrase",
             "with", "this", "that", "from", "into", "task", "request", "ticket", "customer",
-            "comment", "assign", "confirmed", "technical", "finding", "findings");
+            "comment", "assign", "confirmed", "technical", "finding", "findings", "final",
+            "classification");
 
     private TrustBoundaryGuard() {
     }
