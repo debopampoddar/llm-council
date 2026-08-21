@@ -47,8 +47,8 @@ class ReviewRecoveryTest {
         assertTrue(events.history(ctx.session().id()).stream()
                 .anyMatch(event -> "REVIEW_RECOVERY_COMPLETED".equals(event.type())
                         && Boolean.TRUE.equals(event.payload().get("complete"))));
-        assertTrue(requests.get(1).messages().getLast().content()
-                .contains("UNTRUSTED_INSTRUCTION_REMOVED"));
+        assertFalse(requests.get(1).messages().getLast().content()
+                .contains("Document instruction"));
         assertFalse(requests.get(1).messages().getLast().content().contains("BREACHED"));
 
         AtomicInteger malformedCalls = new AtomicInteger();
@@ -98,8 +98,8 @@ class ReviewRecoveryTest {
         assertTrue(events.history(ctx.session().id()).stream()
                 .anyMatch(event -> "POST_DEBATE_REVIEW_RECOVERY_COMPLETED".equals(event.type())
                         && Boolean.TRUE.equals(event.payload().get("complete"))));
-        assertTrue(requests.get(1).messages().getLast().content()
-                .contains("UNTRUSTED_INSTRUCTION_REMOVED"));
+        assertFalse(requests.get(1).messages().getLast().content()
+                .contains("Document instruction"));
         assertFalse(requests.get(1).messages().getLast().content().contains("BREACHED"));
 
         AtomicInteger malformedCalls = new AtomicInteger();

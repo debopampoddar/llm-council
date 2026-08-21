@@ -343,10 +343,15 @@ normalized/anonymized-drafts.json
 normalized/reviews.json
 normalized/scores-initial.json
 private/anonymization-map.json
+private/synthesis-candidate.md
 final/answer.md
 final/validation.json
 final/result.json
 ```
+
+For validation-required protocols, `private/synthesis-candidate.md` is created
+before validation and `final/answer.md` appears only after approval. A rejected
+candidate remains private for operator diagnosis.
 
 ## Step 6: Run A Local QUICK Test
 

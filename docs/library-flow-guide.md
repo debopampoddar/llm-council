@@ -64,6 +64,13 @@ chat turn creates and links to a normal `CouncilSession`.
 9. Events and artifacts are inspectable after the run.
 10. Chat messages run asynchronously and keep a `councilSessionId` for traceability.
 11. Demo runtime concurrency is bounded by `council.runtime.max-concurrent-runs`.
+12. Supporting context defaults to `EVIDENCE`: any complete line containing a
+    recognized instruction is removed before the first model call. Use
+    `ANALYSIS_SUBJECT` only when the user's task is explicitly to inspect the
+    quoted text itself.
+13. A validation-rejected synthesis is not a user-facing answer. It remains a
+    private audit candidate and is promoted to `final/answer.md` only after
+    approval.
 
 ### Trust Boundary at a Glance
 
@@ -72,12 +79,16 @@ evidence, but they are never allowed to redefine that goal.
 
 ```mermaid
 flowchart LR
-    A["User task<br/>authorized intent"] --> C["Council<br/>model call"]
-    B["Context and prior model output<br/>untrusted evidence"] --> C
-    C --> D{"Deterministic<br/>guard passes?"}
+    A["User task<br/>authorized intent"] --> C["Council model call"]
+    B["Supporting context<br/>untrusted data"] --> P{"Context purpose"}
+    P -- "EVIDENCE<br/>(default)" --> S["Remove complete<br/>instruction-bearing lines"]
+    P -- "ANALYSIS_SUBJECT<br/>(explicit)" --> K["Keep quoted text<br/>for analysis"]
+    S --> C
+    K --> C
+    C --> D{"Deterministic<br/>output guard passes?"}
     D -- "Yes" --> E["Accept output"]
-    D -- "No" --> F["One sanitized<br/>retry"]
-    F --> G{"Retry<br/>passes?"}
+    D -- "No" --> F["One clean retry"]
+    F --> G{"Retry passes?"}
     G -- "Yes" --> E
     G -- "No" --> H["Reject output<br/>or fail the stage"]
 ```
@@ -145,6 +156,7 @@ Request:
 {
   "question": "What should we do about distributed transactions?",
   "context": "Optional background",
+  "contextPurpose": "EVIDENCE",
   "depthMode": "BALANCED",
   "profileId": "openai"
 }
@@ -165,11 +177,15 @@ Important class:
 public record CreateSessionRequest(
     String question,
     String context,
+    ContextPurpose contextPurpose,
     DepthMode depthMode,
     String profileId
 ) {}
 ```
 
+`contextPurpose` is optional and defaults to `EVIDENCE`. Choose
+`ANALYSIS_SUBJECT` only for a task such as “explain why this quoted message is a
+prompt injection.” It does not grant the quoted text instruction authority.
 There is no `protocolId` in the request. Protocol selection is internal.
 
 ### 2. Run Session
@@ -833,7 +849,16 @@ What it does:
    internal output label, identifier, or application-owned process phrase, makes
    one clean retry using sanitized context and neutral evidence labels; likely
    internal narration also requests cleanup but cannot fail the run by itself.
-5. Writes only an accepted final answer to:
+5. For a protocol without validation, writes the accepted answer directly to
+   `final/answer.md`. When validation is required, first writes the synthesis to:
+
+```text
+private/synthesis-candidate.md
+```
+
+It is not yet a user-facing answer at this point.
+
+An approved answer is written to:
 
 ```text
 final/answer.md
@@ -850,13 +875,15 @@ ValidateStageExecutor
 What it does:
 
 1. Uses `validatorModelId` from policy.
-2. Sends only original question/context and final answer.
+2. Sends only the original question, prepared context, and synthesis candidate.
 3. Does not send the full council transcript.
 4. Parses structured JSON validation.
 5. Recomputes the effective verdict deterministically: approval is overridden when
    a required criterion is missing/malformed, any criterion fails, or the model
    requires human review.
-6. Fails the session when validation is required and the effective verdict rejects.
+6. Promotes an approved candidate to `final/answer.md`. When required validation
+   rejects, fails the session and withholds the candidate from the session,
+   one-shot response, and chat answer.
 7. Treats `issues`, `recommendedFixes`, and criterion explanations as
    authority-bearing fields. If any of them contains an exact, bounded literal
    requested by untrusted context, the application discards the entire assessment
@@ -989,10 +1016,16 @@ normalized/anonymized-drafts.json
 normalized/reviews.json
 normalized/scores-initial.json
 private/anonymization-map.json
+private/synthesis-candidate.md
 final/answer.md
 final/validation.json
 final/result.json
 ```
+
+`private/synthesis-candidate.md` is the pre-validation audit record.
+`final/answer.md` exists only when the answer is displayable. API consumers can
+also check `answerDisplayable`; a rejected run returns an empty top-level
+`answer` rather than presenting the rejected candidate as a normal result.
 
 List artifacts:
 

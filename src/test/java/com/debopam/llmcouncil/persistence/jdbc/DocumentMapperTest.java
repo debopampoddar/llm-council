@@ -2,6 +2,7 @@ package com.debopam.llmcouncil.persistence.jdbc;
 
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.CouncilStatus;
+import com.debopam.llmcouncil.domain.ContextPurpose;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -54,6 +55,7 @@ class DocumentMapperTest {
         assertNull(restored.context());
         assertNull(restored.finalAnswer());
         assertNull(restored.failureReason());
+        assertEquals(ContextPurpose.EVIDENCE, restored.contextPurpose());
         assertEquals(original, restored);
     }
 

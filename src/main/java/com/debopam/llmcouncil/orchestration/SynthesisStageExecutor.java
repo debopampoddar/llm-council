@@ -90,7 +90,13 @@ public class SynthesisStageExecutor implements StageExecutor {
         }
 
         ctx.setSynthesisResult(result.text());
-        artifactStore.writeText(ctx.session().id(), "final/answer.md", result.text());
+        // Validation-required policies have produced only a candidate at this
+        // point. Keep it private until Fresh Eyes explicitly approves it; an
+        // export must never label rejected prose as the final answer.
+        String answerPath = ctx.policy().validationRequired()
+                ? "private/synthesis-candidate.md"
+                : "final/answer.md";
+        artifactStore.writeText(ctx.session().id(), answerPath, result.text());
         events.publish(ctx.session().id(), stage().name(), "SYNTHESIS_COMPLETED", chairId,
                        Map.of("chars", result.text().length()));
         return ctx;

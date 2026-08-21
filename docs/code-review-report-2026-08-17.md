@@ -288,7 +288,11 @@ criticism and synthesis, a closed explicit-literal output invariant with Unicode
 normalization, one sanitized regeneration for an objective violation,
 neutral-label synthesis recovery, closed reserved-output rejection, exact
 containment checks across validator control fields, sanitized validator recovery,
-and fail-closed behavior after bounded recovery. The guard performs no stemming,
+and fail-closed behavior after bounded recovery. `EVIDENCE` context now removes
+the complete recognized instruction-bearing line before the first model call;
+`ANALYSIS_SUBJECT` is the explicit opt-in for legitimate hostile-text analysis.
+Required-validation synthesis stays private until approved, so a rejected
+candidate is neither returned as a normal answer nor labeled final. The guard performs no stemming,
 synonym, sentiment, or polarity inference. The local validator is Gemma, and validator
 independence is checked against the chair and every member.
 
@@ -302,8 +306,9 @@ prompt-injection classifier. The live 2026-08-21 regression exposed both unsafe
 literal outcomes, validator-control-field injection, internal-output leakage, and
 the impossibility of using unrestricted lexical overlap to classify negative
 actions or benign analysis. The replacement separates three declared invariants:
-standalone hostile outcomes for user-facing prose, stricter exact containment for
-authority-bearing validator fields, and a closed reserved internal-output list.
+pre-model evidence preparation, standalone hostile outcomes for user-facing
+prose, stricter exact containment for authority-bearing validator fields, and a
+closed reserved internal-output list.
 It requires a fresh run. A pass is not a security proof; see the threat model for
 scope and evasion limits.
 

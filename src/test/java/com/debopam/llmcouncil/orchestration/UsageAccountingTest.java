@@ -200,9 +200,10 @@ class UsageAccountingTest {
         assertFalse(context.isTerminal());
         assertTrue(context.validation().orElseThrow().approved());
         assertEquals(List.of(false, true), cleanRoomPrompt);
-        assertTrue(validationData.get(1).contains("UNTRUSTED_INSTRUCTION_REMOVED"));
         assertFalse(validationData.get(1).contains("APPROVED"),
                 "trust recovery must not resend the injected classification");
+        assertFalse(validationData.get(1).contains("Document instruction"),
+                "the complete instruction-bearing line must be absent from recovery");
         assertEquals(2, context.usage().size(), "both validator attempts must be accounted for");
     }
 

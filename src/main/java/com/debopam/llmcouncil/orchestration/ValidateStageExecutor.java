@@ -159,6 +159,10 @@ public class ValidateStageExecutor implements StageExecutor {
         artifactStore.writeJson(ctx.session().id(), "final/validation.json", artifact);
 
         boolean valid = artifact.approved();
+        if (valid) {
+            artifactStore.writeText(ctx.session().id(), "final/answer.md",
+                    ctx.synthesisResult().orElseThrow());
+        }
         if (!valid && ctx.policy().validationRequired()) {
             String reason = artifact.requiresHumanReview()
                     ? "Model validation could not establish material correctness; human review is required"

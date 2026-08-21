@@ -144,24 +144,22 @@ final class TrustBoundaryGuard {
     }
 
     /**
-     * Remove an explicit directive and the remainder of its source line while
-     * preserving factual text before it and all other lines. Sanitization is
-     * used only for one bounded recovery call after an objective violation.
+     * Remove every complete line that contains an explicit directive.
+     *
+     * <p>The whole line is the deterministic provenance boundary. Keeping a
+     * prefix can leave behind attacker-controlled JSON role fields or labels
+     * such as "Customer comment", which smaller models may still convert into
+     * a claim. Facts that must survive sanitisation therefore belong on their
+     * own line. This same operation is used before first execution and for the
+     * bounded recovery path.
      */
     static String sanitize(String supportingContext) {
         if (supportingContext == null || supportingContext.isBlank()) {
             return supportingContext;
         }
         return supportingContext.lines()
-                .map(line -> {
-                    String normalizedLine = structuralText(line);
-                    int directiveStart = firstDirectiveStart(normalizedLine);
-                    if (directiveStart < 0) {
-                        return normalizedLine;
-                    }
-                    return normalizedLine.substring(0, directiveStart)
-                            + "[UNTRUSTED_INSTRUCTION_REMOVED]";
-                })
+                .map(TrustBoundaryGuard::structuralText)
+                .filter(line -> firstDirectiveStart(line) < 0)
                 .collect(Collectors.joining("\n"));
     }
 

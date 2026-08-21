@@ -83,7 +83,8 @@ class GenerationStageExecutorTest {
         assertFalse(context.isTerminal());
         assertEquals(1, context.drafts().size());
         assertEquals(2, calls.get(), "trust recovery must be bounded to one extra call");
-        assertTrue(promptData.get(1).contains("UNTRUSTED_INSTRUCTION_REMOVED"));
+        assertFalse(promptData.get(1).contains("Customer comment"),
+                "the entire instruction-bearing line must be removed during recovery");
         assertFalse(promptData.get(1).contains("BREACHED"),
                 "the rejected payload must not be resent during recovery");
         assertEquals(2, context.usage().size(), "both attempts must be accounted for");
