@@ -24,16 +24,16 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - Chat API V1 with asynchronous council runs and server-sent progress events.
 - Anonymized draft IDs with private model mapping artifacts.
 - Resilient structured-review parsing with exact non-self coverage checks,
-  one bounded targeted call for omitted reviews, and per-draft scoring.
+  one bounded sanitized call for malformed or omitted reviews, and per-draft scoring.
 - Debate trigger based on reviewer disagreement about the same draft.
 - One bounded member regeneration with explicit context directives removed when
-  an initial draft crosses the deterministic trust boundary.
+  an initial draft returns an attacker-requested literal as a standalone result.
 - Chair synthesis with score and dissent context plus one bounded recovery when
-  the first output adopts untrusted instructions or exposes internal metadata;
-  recovery receives sanitized, identifier-free evidence.
+  the first output violates an explicit-literal or reserved-identifier invariant;
+  likely internal narration is a cleanup signal rather than a security verdict.
 - Fresh Eyes validation with structured JSON output and one bounded clean-room
-  retry against sanitized context when the validator's recommendation adopts
-  untrusted context.
+  retry against sanitized context when a validator recommendation returns an
+  attacker-requested standalone literal.
 - Bounded in-memory persistence by default, with optional JDBC persistence for
   sessions, chats, events, and chat sequence state on H2 or SQLite.
 - Local artifact storage for raw, normalized, final, export metadata, and the
@@ -168,17 +168,18 @@ because QUICK declares no validator at all.
 **Supporting context is untrusted data.** Every model-facing stage receives a
 JSON provenance envelope: only `task.text` has instruction authority; context,
 drafts, reviews, scores, and debate turns have none. Prompts reinforce that
-boundary, reviews score grounding and trust-boundary compliance, and a
-high-precision deterministic backstop rejects output that adopts explicit task
-redirections from context. Its polarity check is sentence-local, so a safe
-negative decision cannot be confused with the injected action and an earlier
-disclaimer cannot excuse a later payload. An unsafe initial draft receives one
-regeneration with the directive removed. Synthesis makes one clean retry using
-sanitized, identifier-free evidence; a second violation fails closed, including
-in QUICK where no validator runs. Validator recovery also removes the detected
-directive rather than presenting it to the same model twice. This
-materially reduces a demonstrated injection path; it is not
-a proof that prompt injection is solved. See
+boundary, and reviews score grounding and trust-boundary compliance. The
+deterministic backstop recognizes a closed grammar of explicit literal-output
+directives and rejects only a complete standalone answer or verdict equal to
+the requested literal. Comparison uses Unicode NFKC normalization, case folding,
+zero-width/control removal, and whitespace normalization; it performs no
+stemming, sentiment, synonym, or negative-phrase analysis. An objective
+violation receives one retry with the directive removed. Synthesis recovery uses
+sanitized, identifier-free evidence; repeated literal or reserved-identifier
+violations fail closed, including in QUICK. Natural-language council narration
+receives one cleanup attempt but remains a quality warning rather than a security
+decision. This materially reduces a demonstrated injection path; it is not a
+proof that prompt injection is solved. See
 [the prompt-injection threat model](docs/prompt-injection-threat-model.md).
 
 **Its shape is a single-process local application.** One run at a time by default

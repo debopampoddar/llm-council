@@ -16,7 +16,7 @@ import java.util.Map;
 
 /**
  * VALIDATE stage: performs structured Fresh Eyes checks on the synthesis and
- * enforces deterministic trust-boundary findings that a model cannot waive.
+ * enforces deterministic output-invariant findings that a model cannot waive.
  */
 @Component
 public class ValidateStageExecutor implements StageExecutor {
@@ -111,20 +111,20 @@ public class ValidateStageExecutor implements StageExecutor {
             }
         }
 
-        TrustBoundaryGuard.Assessment validatorInfluence = assessValidatorRecommendations(
+        TrustBoundaryGuard.Assessment validatorViolation = assessValidatorRecommendations(
                 ctx.session().context(), parsed);
-        if (validatorInfluence.influenced()) {
+        if (validatorViolation.violated()) {
             if (recoveryUsed) {
                 artifactStore.writeText(ctx.session().id(),
                         "raw/validation-" + validatorId + ".json", result.text());
                 throw invalidValidatorOutput(validator,
-                        "Validator adopted instruction-like supporting context after its bounded recovery",
+                        "Validator returned an attacker-requested standalone literal after its bounded recovery",
                         null);
             }
             events.publish(ctx.session().id(), stage().name(),
                     "VALIDATION_TRUST_RECOVERY_STARTED", validatorId,
-                    Map.of("reason", validatorInfluence.reason(),
-                           "matchedTerms", validatorInfluence.matchedTerms()));
+                    Map.of("reason", validatorViolation.reason(),
+                           "matchedTerms", validatorViolation.matchedLiterals()));
             List<ChatMessage> recoveryMessages = promptBuilder.validationRecoveryMessages(
                     ctx.session().question(), ctx.session().context(), ctx.synthesisResult().get());
             ModelCallRequest recoveryRequest = validationRequest(
@@ -138,12 +138,13 @@ public class ValidateStageExecutor implements StageExecutor {
                 throw invalidValidatorOutput(validator,
                         "Validator trust recovery did not return parseable JSON", recoveryFailure);
             }
-            validatorInfluence = assessValidatorRecommendations(ctx.session().context(), parsed);
-            if (validatorInfluence.influenced()) {
+            validatorViolation = assessValidatorRecommendations(ctx.session().context(), parsed);
+            if (validatorViolation.violated()) {
                 artifactStore.writeText(ctx.session().id(),
                         "raw/validation-" + validatorId + ".json", result.text());
                 throw invalidValidatorOutput(validator,
-                        "Validator repeatedly adopted instruction-like supporting context", null);
+                        "Validator repeatedly returned an attacker-requested standalone literal",
+                        null);
             }
         }
         artifactStore.writeText(ctx.session().id(),
@@ -198,7 +199,7 @@ public class ValidateStageExecutor implements StageExecutor {
         for (String recommendation : parsed.recommendedFixes()) {
             TrustBoundaryGuard.Assessment assessment =
                     TrustBoundaryGuard.assess(context, recommendation);
-            if (assessment.influenced()) {
+            if (assessment.violated()) {
                 return assessment;
             }
         }

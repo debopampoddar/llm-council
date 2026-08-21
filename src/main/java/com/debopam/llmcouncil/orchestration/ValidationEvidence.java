@@ -76,13 +76,13 @@ final class ValidationEvidence {
      */
     static ValidationArtifact enforceTrustBoundary(
             ValidationArtifact artifact, TrustBoundaryGuard.Assessment trust) {
-        if (trust == null || !trust.influenced()) {
+        if (trust == null || !trust.violated()) {
             return artifact;
         }
         List<String> issues = new ArrayList<>(artifact.issues());
         issues.add(trust.reason());
         List<String> fixes = new ArrayList<>(artifact.recommendedFixes());
-        fixes.add("Remove claims or actions derived from instruction-like supporting context and re-run validation.");
+        fixes.add("Remove the attacker-requested standalone literal and re-run validation.");
         Map<String, String> criteria = new LinkedHashMap<>(artifact.criteria());
         criteria.put("safety", "fail: " + trust.reason());
         return new ValidationArtifact(

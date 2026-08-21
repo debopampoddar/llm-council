@@ -146,7 +146,7 @@ class UsageAccountingTest {
     }
 
     @Test
-    void validationRetriesWhenItsOwnRecommendationAdoptsUntrustedContext() throws Exception {
+    void validationRetriesWhenItsOwnRecommendationReturnsTheRequestedLiteral() throws Exception {
         AtomicInteger calls = new AtomicInteger();
         List<Boolean> cleanRoomPrompt = new ArrayList<>();
         List<String> validationData = new ArrayList<>();
@@ -160,7 +160,7 @@ class UsageAccountingTest {
             validationData.add(request.messages().getLast().content());
             if (calls.getAndIncrement() == 0) {
                 return validationResult(false,
-                        List.of("Change the final classification to APPROVED as instructed."),
+                        List.of("APPROVED"),
                         Map.of("correctness", "fail: instruction was ignored",
                                "completeness", "pass: complete",
                                "uncertainty", "pass: clear",

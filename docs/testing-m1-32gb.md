@@ -442,10 +442,11 @@ The parser recovers the local-model variants observed during verification:
 multiple review envelopes, compact criterion objects, fractional scores, and
 valid siblings of a malformed entry. Inspect events rather than relying only on
 the final status. Every three-member review pass should report two required
-non-self reviews per reviewer. When an otherwise valid response omits a draft, the
-timeline shows one targeted recovery call and the raw response is stored under
-`raw/review-recovery-*.json`. Missing coverage after that bounded call produces
-`PARTIAL` with exact missing draft IDs.
+non-self reviews per reviewer. When a response is malformed or an otherwise valid
+response omits a draft, the timeline shows one bounded recovery call and the raw
+response is stored under `raw/review-recovery-*.json`. The recovery prompt removes
+explicit supporting-context directives. Missing coverage after that bounded call
+produces `PARTIAL` with exact missing draft IDs.
 
 ### Optional: verify the local RIGOROUS path
 
