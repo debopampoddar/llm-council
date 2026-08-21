@@ -2,30 +2,33 @@
 
 This guide explains the LLM Council implementation in simple terms, then maps that explanation to the Java code.
 
+> **Document role:** current technical reference. New users should first run the
+> [quick local demo](../README.md#quick-local-demo); use this guide when you want
+> to understand APIs, stages, artifacts, or extension points.
+
 ## Simple Mental Model
 
 An LLM Council is a structured way to ask multiple models the same question and use their disagreement as evidence.
 
-Instead of:
+Instead of sending the question to one model and accepting one answer, the
+council follows an inspectable decision path:
 
-```text
-question -> one model -> answer
+```mermaid
+flowchart LR
+    A["Question<br/>and context"] --> B["Independent<br/>drafts"]
+    B --> C["Anonymous<br/>review"]
+    C --> D["Score the<br/>evidence"]
+    D --> E{"Material<br/>disagreement?"}
+    E -- "Yes" --> F["Debate<br/>and revise"]
+    E -- "No" --> G["Chair<br/>synthesis"]
+    F --> G
+    G --> H["Fresh Eyes<br/>validation"]
+    H --> I["Answer<br/>and audit trail"]
 ```
 
-LLM Council does:
-
-```text
-question
-  -> independent model drafts (role-aware: PROPOSER, CRITIC, SYNTHESIZER)
-  -> anonymous review
-  -> scoring (pluggable: confidence-weighted, median, trimmed-mean, average)
-  -> optional debate (with sycophancy detection)
-  -> optional draft revision (post-debate)
-  -> optional post-debate re-review
-  -> chair synthesis
-  -> Fresh Eyes validation
-  -> answer plus audit trail
-```
+This is the full conceptual path. `QUICK` skips review and validation;
+`BALANCED` stops before debate; `RIGOROUS` enters debate only when configured
+conditions are met.
 
 The goal is not to make models vote blindly. The goal is to make the evidence visible: what each model said, what reviewers found, which draft scored best, what dissent remains, and whether a separate validator approves the final answer.
 
@@ -62,9 +65,71 @@ chat turn creates and links to a normal `CouncilSession`.
 10. Chat messages run asynchronously and keep a `councilSessionId` for traceability.
 11. Demo runtime concurrency is bounded by `council.runtime.max-concurrent-runs`.
 
+### Trust Boundary at a Glance
+
+The user task supplies the goal. Context and model-generated text supply
+evidence, but they are never allowed to redefine that goal.
+
+```mermaid
+flowchart LR
+    A["User task<br/>authorized intent"] --> C["Council<br/>model call"]
+    B["Context and prior model output<br/>untrusted evidence"] --> C
+    C --> D{"Deterministic<br/>guard passes?"}
+    D -- "Yes" --> E["Accept output"]
+    D -- "No" --> F["One sanitized<br/>retry"]
+    F --> G{"Retry<br/>passes?"}
+    G -- "Yes" --> E
+    G -- "No" --> H["Reject output<br/>or fail the stage"]
+```
+
+Prompts tell models to respect this boundary; deterministic Java checks enforce
+the objective rules the application can verify.
+
 ## Request Flow
 
 The one-shot session flow is still the lowest-level public API.
+
+### High-Level Sequence
+
+This diagram shows who participates in a council run and the order in which
+they interact. It intentionally hides low-level implementation details: the
+important idea is that the API creates a traceable session, the orchestrator
+runs the configured stages, and progress is saved throughout the run.
+
+```mermaid
+sequenceDiagram
+    actor User as Browser or API client
+    participant API as REST API
+    participant Service as Council service
+    participant Engine as Protocol orchestrator
+    participant Models as Configured models
+    participant Storage as Session, event, and artifact stores
+
+    User->>API: Create a session
+    API->>Service: Save question, profile, and depth
+    Service->>Storage: Store session
+    API-->>User: Return session ID
+
+    User->>API: Run the session
+    API->>Service: Start council run
+    Service->>Engine: Resolve policy and protocol
+    loop Each ordered stage
+        Engine->>Engine: Prepare and execute the stage
+        opt Stage requires model reasoning
+            Engine->>Models: Send the bounded prompt
+            Models-->>Engine: Return model output
+        end
+        Engine->>Storage: Save progress and evidence
+    end
+    Engine-->>Service: Return final result
+    Service->>Storage: Save terminal status and result
+    Service-->>API: Return result
+    API-->>User: Show answer and audit information
+```
+
+The Chat API uses the same service and orchestrator. The only important
+difference is timing: it returns immediately after submitting the background
+run, then the browser receives progress through Server-Sent Events (SSE).
 
 ### 1. Create Session
 
@@ -424,6 +489,20 @@ Profiles can be local-only, OpenAI-only, Claude-only, Gemini-only, or multi-clou
 | `multi-cloud` | Maximum diversity: Ollama + Gemini + Anthropic/OpenAI. Health preflight reports the providers required by the selected depth. |
 | `mock` | Test-only deterministic profile. Use for smoke tests, not real answers. |
 
+The configuration objects connect as follows:
+
+```mermaid
+flowchart LR
+    A["Request<br/>profile + depth"] --> B["Profile"]
+    B -- "maps the selected depth" --> C["Policy"]
+    C --> D["Models, roles,<br/>quorum, validator"]
+    C --> E["Protocol"]
+    E --> F["Ordered<br/>stages"]
+```
+
+In short: the profile is the user-friendly choice, the policy selects the
+participants and safety rules, and the protocol determines the workflow.
+
 ### Policies
 
 Policies are the business contract for one profile/depth pair:
@@ -452,6 +531,9 @@ Policies answer:
 Protocols define stage order:
 
 ```yaml
+quick:
+  orderedStages: [GENERATE, SYNTHESIZE]
+
 balanced:
   orderedStages: [GENERATE, ANONYMIZE, REVIEW, SCORE, SYNTHESIZE, VALIDATE]
 
@@ -465,7 +547,59 @@ The app ships with:
 - `balanced`
 - `rigorous`
 
+#### How a Protocol Is Selected
+
+The caller chooses a profile and depth, not an internal protocol. The policy
+resolver converts that user-friendly choice into a policy, and the policy names
+the protocol to execute. That resolved configuration is fixed for the complete
+run, so a configuration reload cannot change a session halfway through.
+
+```mermaid
+flowchart LR
+    A["Request<br/>profile + depth"] --> B["Resolve<br/>policy"]
+    B --> C{"Selected<br/>protocol"}
+    C -- "QUICK" --> D["Generate<br/>→ Synthesize"]
+    C -- "BALANCED" --> E["Generate → Anonymous review → Score<br/>→ Synthesize → Validate"]
+    C -- "RIGOROUS" --> F["Reviewed foundation → Conditional challenge<br/>→ Validate → Export"]
+```
+
+#### How Stages Run
+
+The orchestrator reads the selected protocol from left to right. It starts one
+stage, records its progress, and then moves to the next stage. If a stage marks
+the run as failed, later stages are recorded as skipped. A cancellation is also
+honoured at the next stage boundary rather than interrupting an active model
+call halfway through.
+
+`QUICK` and `BALANCED` have straight paths. `RIGOROUS` has one important
+decision after the first review and score: debate runs only when reviewer
+disagreement is measurable and reaches the configured threshold, unless the
+protocol configuration explicitly forces debate.
+
+```mermaid
+flowchart LR
+    A["Generate → Anonymize<br/>→ Review → Score"] --> B{"Debate<br/>needed?"}
+    B -- "No" --> C["Skip Debate, Revise,<br/>Re-review, and second Score"]
+    B -- "Yes" --> D["Debate"]
+    D --> E["Revise drafts"]
+    E --> F["Re-review"]
+    F --> G["Score updated evidence"]
+    C --> H["Synthesize"]
+    G --> H
+    H --> I["Validate"]
+    I --> J["Export"]
+```
+
+Skipping debate is not an error. It means the available reviews did not justify
+the extra model calls, or there were not enough independent reviews to measure
+disagreement. In that case, the initial reviews and score remain authoritative.
+When debate does run, the second score uses the revised drafts and new
+post-debate reviews; it does not simply score the original evidence again.
+
 ## Execution Sequence
+
+The diagrams above explain the decisions. The lists below are the exact stage
+orders configured for each shipped protocol.
 
 ### QUICK
 
@@ -772,6 +906,35 @@ Manifest:
 ```text
 exports/manifest.json
 ```
+
+## Data Flow
+
+The sequence diagram explains *when* components interact. This diagram explains
+*what data* moves through the system and where readers can inspect it later.
+
+```mermaid
+flowchart LR
+    A["Request<br/>question, context, profile, depth"] --> B["Council<br/>engine"]
+    B --> C["Configured<br/>models"]
+    C --> D["Raw model<br/>responses"]
+    D --> E["Normalized evidence<br/>drafts, reviews, scores"]
+    E --> F["Final result<br/>answer, validation, status"]
+
+    B -. "progress" .-> G["Events"]
+    G --> H["REST, SSE,<br/>and browser UI"]
+    F --> H
+
+    D --> I[("Per-run<br/>artifact folder")]
+    E --> I
+    F --> I
+    B <--> J[("Session and<br/>chat state")]
+```
+
+Raw model responses are untrusted input. The engine parses and checks them
+before they become normalized evidence. The final answer is produced from that
+evidence and, when required by the selected policy, must pass validation.
+Events explain live progress; artifacts preserve the evidence needed for later
+inspection. Raw and private artifacts are excluded from exports by default.
 
 ## Event Flow
 

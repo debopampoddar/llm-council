@@ -1,5 +1,9 @@
 # Prompt-injection threat model
 
+> **Document role:** current security contract. It defines the narrow claims the
+> implementation and tests enforce; it is not a certification or a claim that
+> prompt injection is solved.
+
 ## Security claim
 
 LLM Council treats `task.text` as the user's authorized task and all supporting

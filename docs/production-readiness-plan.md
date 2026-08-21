@@ -1,6 +1,6 @@
 # LLM Council Production Readiness Plan
 
-Status: current as of 2026-08-17. This is the authoritative forward-looking
+Status: current as of 2026-08-20. This is the authoritative forward-looking
 plan. The longer [implementation guide](production-readiness-implementation-guide.md)
 contains historical design sketches; its status matrix, not the old snippets,
 determines what is still open.
