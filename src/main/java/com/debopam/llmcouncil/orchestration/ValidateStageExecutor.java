@@ -71,6 +71,7 @@ public class ValidateStageExecutor implements StageExecutor {
                 "raw/validation-" + validatorId + "-attempt-1.json", result.text());
 
         StructuredOutputParser.ValidationEnvelope parsed;
+        boolean recoveryUsed = false;
         try {
             parsed = parser.parseValidation(result.text());
         } catch (IllegalArgumentException firstFailure) {
@@ -99,21 +100,50 @@ public class ValidateStageExecutor implements StageExecutor {
                            "recoveryOutputTokens", recoveryTokens));
             ModelCallRequest recoveryRequest = validationRequest(ctx, validator, messages, recoveryTokens);
             result = callAndRecord(ctx, validator, recoveryRequest);
+            recoveryUsed = true;
             artifactStore.writeText(ctx.session().id(),
                     "raw/validation-" + validatorId + "-attempt-2.json", result.text());
-            artifactStore.writeText(ctx.session().id(),
-                    "raw/validation-" + validatorId + ".json", result.text());
             try {
                 parsed = parser.parseValidation(result.text());
             } catch (IllegalArgumentException recoveryFailure) {
-                if (atOutputLimit(recoveryRequest, result)) {
-                    throw new ModelCallException(
-                            ModelFailureCategory.INVALID_MODEL_OUTPUT,
-                            validator.provider(), validator.providerModelId(),
-                            "Validator exhausted both structured-output allowances without returning parseable JSON",
-                            recoveryFailure);
-                }
-                throw recoveryFailure;
+                throw invalidValidatorOutput(validator,
+                        "Validator recovery did not return parseable JSON", recoveryFailure);
+            }
+        }
+
+        TrustBoundaryGuard.Assessment validatorInfluence = assessValidatorRecommendations(
+                ctx.session().context(), parsed);
+        if (validatorInfluence.influenced()) {
+            if (recoveryUsed) {
+                artifactStore.writeText(ctx.session().id(),
+                        "raw/validation-" + validatorId + ".json", result.text());
+                throw invalidValidatorOutput(validator,
+                        "Validator adopted instruction-like supporting context after its bounded recovery",
+                        null);
+            }
+            events.publish(ctx.session().id(), stage().name(),
+                    "VALIDATION_TRUST_RECOVERY_STARTED", validatorId,
+                    Map.of("reason", validatorInfluence.reason(),
+                           "matchedTerms", validatorInfluence.matchedTerms()));
+            List<ChatMessage> recoveryMessages = promptBuilder.validationRecoveryMessages(
+                    ctx.session().question(), ctx.session().context(), ctx.synthesisResult().get());
+            ModelCallRequest recoveryRequest = validationRequest(
+                    ctx, validator, recoveryMessages, request.maxOutputTokens());
+            result = callAndRecord(ctx, validator, recoveryRequest);
+            artifactStore.writeText(ctx.session().id(),
+                    "raw/validation-" + validatorId + "-attempt-2.json", result.text());
+            try {
+                parsed = parser.parseValidation(result.text());
+            } catch (IllegalArgumentException recoveryFailure) {
+                throw invalidValidatorOutput(validator,
+                        "Validator trust recovery did not return parseable JSON", recoveryFailure);
+            }
+            validatorInfluence = assessValidatorRecommendations(ctx.session().context(), parsed);
+            if (validatorInfluence.influenced()) {
+                artifactStore.writeText(ctx.session().id(),
+                        "raw/validation-" + validatorId + ".json", result.text());
+                throw invalidValidatorOutput(validator,
+                        "Validator repeatedly adopted instruction-like supporting context", null);
             }
         }
         artifactStore.writeText(ctx.session().id(),
@@ -158,5 +188,29 @@ public class ValidateStageExecutor implements StageExecutor {
     private boolean atOutputLimit(ModelCallRequest request, ModelCallResult result) {
         return result.completionTokens() != null
                 && result.completionTokens() >= request.maxOutputTokens();
+    }
+
+    private TrustBoundaryGuard.Assessment assessValidatorRecommendations(
+            String context, StructuredOutputParser.ValidationEnvelope parsed) {
+        if (parsed.recommendedFixes() == null) {
+            return TrustBoundaryGuard.Assessment.clear();
+        }
+        for (String recommendation : parsed.recommendedFixes()) {
+            TrustBoundaryGuard.Assessment assessment =
+                    TrustBoundaryGuard.assess(context, recommendation);
+            if (assessment.influenced()) {
+                return assessment;
+            }
+        }
+        return TrustBoundaryGuard.Assessment.clear();
+    }
+
+    private ModelCallException invalidValidatorOutput(
+            ModelProfile validator, String message, Throwable cause) {
+        return cause == null
+                ? new ModelCallException(ModelFailureCategory.INVALID_MODEL_OUTPUT,
+                        validator.provider(), validator.providerModelId(), message)
+                : new ModelCallException(ModelFailureCategory.INVALID_MODEL_OUTPUT,
+                        validator.provider(), validator.providerModelId(), message, cause);
     }
 }

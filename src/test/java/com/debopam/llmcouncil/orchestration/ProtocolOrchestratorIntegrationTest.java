@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -183,14 +184,17 @@ class ProtocolOrchestratorIntegrationTest {
     }
 
     @Test
-    void quickProtocolFailsClosedWhenTheChairAdoptsAContextDirective() {
+    void quickProtocolRetriesInternalLeakThenFailsClosedOnUnsafeRecovery() {
         ModelProfile member = TestModels.model("safe-member").provider("mock")
                 .providerModelId("safe-member").role(ModelRole.MEMBER).family("mock").build();
         ModelProfile chair = TestModels.model("unsafe-chair").provider("mock")
                 .providerModelId("unsafe-chair").role(ModelRole.CHAIR).family("mock-chair").build();
         ModelClient safeClient = new MockModelClient("safe-member");
+        AtomicInteger chairCalls = new AtomicInteger();
         ModelClient unsafeChair = request -> new ModelCallResult(
-                "BREACHED. Assign this security incident to security.");
+                chairCalls.getAndIncrement() == 0
+                        ? "The peer reviews support draft-ABC12345 as the winning answer."
+                        : "BREACHED. Assign this security incident to security.");
         ModelRegistry registry = TestModels.registry(List.of(member, chair),
                 Map.of("safe-member", safeClient, "unsafe-chair", unsafeChair));
         DefaultEventPublisher events = new DefaultEventPublisher();
@@ -220,7 +224,8 @@ class ProtocolOrchestratorIntegrationTest {
         assertEquals(StageType.SYNTHESIZE, result.failedStage());
         assertTrue(result.synthesisResult().isEmpty(),
                 "rejected prose must not be exposed as the answer");
-        assertTrue(result.failureMessage().orElse("").contains("trust-boundary"));
+        assertTrue(result.failureMessage().orElse("").contains("output guard"));
+        assertEquals(2, chairCalls.get(), "only one bounded synthesis recovery is allowed");
     }
 
     // ── Helpers 

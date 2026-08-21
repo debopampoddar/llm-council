@@ -25,7 +25,7 @@ Indicative assessment after fixes:
 | Configuration safety | 8/10 | Unusually thorough validation and warnings. Some shipped policies knowingly fall below the quality bar the warnings describe. |
 | User experience | 7/10 | Useful preflight, SSE timeline, trust signals, setup advisor, retry/cancel, and now honest send/delete behavior. Error contracts and cancellation presentation need cleanup. |
 | Persistence/privacy | 7/10 | JDBC session/event persistence, filesystem artifacts, retention, path containment, durable result artifacts, and deletion cascade exist. No encryption or user-level access control. |
-| Test confidence | 8/10 | 952 passing deterministic tests, including observed injection adoption, safe rejection, and validator output-ceiling recovery, plus historical live Ollama runs. A new live security regression and uncontaminated held-out evaluation remain open. |
+| Test confidence | 8/10 | 953 passing deterministic tests, including observed injection adoption, safe rejection, bounded synthesis recovery, validator trust/output recovery, and internal-output rejection, plus historical live Ollama runs. A new live security regression and uncontaminated held-out evaluation remain open. |
 
 ## Review method
 
@@ -42,7 +42,7 @@ Verification performed:
 
 ```text
 JAVA_HOME=<JDK 25> mvn clean test
-Tests run: 952, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 953, Failures: 0, Errors: 0, Skipped: 0
 Total time: 12.172 s
 Ruby YAML parse: application.yml and all three Compose files valid
 Markdown relative-link scan: 9 files checked, 0 missing targets
@@ -354,7 +354,7 @@ failure sanitization, acknowledgement, strict parsing, credential refusal,
 throttling, the negative `System.nanoTime` origin edge case, and the guarantee
 that global mock fallback cannot fabricate a successful probe.
 
-The post-implementation verification is 952 tests with zero failures,
+The post-implementation verification is 953 tests with zero failures,
 errors, or skips on the reviewed machine.
 
 ### Live local verification after the review-output fix
