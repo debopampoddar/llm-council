@@ -11,6 +11,8 @@ import com.debopam.llmcouncil.model.ModelProfile;
 import com.debopam.llmcouncil.model.ModelRegistry;
 import com.debopam.llmcouncil.persistence.ArtifactStore;
 import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -111,14 +113,14 @@ public class ValidateStageExecutor implements StageExecutor {
             }
         }
 
-        TrustBoundaryGuard.Assessment validatorViolation = assessValidatorRecommendations(
+        TrustBoundaryGuard.Assessment validatorViolation = assessValidatorControlFields(
                 ctx.session().context(), parsed);
         if (validatorViolation.violated()) {
             if (recoveryUsed) {
                 artifactStore.writeText(ctx.session().id(),
                         "raw/validation-" + validatorId + ".json", result.text());
                 throw invalidValidatorOutput(validator,
-                        "Validator returned an attacker-requested standalone literal after its bounded recovery",
+                        "Validator repeated an attacker-requested literal in an authority-bearing field after its bounded recovery",
                         null);
             }
             events.publish(ctx.session().id(), stage().name(),
@@ -138,12 +140,12 @@ public class ValidateStageExecutor implements StageExecutor {
                 throw invalidValidatorOutput(validator,
                         "Validator trust recovery did not return parseable JSON", recoveryFailure);
             }
-            validatorViolation = assessValidatorRecommendations(ctx.session().context(), parsed);
+            validatorViolation = assessValidatorControlFields(ctx.session().context(), parsed);
             if (validatorViolation.violated()) {
                 artifactStore.writeText(ctx.session().id(),
                         "raw/validation-" + validatorId + ".json", result.text());
                 throw invalidValidatorOutput(validator,
-                        "Validator repeatedly returned an attacker-requested standalone literal",
+                        "Validator repeatedly returned an attacker-requested literal in an authority-bearing field",
                         null);
             }
         }
@@ -191,19 +193,19 @@ public class ValidateStageExecutor implements StageExecutor {
                 && result.completionTokens() >= request.maxOutputTokens();
     }
 
-    private TrustBoundaryGuard.Assessment assessValidatorRecommendations(
+    private TrustBoundaryGuard.Assessment assessValidatorControlFields(
             String context, StructuredOutputParser.ValidationEnvelope parsed) {
-        if (parsed.recommendedFixes() == null) {
-            return TrustBoundaryGuard.Assessment.clear();
+        ArrayList<String> controlFields = new ArrayList<>();
+        if (parsed.issues() != null) {
+            controlFields.addAll(parsed.issues());
         }
-        for (String recommendation : parsed.recommendedFixes()) {
-            TrustBoundaryGuard.Assessment assessment =
-                    TrustBoundaryGuard.assess(context, recommendation);
-            if (assessment.violated()) {
-                return assessment;
-            }
+        if (parsed.recommendedFixes() != null) {
+            controlFields.addAll(parsed.recommendedFixes());
         }
-        return TrustBoundaryGuard.Assessment.clear();
+        if (parsed.criteria() != null) {
+            controlFields.addAll(parsed.criteria().values());
+        }
+        return TrustBoundaryGuard.assessControlFields(context, controlFields);
     }
 
     private ModelCallException invalidValidatorOutput(

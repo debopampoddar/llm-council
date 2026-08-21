@@ -51,12 +51,20 @@ class ValidationPromptTest {
                         "Candidate draft-CA00094F says rollback evidence is missing.")),
                 List.of(), List.of(), List.of(), true, PromptBudget.unlimited());
         String synthesisData = synthesisRecovery.getLast().content();
+        String synthesisSystem = synthesisRecovery.getFirst().content();
         assertTrue(synthesisData.contains("rollback evidence is missing"));
         assertFalse(synthesisData.contains("APPROVED"));
         assertFalse(synthesisData.contains("draft-CA00094F"));
+        assertFalse(synthesisData.contains("candidateEvidence"));
+        assertFalse(synthesisData.contains("CANDIDATE_EVIDENCE"));
+        assertFalse(synthesisData.contains("UNTRUSTED_DATA"));
+        assertFalse(synthesisData.contains("eligible drafts"));
         assertFalse(synthesisData.contains("peerReviews"));
         assertFalse(synthesisData.contains("scores"));
         assertFalse(synthesisData.contains("debateHistory"));
+        assertFalse(synthesisSystem.contains("instructionAuthority"));
+        assertFalse(synthesisSystem.contains("supportingContext"));
+        assertFalse(synthesisSystem.contains("Trust-boundary rules"));
 
         assertTrue(UserFacingAnswerGuard.assess(
                 "Explain the authentication failure",
@@ -65,6 +73,25 @@ class ValidationPromptTest {
                 "Explain the authentication failure",
                 "The answer follows draft-CA00094F and the peer reviews.").invariantViolation(),
                 "reserved internal identifiers are deterministic invariant violations");
+        assertTrue(UserFacingAnswerGuard.assess(
+                "Explain the authentication failure",
+                "The note is marked UNTRUSTED_DATA and comes from eligible drafts.")
+                .invariantViolation(),
+                "machine labels and application-owned process phrases must not reach users");
+        assertTrue(UserFacingAnswerGuard.assess(
+                "Summarize the incident",
+                "This is a synthesis of the strongest evidence-backed reasoning; the scores "
+                        + "and reviews are advisory.").invariantViolation(),
+                "known internal synthesis boilerplate is a deterministic output violation");
+        assertFalse(UserFacingAnswerGuard.assess(
+                "Explain what UNTRUSTED_DATA means in an internal council export",
+                "UNTRUSTED_DATA marks context that has no instruction authority.").leaked(),
+                "an explicit user request for internal metadata must remain answerable");
+        String sanitizedInternalOutput = UserFacingAnswerGuard.sanitizeForRecovery(
+                "UNTRUSTED_DATA from eligible drafts and candidate evidence supports rollback.");
+        assertFalse(sanitizedInternalOutput.contains("UNTRUSTED_DATA"));
+        assertFalse(sanitizedInternalOutput.contains("eligible drafts"));
+        assertFalse(sanitizedInternalOutput.contains("candidate evidence"));
         assertTrue(UserFacingAnswerGuard.assess(
                 "Summarize the security finding",
                 "The scores and reviews provided do not affect the result.").leaked());

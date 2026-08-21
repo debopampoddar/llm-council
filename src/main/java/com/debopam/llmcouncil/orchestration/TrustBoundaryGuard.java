@@ -1,6 +1,7 @@
 package com.debopam.llmcouncil.orchestration;
 
 import java.text.Normalizer;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -16,9 +17,10 @@ import java.util.stream.Collectors;
  * <p>This class intentionally does not classify the meaning, sentiment, or
  * polarity of arbitrary prose. It recognizes a closed grammar of directives
  * that request an explicit literal (for example, {@code reply only BREACHED}
- * or {@code set the classification to APPROVED}) and rejects an output only
- * when that literal appears as a complete standalone answer or verdict
- * segment. A mention inside explanatory prose is not a violation.
+ * or {@code set the classification to APPROVED}). User-facing prose violates
+ * the invariant only when that literal appears as a complete standalone answer
+ * or verdict segment. Authority-bearing validator fields use stricter exact,
+ * bounded containment because they can change the application's verdict.
  *
  * <p>That deliberately narrow contract is deterministic and testable. It is a
  * backstop, not a claim that prompt injection can be inferred from arbitrary
@@ -101,6 +103,43 @@ final class TrustBoundaryGuard {
 
         String reason = "Model output contains a standalone literal explicitly requested by "
                 + "untrusted supporting context: " + matchedLiterals + ".";
+        return new Assessment(true, true, matchedLiterals, reason);
+    }
+
+    /**
+     * Enforce the stricter contract used for structured fields that can change
+     * application state, such as validator issues and recommended fixes.
+     *
+     * <p>A user-facing answer may safely explain an attacker-requested literal
+     * in prose. An authority-bearing control field has no reason to repeat that
+     * literal at all. Exact, bounded containment therefore triggers clean-room
+     * recovery without attempting to infer the field's sentiment or meaning.
+     */
+    static Assessment assessControlFields(
+            String supportingContext, Collection<String> controlFields) {
+        if (supportingContext == null || supportingContext.isBlank()
+                || controlFields == null || controlFields.isEmpty()) {
+            return Assessment.clear();
+        }
+
+        String normalizedContext = structuralText(supportingContext);
+        boolean explicitDirectivePresent = DIRECTIVE.matcher(normalizedContext).find();
+        Set<String> requestedLiterals = requestedLiterals(normalizedContext);
+        if (!explicitDirectivePresent && requestedLiterals.isEmpty()) {
+            return Assessment.clear();
+        }
+
+        List<String> matchedLiterals = requestedLiterals.stream()
+                .filter(literal -> controlFields.stream()
+                        .filter(java.util.Objects::nonNull)
+                        .anyMatch(field -> containsBoundedLiteral(field, literal)))
+                .toList();
+        if (matchedLiterals.isEmpty()) {
+            return new Assessment(true, false, List.of(), null);
+        }
+
+        String reason = "Authority-bearing model output repeats a literal explicitly requested "
+                + "by untrusted supporting context: " + matchedLiterals + ".";
         return new Assessment(true, true, matchedLiterals, reason);
     }
 
@@ -249,7 +288,36 @@ final class TrustBoundaryGuard {
     }
 
     /** Canonicalize compatibility forms and remove invisible parsing controls. */
-    private static String structuralText(String value) {
+    static boolean containsBoundedLiteral(String text, String literal) {
+        String compared = canonical(text);
+        String expected = canonical(literal);
+        if (compared.isBlank() || expected.isBlank()) {
+            return false;
+        }
+        int fromIndex = 0;
+        while (fromIndex <= compared.length() - expected.length()) {
+            int match = compared.indexOf(expected, fromIndex);
+            if (match < 0) {
+                return false;
+            }
+            int after = match + expected.length();
+            boolean boundedBefore = match == 0
+                    || !isLiteralCharacter(compared.codePointBefore(match));
+            boolean boundedAfter = after == compared.length()
+                    || !isLiteralCharacter(compared.codePointAt(after));
+            if (boundedBefore && boundedAfter) {
+                return true;
+            }
+            fromIndex = match + 1;
+        }
+        return false;
+    }
+
+    private static boolean isLiteralCharacter(int codePoint) {
+        return Character.isLetterOrDigit(codePoint) || codePoint == '_' || codePoint == '-';
+    }
+
+    static String structuralText(String value) {
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC);
         StringBuilder visible = new StringBuilder(normalized.length());
         normalized.codePoints()

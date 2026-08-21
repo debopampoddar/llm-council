@@ -5,11 +5,29 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Separates objective internal identifiers from heuristic narration quality signals. */
+/** Separates objective reserved internal output from heuristic narration quality signals. */
 final class UserFacingAnswerGuard {
 
     private static final Pattern INTERNAL_ID = Pattern.compile(
             "(?i)\\b(?:draft|review|score|turn)-[a-z0-9]{6,}\\b");
+    private static final Pattern INTERNAL_ID_REFERENCE = Pattern.compile(
+            "(?i)\\b(?:candidate\\s+)?(?:draft|review|score|turn)-[a-z0-9]{6,}\\b");
+    private static final List<String> MACHINE_ONLY_LABELS = List.of(
+            "USER_TASK", "UNTRUSTED_DATA", "UNTRUSTED_MODEL_OUTPUT",
+            "CANDIDATE_EVIDENCE", "QUALITY_OBSERVATION", "ADDITIONAL_EVIDENCE",
+            "instructionAuthority", "supportingContext", "peerReviews", "debateHistory");
+    private static final List<String> RESERVED_PROCESS_PHRASES = List.of(
+            "candidate evidence", "eligible draft", "eligible drafts",
+            "scores and reviews", "reviews and scores", "trust-boundary rules",
+            "synthesis of the strongest evidence-backed reasoning");
+    private static final Pattern RESERVED_OUTPUT = Pattern.compile(
+            "(?<![\\p{L}\\p{N}_-])(?:"
+                    + java.util.stream.Stream.concat(
+                                    MACHINE_ONLY_LABELS.stream(), RESERVED_PROCESS_PHRASES.stream())
+                            .map(Pattern::quote)
+                            .collect(java.util.stream.Collectors.joining("|"))
+                    + ")(?![\\p{L}\\p{N}_-])",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern INTERNAL_NARRATION = Pattern.compile(
             "(?i)\\b(?:debate history|peer reviews?|winning draft|reviewer\\s+local-[a-z0-9_-]+"
             + "|score summary|scores? provided"
@@ -32,19 +50,38 @@ final class UserFacingAnswerGuard {
             return Assessment.clear();
         }
 
+        String userQuestion = question == null ? "" : question;
         List<String> invariantFindings = new ArrayList<>();
         Matcher identifiers = INTERNAL_ID.matcher(answer);
         while (identifiers.find() && invariantFindings.size() < 5) {
             invariantFindings.add(identifiers.group());
         }
+        boolean internalTask = INTERNAL_TASK.matcher(userQuestion).find();
+        for (String label : MACHINE_ONLY_LABELS) {
+            if (invariantFindings.size() >= 5) break;
+            if (TrustBoundaryGuard.containsBoundedLiteral(answer, label)
+                    && !internalTask
+                    && !TrustBoundaryGuard.containsBoundedLiteral(userQuestion, label)) {
+                invariantFindings.add(label);
+            }
+        }
+        boolean draftTask = USER_DRAFT_TASK.matcher(userQuestion).find();
+        if (!internalTask && !draftTask) {
+            for (String phrase : RESERVED_PROCESS_PHRASES) {
+                if (invariantFindings.size() >= 5) break;
+                if (TrustBoundaryGuard.containsBoundedLiteral(answer, phrase)) {
+                    invariantFindings.add(phrase);
+                }
+            }
+        }
         List<String> qualityFindings = new ArrayList<>();
-        if (!INTERNAL_TASK.matcher(question == null ? "" : question).find()) {
+        if (!internalTask) {
             Matcher narration = INTERNAL_NARRATION.matcher(answer);
             while (narration.find() && qualityFindings.size() < 5) {
                 qualityFindings.add(narration.group());
             }
         }
-        if (!USER_DRAFT_TASK.matcher(question == null ? "" : question).find()) {
+        if (!draftTask) {
             Matcher narration = INTERNAL_DRAFT_NARRATION.matcher(answer);
             while (narration.find() && qualityFindings.size() < 5) {
                 qualityFindings.add(narration.group());
@@ -55,7 +92,7 @@ final class UserFacingAnswerGuard {
             return Assessment.clear();
         }
         String reason = !invariantFindings.isEmpty()
-                ? "User-facing answer exposes reserved internal identifiers: "
+                ? "User-facing answer exposes reserved internal output: "
                         + invariantFindings + "."
                 : "User-facing answer contains likely internal council narration: "
                         + qualityFindings + ".";
@@ -68,8 +105,12 @@ final class UserFacingAnswerGuard {
         if (text == null || text.isBlank()) {
             return text;
         }
-        String withoutIds = INTERNAL_ID.matcher(text).replaceAll("candidate evidence");
-        String withoutNarration = INTERNAL_NARRATION.matcher(withoutIds)
+        String normalized = TrustBoundaryGuard.structuralText(text);
+        String withoutIds = INTERNAL_ID_REFERENCE.matcher(normalized)
+                .replaceAll("supporting material");
+        String withoutReserved = RESERVED_OUTPUT.matcher(withoutIds)
+                .replaceAll("supporting material");
+        String withoutNarration = INTERNAL_NARRATION.matcher(withoutReserved)
                 .replaceAll("supporting analysis");
         return INTERNAL_DRAFT_NARRATION.matcher(withoutNarration)
                 .replaceAll("supporting analysis");
