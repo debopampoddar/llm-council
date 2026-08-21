@@ -231,7 +231,12 @@ because they use the dedicated Gemma validator; `*-quick` is `NOT_APPLICABLE`
 because QUICK declares no validator at all.
 `ShippedValidationIndependenceTest` is the authority on the current tiers.
 
-**Supporting context is untrusted data.** Every model-facing stage receives a
+**Supporting context is untrusted data.** Context defaults to purpose
+`EVIDENCE`; complete lines containing a recognized explicit directive are
+removed before the first model call. A caller whose authorized task is to
+analyze hostile text can explicitly select `ANALYSIS_SUBJECT`, which preserves
+the quoted text as data without granting it instruction authority. Every
+model-facing stage receives a
 JSON provenance envelope: only `task.text` has instruction authority; context,
 drafts, reviews, scores, and debate turns have none. Prompts reinforce that
 boundary, and reviews score grounding and trust-boundary compliance. The
@@ -246,7 +251,9 @@ labels and process phrases is also forbidden in ordinary user-facing answers.
 Repeated literal or reserved-internal-output violations fail closed, including
 in QUICK. Natural-language council narration
 receives one cleanup attempt but remains a quality warning rather than a security
-decision. This materially reduces a demonstrated injection path; it is not a
+decision. A validation-required synthesis is private until approved; rejected
+text is not returned as a displayable answer or written to `final/answer.md`.
+This materially reduces a demonstrated injection path; it is not a
 proof that prompt injection is solved. See
 [the prompt-injection threat model](docs/prompt-injection-threat-model.md).
 
@@ -693,10 +700,18 @@ curl -X POST http://localhost:8080/api/council/sessions \
   -H "Content-Type: application/json" \
   -d '{
     "question": "What is the best approach to distributed transactions?",
+    "context": "Optional factual background",
+    "contextPurpose": "EVIDENCE",
     "depthMode": "BALANCED",
     "profileId": "mock"
   }'
 ```
+
+`contextPurpose` is optional and defaults to `EVIDENCE`. Use
+`ANALYSIS_SUBJECT` only when the question explicitly asks the council to inspect
+the context text itself, such as explaining a prompt-injection sample. A result
+also exposes `answerDisplayable`; when required validation rejects, it is
+`false` and the top-level `answer` is empty.
 
 Run the session:
 

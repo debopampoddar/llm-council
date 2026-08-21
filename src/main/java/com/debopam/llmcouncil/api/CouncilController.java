@@ -16,6 +16,7 @@ import com.debopam.llmcouncil.application.RunResultStore;
 import com.debopam.llmcouncil.domain.CouncilEvent;
 import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.DepthMode;
+import com.debopam.llmcouncil.domain.ContextPurpose;
 import com.debopam.llmcouncil.orchestration.CouncilContext;
 import com.debopam.llmcouncil.persistence.ArtifactStore;
 import jakarta.validation.Valid;
@@ -90,13 +91,15 @@ public class CouncilController {
             @RequestBody @Valid CreateSessionRequest request) {
 
         DepthMode depth = request.depthMode() != null ? request.depthMode() : DepthMode.BALANCED;
+        ContextPurpose contextPurpose = request.contextPurpose() != null
+                ? request.contextPurpose() : ContextPurpose.EVIDENCE;
         String profileId = request.profileId() != null ? request.profileId() : "default";
 
         CouncilSession session = CouncilSession.create(
                 UUID.randomUUID().toString(),
                 request.question(),
                 request.context(),
-                depth, profileId);
+                contextPurpose, depth, profileId);
 
         CouncilSession saved = councilService.createSession(session);
         return ResponseEntity.status(HttpStatus.CREATED).body(SessionResponse.from(saved));

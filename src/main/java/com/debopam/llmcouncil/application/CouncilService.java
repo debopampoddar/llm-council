@@ -4,6 +4,7 @@ import com.debopam.llmcouncil.domain.CouncilSession;
 import com.debopam.llmcouncil.domain.CouncilStatus;
 import com.debopam.llmcouncil.model.CouncilPolicy;
 import com.debopam.llmcouncil.orchestration.CouncilContext;
+import com.debopam.llmcouncil.orchestration.SupportingContextPolicy;
 import com.debopam.llmcouncil.orchestration.ProtocolOrchestrator;
 import com.debopam.llmcouncil.persistence.SessionStore;
 import org.springframework.stereotype.Service;
@@ -90,7 +91,13 @@ public class CouncilService {
                              .withStatus(CouncilStatus.RUNNING);
             sessionStore.save(session);
 
-            CouncilContext ctx = orchestrator.run(session, resolved.profile(), policy, resolved.catalog());
+            // Models receive an execution copy. Raw context remains in the stored
+            // session for audit, but evidence-mode instruction-bearing lines are
+            // removed before the first model call and every downstream stage.
+            CouncilSession executionSession = session.withContext(
+                    SupportingContextPolicy.prepare(session.context(), session.contextPurpose()));
+            CouncilContext ctx = orchestrator.run(
+                    executionSession, resolved.profile(), policy, resolved.catalog());
 
             // A cancelled run is not a failure and not a success. It gets its own
             // status so a partial answer produced before the stop is not presented
@@ -108,7 +115,7 @@ public class CouncilService {
                                      ? ctx.failureMessage().orElse(null)
                                      : ctx.degradationMessage().orElse(null);
             CouncilSession completed = session.withStatus(finalStatus)
-                                              .withFinalAnswer(ctx.synthesisResult().orElse(null))
+                                              .withFinalAnswer(ctx.userFacingAnswer().orElse(null))
                                               .withFailureReason(failureReason);
             sessionStore.save(completed);
             return ctx;

@@ -38,6 +38,20 @@ JSON escaping keeps context text inside its data field when it contains a fake
 closing delimiter. It does not force a model to respect authority labels, so
 the application also validates objective output invariants.
 
+Before orchestration, the application applies the declared context purpose:
+
+- `EVIDENCE` is the safe default. Every complete line containing a recognized
+  explicit directive is removed before any model sees the context. The whole
+  line is removed so an attacker-controlled JSON role field or label such as
+  `Customer comment` cannot survive as an invented fact. Put legitimate facts
+  on separate lines.
+- `ANALYSIS_SUBJECT` is an explicit opt-in for requests whose authorized task is
+  to inspect hostile text itself. The text is preserved as data, but still has
+  no instruction authority and all output guards remain active.
+
+The raw context remains in the private session record for audit. The prepared
+context is the only version supplied to orchestration stages.
+
 Model output is not executed as a command, tool request, configuration update,
 or authorization decision. The current application exposes no model-selected
 tool or privileged action path.
@@ -76,6 +90,9 @@ tool or privileged action path.
    literal requested by untrusted context, the assessment is discarded. This
    stricter sink rule intentionally avoids semantic, sentiment, or polarity
    inference; user-facing explanatory prose retains the standalone-segment rule.
+9. Required validation is a publication gate. Synthesis is stored privately as
+   `private/synthesis-candidate.md`; only an approved result is promoted to
+   `final/answer.md` and returned as a displayable answer.
 
 ## Recovery and failure behavior
 
@@ -109,6 +126,11 @@ Missing coverage after recovery remains degraded evidence. Validation also has
 one bounded larger-output recovery when an unparseable response reaches the
 configured output ceiling. No path uses an unbounded repair loop.
 
+If required validation rejects the synthesis, the API exposes
+`answerDisplayable: false` and an empty top-level `answer`. The rejected text is
+still available to trusted operators in the private candidate artifact for
+diagnosis, but is not attached to a normal chat answer or labeled final.
+
 ## Probabilistic quality controls
 
 Reviewers score grounding and trust-boundary handling. The independent
@@ -122,7 +144,7 @@ become authorization authorities or override deterministic application policy.
 
 ## Limitations
 
-The explicit-literal guard intentionally favors an auditable, repeatable
+The context preparation and explicit-literal guards intentionally favor an auditable, repeatable
 contract over broad semantic claims. A paraphrased, encoded, multilingual,
 split, or non-literal injection can influence answer content without violating
 this particular output invariant. Conversely, an answer that places the exact
@@ -140,6 +162,11 @@ text must never select or approve an action by itself.
 Raw provider output is retained in the normal artifact trail for diagnosis.
 Do not expose artifacts to untrusted users; this application has no
 authentication or per-user authorization.
+
+`ANALYSIS_SUBJECT` is not a general bypass switch. Exposing that option to
+untrusted multi-tenant callers would let them disable first-pass evidence
+sanitization; an authenticated service should authorize it based on the user
+task or keep it unavailable in its public API.
 
 ## Verification
 

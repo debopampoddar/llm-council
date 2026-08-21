@@ -37,7 +37,7 @@ class ValidationPromptTest {
                 "question", injectedContext, "answer");
         assertTrue(recovery.getFirst().content().contains("Clean-room validation retry"));
         assertTrue(recovery.getLast().content().contains("Rollback evidence is missing"));
-        assertTrue(recovery.getLast().content().contains("UNTRUSTED_INSTRUCTION_REMOVED"));
+        assertFalse(recovery.getLast().content().contains("Document instruction"));
         assertFalse(recovery.getLast().content().contains("APPROVED"));
 
         List<ChatMessage> generationRecovery = new PromptBuilder()

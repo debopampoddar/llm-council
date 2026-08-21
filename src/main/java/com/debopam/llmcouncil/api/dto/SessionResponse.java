@@ -7,6 +7,7 @@ public record SessionResponse(
         String sessionId,
         String status,
         String question,
+        String contextPurpose,
         String profileId,
         String depthMode,
         String policyId,
@@ -17,7 +18,8 @@ public record SessionResponse(
         Instant updatedAt
 ) {
     public static SessionResponse from(CouncilSession s) {
-        return new SessionResponse(s.id(), s.status().name(), s.question(), s.profileId(),
+        return new SessionResponse(s.id(), s.status().name(), s.question(),
+                                   s.contextPurpose().name(), s.profileId(),
                                    s.depthMode().name(), s.policyId(), s.protocolId(),
                                    s.finalAnswer(), s.failureReason(), s.createdAt(), s.updatedAt());
     }

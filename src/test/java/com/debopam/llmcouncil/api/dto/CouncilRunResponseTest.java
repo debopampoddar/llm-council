@@ -66,14 +66,16 @@ class CouncilRunResponseTest {
 
     @Test
     void reportsPartialWhenSynthesisExistsButALaterStageFails() {
-        CouncilContext ctx = context();
+        CouncilContext ctx = context(true);
         ctx.setSynthesisResult("usable but unvalidated answer");
         ctx.markFailed(StageType.VALIDATE, new IllegalStateException("validation failed"));
 
         CouncilRunResponse response = CouncilRunResponse.from("session-1", ctx);
 
         assertEquals("PARTIAL", response.status());
-        assertEquals("usable but unvalidated answer", response.answer());
+        assertEquals("", response.answer());
+        assertTrue(!response.answerDisplayable(),
+                "a policy-required validation failure must withhold the answer from callers");
         assertEquals("validation failed", response.failureReason());
     }
 
@@ -103,13 +105,20 @@ class CouncilRunResponseTest {
     }
 
     private CouncilContext context() {
+        return context(false);
+    }
+
+    private CouncilContext context(boolean validationRequired) {
         CouncilSession session = CouncilSession.create("session-1", "q", null,
                                                        DepthMode.RIGOROUS, "local");
         CouncilProfile profile = TestModels.profile("local").displayName("Local")
                 .defaultDepth(DepthMode.RIGOROUS)
                 .depth(DepthMode.RIGOROUS, "local-rigorous").build();
-        CouncilPolicy policy = TestModels.policy("local-rigorous").protocol("rigorous")
-                .members("member-a", "member-b").chair("chair").build();
+        var policyBuilder = TestModels.policy("local-rigorous").protocol("rigorous")
+                .members("member-a", "member-b").chair("chair");
+        CouncilPolicy policy = validationRequired
+                ? policyBuilder.validator("validator").build()
+                : policyBuilder.build();
         ProtocolDefinition protocol = new ProtocolDefinition("rigorous", "Rigorous",
                 List.of(StageType.GENERATE, StageType.DEBATE, StageType.SYNTHESIZE), Map.of());
         return new CouncilContext(session, profile, policy, protocol);

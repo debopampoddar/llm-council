@@ -210,6 +210,27 @@ public class CouncilContext {
     /** @return The synthesised answer, or empty if SYNTHESIZE has not run yet. */
     public Optional<String> synthesisResult() { return Optional.ofNullable(synthesisResult); }
 
+    /**
+     * Whether the synthesis may be presented as the council's answer.
+     *
+     * <p>A policy that requires validation has not earned a user-facing answer
+     * until validation explicitly approves it. Rejected prose remains in its
+     * private audit artifact, but cannot flow into session state, chat, or
+     * the normal API answer field.
+     */
+    public boolean isAnswerDisplayable() {
+        if (synthesisResult == null || synthesisResult.isBlank()) {
+            return false;
+        }
+        return !policy.validationRequired()
+                || (validation != null && validation.approved());
+    }
+
+    /** @return the approved user-facing answer, or empty when it must be withheld. */
+    public Optional<String> userFacingAnswer() {
+        return isAnswerDisplayable() ? Optional.of(synthesisResult) : Optional.empty();
+    }
+
     // ── Validation 
 
     /** Set the Fresh Eyes validation result. */
