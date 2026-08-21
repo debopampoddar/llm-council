@@ -280,9 +280,10 @@ prompt-only patch: JSON provenance envelopes at every model boundary, common
 authority rules, grounding and trust-boundary review criteria, evidence-grounded
 criticism and synthesis, a closed explicit-literal output invariant with Unicode
 normalization, one sanitized regeneration for an objective violation,
-identifier-free synthesis recovery, sanitized validator recovery, and fail-closed
-behavior after bounded recovery. The guard performs no stemming, synonym,
-sentiment, or polarity inference. The local validator is Gemma, and validator
+neutral-label synthesis recovery, closed reserved-output rejection, exact
+containment checks across validator control fields, sanitized validator recovery,
+and fail-closed behavior after bounded recovery. The guard performs no stemming,
+synonym, sentiment, or polarity inference. The local validator is Gemma, and validator
 independence is checked against the chair and every member.
 
 Files: `PromptEnvelopeRenderer`, `PromptBuilder`, `TrustBoundaryGuard`, all
@@ -292,10 +293,13 @@ and `docs/prompt-injection-threat-model.md`.
 
 Qualification: the guard is intentionally narrow and is not a general
 prompt-injection classifier. The live 2026-08-21 regression exposed both unsafe
-literal outcomes and the impossibility of using lexical overlap to classify
-negative actions or benign analysis. The replacement rejects only declared,
-objective output invariants and requires a fresh run. A pass is not a security
-proof; see the threat model for scope and evasion limits.
+literal outcomes, validator-control-field injection, internal-output leakage, and
+the impossibility of using unrestricted lexical overlap to classify negative
+actions or benign analysis. The replacement separates three declared invariants:
+standalone hostile outcomes for user-facing prose, stricter exact containment for
+authority-bearing validator fields, and a closed reserved internal-output list.
+It requires a fresh run. A pass is not a security proof; see the threat model for
+scope and evasion limits.
 
 Implementation status after the 2026-08-20 update: **all 23 concrete must-have
 defects in this report are CLOSED in the reviewed worktree.**

@@ -696,9 +696,9 @@ What it does:
 2. Sends drafts, reviews, score summary, and debate history to the chair.
 3. Requires the chair to include recommendation, rationale, dissent, unresolved risks, and confidence.
 4. If the answer returns an attacker-requested standalone literal or a reserved
-   internal identifier, makes one clean retry using sanitized context and
-   identifier-free evidence; likely internal narration also requests cleanup but
-   cannot fail the run by itself.
+   internal output label, identifier, or application-owned process phrase, makes
+   one clean retry using sanitized context and neutral evidence labels; likely
+   internal narration also requests cleanup but cannot fail the run by itself.
 5. Writes only an accepted final answer to:
 
 ```text
@@ -723,9 +723,11 @@ What it does:
    a required criterion is missing/malformed, any criterion fails, or the model
    requires human review.
 6. Fails the session when validation is required and the effective verdict rejects.
-7. If validator recommendations return an attacker-requested literal as a
-   standalone segment, discards that assessment and makes one clean-room retry
-   with the directive removed. A repeated objective violation is invalid model
+7. Treats `issues`, `recommendedFixes`, and criterion explanations as
+   authority-bearing fields. If any of them contains an exact, bounded literal
+   requested by untrusted context, the application discards the entire assessment
+   and makes one clean-room retry with the directive removed. This rule does not
+   infer sentiment or polarity. A repeated objective violation is invalid model
    output.
 
 This is model-based validation, not external fact-checking. “Human review

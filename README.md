@@ -29,11 +29,11 @@ The public API does not accept raw protocol IDs. Protocols are owned by applicat
 - One bounded member regeneration with explicit context directives removed when
   an initial draft returns an attacker-requested literal as a standalone result.
 - Chair synthesis with score and dissent context plus one bounded recovery when
-  the first output violates an explicit-literal or reserved-identifier invariant;
+  the first output violates an explicit-literal or reserved-internal-output invariant;
   likely internal narration is a cleanup signal rather than a security verdict.
 - Fresh Eyes validation with structured JSON output and one bounded clean-room
-  retry against sanitized context when a validator recommendation returns an
-  attacker-requested standalone literal.
+  retry against sanitized context when any authority-bearing validator field
+  repeats an attacker-requested literal.
 - Bounded in-memory persistence by default, with optional JDBC persistence for
   sessions, chats, events, and chat sequence state on H2 or SQLite.
 - Local artifact storage for raw, normalized, final, export metadata, and the
@@ -175,8 +175,10 @@ the requested literal. Comparison uses Unicode NFKC normalization, case folding,
 zero-width/control removal, and whitespace normalization; it performs no
 stemming, sentiment, synonym, or negative-phrase analysis. An objective
 violation receives one retry with the directive removed. Synthesis recovery uses
-sanitized, identifier-free evidence; repeated literal or reserved-identifier
-violations fail closed, including in QUICK. Natural-language council narration
+sanitized, identifier-free evidence; a closed list of application-owned envelope
+labels and process phrases is also forbidden in ordinary user-facing answers.
+Repeated literal or reserved-internal-output violations fail closed, including
+in QUICK. Natural-language council narration
 receives one cleanup attempt but remains a quality warning rather than a security
 decision. This materially reduces a demonstrated injection path; it is not a
 proof that prompt injection is solved. See

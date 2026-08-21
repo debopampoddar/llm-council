@@ -45,6 +45,24 @@ final class PromptEnvelopeRenderer {
         }
     }
 
+    /**
+     * Render a clean-room synthesis retry without the internal provenance labels
+     * that caused the first answer to be rejected. The system message still
+     * declares that only {@code question} is instruction-bearing; every
+     * other field is reference text.
+     */
+    static String renderRecovery(String question, String context, Map<String, ?> artifacts) {
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("question", question == null ? "" : question);
+        envelope.put("context", context == null ? "" : context);
+        artifacts.forEach(envelope::put);
+        try {
+            return JSON.writeValueAsString(envelope);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalArgumentException("Unable to serialize recovery prompt data", ex);
+        }
+    }
+
     static Map<String, Object> untrustedArtifact(String type, String id, String text) {
         Map<String, Object> artifact = new LinkedHashMap<>();
         artifact.put("type", type);

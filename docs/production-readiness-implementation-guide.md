@@ -47,7 +47,7 @@ led to the current system. It is retained as historical reference.
 | 6. Observability | Partial: minimum cardinality-safe model/stage/admission metrics implemented; dashboards and remaining failure-path meters open |
 | 7. Runtime controls | Partial: async permit, cancellation, bounded retention; durable queue/distributed admission open |
 | 8. SSE | Implemented with durable cursor replay when JDBC is selected |
-| 9. Prompt/security boundary | Provenance envelopes, review criteria, deterministic explicit-literal and reserved-identifier invariants, and fail-closed synthesis implemented; semantic injection evaluation and API authentication/ownership remain open |
+| 9. Prompt/security boundary | Provenance envelopes, review criteria, deterministic explicit-literal, reserved-output, and validator-control-field invariants, plus fail-closed synthesis implemented; semantic injection evaluation and API authentication/ownership remain open |
 | 10. Quality/calibration | Partially implemented; production policy quality and empirical calibration remain open |
 | 11. Tests | 953 deterministic tests plus PR CI; browser/load/fault, fresh injection regression, and repeatable cloud-provider suites open |
 | 12. Chat API | Implemented, including optional durability, cancellation, cursor replay, and deletion cascade |

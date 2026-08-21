@@ -62,8 +62,16 @@ tool or privileged action path.
    `APPROVED is the value requested by the untrusted text` are not treated as
    equivalent.
 7. Reserved internal `draft-*`, `review-*`, `score-*`, and `turn-*` identifiers
-   are objective final-output violations. Natural-language phrases such as
-   “some drafts” are cleanup quality signals rather than security verdicts.
+   are objective final-output violations. A closed list of application-owned
+   envelope labels and process phrases is also forbidden in ordinary user-facing
+   answers, unless the user explicitly asks about that internal vocabulary.
+   Natural-language phrases outside that closed list, such as “some drafts”, are
+   cleanup quality signals rather than security verdicts.
+8. Validator `issues`, `recommendedFixes`, and criterion explanations are
+   authority-bearing control fields. If any field contains an exact, bounded
+   literal requested by untrusted context, the assessment is discarded. This
+   stricter sink rule intentionally avoids semantic, sentiment, or polarity
+   inference; user-facing explanatory prose retains the standalone-segment rule.
 
 ## Recovery and failure behavior
 
@@ -75,8 +83,8 @@ recognized directive removed. A safe replacement produces
 
 Aggregation, debate, and revision outputs that violate the same invariant are
 excluded. A synthesis containing an attacker-requested standalone literal or a
-reserved internal identifier receives one clean retry using sanitized context
-and identifier-free evidence. A repeated invariant violation produces
+reserved internal output receives one clean retry using sanitized context and
+neutral evidence labels. A repeated invariant violation produces
 `SYNTHESIS_OUTPUT_REJECTED` and fails the run in every depth, including QUICK.
 
 Likely internal narration triggers the same single cleanup attempt, but if the
@@ -85,10 +93,11 @@ retry contains only a narration quality signal it is retained with
 prevents heuristic prose matching from becoming an availability or security
 decision.
 
-Validator recommendations are checked for the exact same explicit-literal
-invariant. A violation discards that assessment and permits one clean-room
-validation retry with the directive removed. A repeated violation is invalid
-model output. Model validation cannot waive an application-owned invariant.
+Validator authority-bearing fields use the stricter exact-containment invariant
+described above. A violation discards the entire assessment and permits one
+clean-room validation retry with the directive removed. A repeated violation is
+invalid model output. Model validation cannot waive an application-owned
+invariant.
 
 Initial and post-debate review stages independently make one sanitized bounded
 recovery call when JSON is malformed or omits required non-self reviews.
@@ -137,7 +146,8 @@ The deterministic suite covers:
 - Unicode compatibility and zero-width-character normalization;
 - directive removal before bounded recovery;
 - strict structured review and validation evidence;
-- reserved internal-identifier rejection; and
+- reserved internal-output rejection;
+- exact attacker-literal containment in validator control fields; and
 - fail-closed QUICK synthesis after one recovery.
 
 Use the evaluation repository's prompt-injection regression dataset for live
