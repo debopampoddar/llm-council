@@ -11,7 +11,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -93,21 +92,33 @@ public class InMemoryEventStore implements EventStore {
 
     @Override
     public CouncilEvent append(CouncilEvent event) {
-        CouncilEvent sequenced = event.withSeq(
-                sequences.computeIfAbsent(event.sessionId(), ignored -> new AtomicLong())
-                         .incrementAndGet());
         List<CouncilEvent> events = eventsBySession.computeIfAbsent(
                 event.sessionId(), ignored -> new CopyOnWriteArrayList<>());
-        events.add(sequenced);
+        CouncilEvent sequenced;
+        // Sequence allocation and insertion must be one per-session operation.
+        // Independent model calls publish concurrently; allocating before the
+        // append lets event 2 reach the live timeline before event 1.
+        synchronized (events) {
+            sequenced = event.withSeq(
+                    sequences.computeIfAbsent(event.sessionId(), ignored -> new AtomicLong())
+                             .incrementAndGet());
+            events.add(sequenced);
+            trim(events);
+        }
         lastActivity.put(event.sessionId(), event.occurredAt());
-        trim(events);
         evictOldSessions();
         return sequenced;
     }
 
     @Override
     public List<CouncilEvent> history(String sessionId) {
-        return List.copyOf(eventsBySession.getOrDefault(sessionId, new ArrayList<>()));
+        List<CouncilEvent> events = eventsBySession.get(sessionId);
+        if (events == null) {
+            return List.of();
+        }
+        synchronized (events) {
+            return List.copyOf(events);
+        }
     }
 
     /**

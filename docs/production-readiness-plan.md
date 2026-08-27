@@ -1,9 +1,7 @@
 # LLM Council Production Readiness Plan
 
-Status: current as of 2026-08-20. This is the authoritative forward-looking
-plan. The longer [implementation guide](production-readiness-implementation-guide.md)
-contains historical design sketches; its status matrix, not the old snippets,
-determines what is still open.
+Status: current as of 2026-08-27. This is the authoritative forward-looking
+plan for the published application.
 
 ## Current baseline
 
@@ -30,7 +28,7 @@ The application already provides:
   catalog preview, atomic save, export, and a bounded live model probe;
 - pull-request CI for the clean Java 25 build and repository documentation/
   configuration checks;
-- 953 deterministic JUnit tests in the current baseline.
+- 962 deterministic JUnit tests in the current baseline.
 
 This is a capable local/personal application. It is not ready for untrusted or
 shared network deployment.

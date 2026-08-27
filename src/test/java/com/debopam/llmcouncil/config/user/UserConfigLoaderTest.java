@@ -66,17 +66,16 @@ class UserConfigLoaderTest {
     }
 
     @Test
-    void shippedOciLocalExampleRemainsStrictlyLoadable() {
-        Path example = Path.of("council-user.oci-local.example.yml").toAbsolutePath();
+    void shippedUserConfigExampleRemainsStrictlyLoadable() {
+        Path example = Path.of("council-user.example.yml").toAbsolutePath();
 
         UserConfigLoader.LoadResult result = loader(example.toString()).load();
 
-        assertTrue(Files.isRegularFile(example), "the documented mixed-mode example must be shipped");
+        assertTrue(Files.isRegularFile(example), "the documented user-configuration example must be shipped");
         assertFalse(result.hasErrors(), () -> "unexpected issues: " + result.issues());
-        assertEquals("openai-chair",
-                     result.document().policies().get("oci-local-balanced").chairModelId());
-        assertEquals("oci-local-balanced",
-                     result.document().profiles().get("oci-local").depthPolicies().get("BALANCED"));
+        assertEquals("balanced", result.document().policies().get("my-balanced").protocolId());
+        assertEquals("my-balanced",
+                     result.document().profiles().get("my-council").depthPolicies().get("BALANCED"));
     }
 
     @Test

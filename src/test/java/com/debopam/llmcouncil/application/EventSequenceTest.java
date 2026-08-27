@@ -110,6 +110,9 @@ class EventSequenceTest {
             assertEquals(eventCount, distinct.size(), "every append got its own number");
             assertTrue(distinct.contains(1L) && distinct.contains((long) eventCount),
                        "and the numbers run 1..n with no gaps");
+            assertEquals(IntStream.rangeClosed(1, eventCount).mapToObj(Long::valueOf).toList(),
+                         store.history("s1").stream().map(CouncilEvent::seq).toList(),
+                         "timeline history is returned in sequence order after concurrent appends");
         }
     }
 
