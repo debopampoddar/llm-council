@@ -22,7 +22,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # A release event otherwise checks out the repository default branch,
+      # which may have moved past (or lag behind) the immutable release tag.
+      # Publish exactly the released source; manual dispatch keeps its selected
+      # branch/ref and uses the explicit version input below.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
 
       # server-id matches <distributionManagement> in the POM. setup-java
       # writes the settings.xml server block from the two env vars below, so no
