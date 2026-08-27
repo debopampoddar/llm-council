@@ -233,6 +233,9 @@ public class PromptBuilder {
                 Scoring guidance:
                 - Return exactly one review object for every draft id listed by the user.
                   Do not omit a draft and do not review any id that is not listed.
+                - Keep the JSON bounded: at most two strengths and two issues per draft;
+                  each strength, issue, and criterion rationale must be no more than 160 characters.
+                  Do not add fields, prose, Markdown, or text outside the JSON object.
                 - "issues" should describe what is MISSING or could be IMPROVED,
                   not hypothetical errors. Frame as "What would make this better?"
                 - "constructiveness" measures whether your feedback is specific and
@@ -848,6 +851,9 @@ public class PromptBuilder {
                 Scoring guidance:
                 - Return exactly one review object for every draft id listed by the user.
                   Do not omit a draft and do not review any id that is not listed.
+                - Keep the JSON bounded: at most two strengths and two issues per draft;
+                  each strength, issue, and criterion rationale must be no more than 160 characters.
+                  Do not add fields, prose, Markdown, or text outside the JSON object.
                 - "issues" should describe what is MISSING or could be IMPROVED,
                   not hypothetical errors. Frame as "What would make this better?"
                 - "constructiveness" measures whether your feedback is specific and
