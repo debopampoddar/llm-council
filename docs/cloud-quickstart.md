@@ -18,7 +18,7 @@ mvn clean verify
 This runs the hermetic test suite and produces:
 
 ```text
-target/llm-council-2.0.0.jar
+target/llm-council-2.0.1.jar
 ```
 
 ## 2. Configure a provider
@@ -56,7 +56,7 @@ close the terminal when finished.
 ## 3. Start the service
 
 ```bash
-java -jar target/llm-council-2.0.0.jar
+java -jar target/llm-council-2.0.1.jar
 ```
 
 Open <http://127.0.0.1:8080>. Select `openai` or `claude`, select `QUICK`, and
