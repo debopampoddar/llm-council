@@ -66,6 +66,20 @@ class UserConfigLoaderTest {
     }
 
     @Test
+    void shippedOciLocalExampleRemainsStrictlyLoadable() {
+        Path example = Path.of("council-user.oci-local.example.yml").toAbsolutePath();
+
+        UserConfigLoader.LoadResult result = loader(example.toString()).load();
+
+        assertTrue(Files.isRegularFile(example), "the documented mixed-mode example must be shipped");
+        assertFalse(result.hasErrors(), () -> "unexpected issues: " + result.issues());
+        assertEquals("openai-chair",
+                     result.document().policies().get("oci-local-balanced").chairModelId());
+        assertEquals("oci-local-balanced",
+                     result.document().profiles().get("oci-local").depthPolicies().get("BALANCED"));
+    }
+
+    @Test
     void reportsMalformedYamlWithoutThrowing() throws IOException {
         Path file = write("models:\n  - id: [unclosed\n");
 
