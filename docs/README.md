@@ -16,6 +16,8 @@ read as if they have the same authority.
 | Understand security boundaries | [Prompt-injection threat model](prompt-injection-threat-model.md) |
 | Decide whether deployment is safe | [Production-readiness plan](production-readiness-plan.md) |
 | Record a demo or write a blog post | [Showcase and blog guide](showcase-and-blog-guide.md) |
+| Publish the prepared blog article | [Inspectable orchestration blog post](llm-council-inspectable-orchestration-blog.md) |
+| Record the companion walkthrough | [Screen-recording script](llm-council-blog-demo-recording.md) |
 | Understand publishing and licensing decisions | [Licensing and distribution record](licensing-and-distribution.md) |
 
 ## Document Authority
