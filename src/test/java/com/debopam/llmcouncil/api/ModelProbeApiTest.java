@@ -20,6 +20,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
         "council.allowMockFallback=true",
+        // This is specifically the unconfigured-provider contract.  A real
+        // developer credential must not turn the test into a paid live probe.
+        "spring.ai.openai.api-key=unused-development-placeholder",
         "council.userConfigPath=target/model-probe-api/council-user.yml"
 })
 class ModelProbeApiTest {

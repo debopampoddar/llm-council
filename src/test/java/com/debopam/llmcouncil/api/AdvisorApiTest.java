@@ -44,6 +44,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
         "spring.ai.ollama.base-url=http://127.0.0.1:1",
+        // These refusals describe a machine without cloud providers.  Pin the
+        // credentials so a developer's real shell credentials neither make a
+        // billable extraction nor change the advertised extraction allowlist.
+        "spring.ai.openai.api-key=unused-development-placeholder",
+        "spring.ai.anthropic.api-key=unused-development-placeholder",
+        "spring.ai.vertex.ai.gemini.project-id=",
         "council.userConfigPath=target/advisor-api/council-user.yml"
 })
 class AdvisorApiTest {
