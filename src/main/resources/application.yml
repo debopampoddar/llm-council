@@ -12,9 +12,17 @@ spring:
         completions-path: ${SPRING_AI_OPENAI_CHAT_COMPLETIONS_PATH:/v1/chat/completions}
         options:
           model: ${COUNCIL_OPENAI_CHAIR_MODEL:gpt-4.1}
-          temperature: 0.2
+          # Spring AI otherwise supplies its own 0.7 default. GPT-5 models
+          # accept only OpenAI's default temperature, 1.0. Older model profiles
+          # still override this value with their configured per-request value.
+          temperature: 1.0
     anthropic:
       api-key: ${SPRING_AI_ANTHROPIC_API_KEY:unused-development-placeholder}
+      chat:
+        options:
+          # Spring AI otherwise applies a 0.7 default. Claude Sonnet 5 rejects
+          # non-default sampling values; Anthropic accepts 1.0 for compatibility.
+          temperature: 1.0
     ollama:
       # The local provider uses this URL for direct Ollama /api/chat calls.
       # Use http://ollama:11434 inside full Docker Compose. Use the default when

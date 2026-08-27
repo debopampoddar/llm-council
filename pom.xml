@@ -12,7 +12,7 @@
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <maven.compiler.release>25</maven.compiler.release>
     <spring.boot.version>3.5.0</spring.boot.version>
-    <spring.ai.version>1.0.0</spring.ai.version>
+    <spring.ai.version>1.1.7</spring.ai.version>
     <!-- Where `mvn deploy` publishes. Overridable so a fork or a private mirror
          does not need the POM edited: -Dgithub.repository=owner/name -->
     <github.repository>debopampoddar/llm-council</github.repository>

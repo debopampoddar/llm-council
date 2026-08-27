@@ -3,6 +3,7 @@ package com.debopam.llmcouncil.model;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.retry.TransientAiException;
 
 import java.time.Duration;
@@ -25,15 +26,27 @@ public class SpringAiModelClient implements ModelClient {
     private final String modelId;
     private final ChatClient chatClient;
     private final boolean includeTemperature;
+    private final boolean useOpenAiMaxCompletionTokens;
 
     public SpringAiModelClient(String modelId, ChatClient chatClient) {
-        this(modelId, chatClient, true);
+        this(modelId, chatClient, true, false);
     }
 
     public SpringAiModelClient(String modelId, ChatClient chatClient, boolean includeTemperature) {
+        this(modelId, chatClient, includeTemperature, false);
+    }
+
+    /**
+     * @param useOpenAiMaxCompletionTokens emit OpenAI's GPT-5-compatible
+     * {@code max_completion_tokens} field instead of the legacy
+     * {@code max_tokens} field
+     */
+    public SpringAiModelClient(String modelId, ChatClient chatClient, boolean includeTemperature,
+                               boolean useOpenAiMaxCompletionTokens) {
         this.modelId = modelId;
         this.chatClient = chatClient;
         this.includeTemperature = includeTemperature;
+        this.useOpenAiMaxCompletionTokens = useOpenAiMaxCompletionTokens;
     }
 
     @Override
@@ -53,13 +66,7 @@ public class SpringAiModelClient implements ModelClient {
             if (!system.isBlank()) {
                 spec = spec.system(system);
             }
-            ChatOptions.Builder options = ChatOptions.builder()
-                                                     .model(request.providerModelId())
-                                                     .maxTokens(request.maxOutputTokens());
-            if (includeTemperature) {
-                options.temperature(request.temperature());
-            }
-            spec = spec.options(options.build());
+            spec = spec.options(buildOptions(request));
             // Spring AI's generic ChatOptions does not carry a portable per-call
             // timeout. Enforce the ModelProfile timeout at this adapter boundary
             // so cloud calls honour the same contract as direct Ollama calls.
@@ -133,6 +140,26 @@ public class SpringAiModelClient implements ModelClient {
                     + rootCauseMessage(ex),
                     ex);
         }
+    }
+
+    private ChatOptions buildOptions(ModelCallRequest request) {
+        if (useOpenAiMaxCompletionTokens) {
+            OpenAiChatOptions.Builder options = OpenAiChatOptions.builder()
+                    .model(request.providerModelId())
+                    .maxCompletionTokens(request.maxOutputTokens());
+            if (includeTemperature) {
+                options.temperature(request.temperature());
+            }
+            return options.build();
+        }
+
+        ChatOptions.Builder options = ChatOptions.builder()
+                .model(request.providerModelId())
+                .maxTokens(request.maxOutputTokens());
+        if (includeTemperature) {
+            options.temperature(request.temperature());
+        }
+        return options.build();
     }
 
     private String rootCauseMessage(Throwable throwable) {

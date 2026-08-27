@@ -1,0 +1,99 @@
+# LLM Council — OCI Generative AI plus local Ollama example
+#
+# Copy this file only after replacing/merging any existing user overlay:
+#
+#   cp council-user.oci-local.example.yml ~/.llm-council/council-user.yml
+#
+# This overlay does not contain credentials or an OCI endpoint. The application
+# reaches OCI's Chat Completions API through its existing `openai` adapter. Set
+# the connection before starting the application (replace both placeholders):
+#
+#   export SPRING_AI_OPENAI_API_KEY='<oci-generative-ai-api-key>'
+#   export SPRING_AI_OPENAI_BASE_URL='https://inference.generativeai.<region>.oci.oraclecloud.com/20231130/actions/v1'
+#   export SPRING_AI_OPENAI_CHAT_COMPLETIONS_PATH='/chat/completions'
+#   export COUNCIL_OPENAI_CHAIR_MODEL='<oci-chat-completions-model-id>'
+#
+# Examples of provider model ids are region- and entitlement-dependent. Copy the
+# exact id from the OCI Generative AI console; do not guess it. A ChatGPT web
+# login or browser session is not an API credential and cannot activate this
+# profile.
+#
+# The initial topology is intentionally BALANCED:
+#   Gemma3 27B proposer + Qwen3-Coder 30B critic -> OCI chair -> Phi validator
+# It combines two local drafting families, one cloud synthesis model, and a
+# fourth family for independent validation. Keep the model ids aligned with
+# `ollama list`. Do not market this topology as validated until its evaluation
+# run has passed.
+version: 1
+
+models:
+  - id: mixed-local-gemma
+    provider: ollama
+    providerModelId: gemma3:27b
+    defaultOutputTokens: 2400
+    temperature: 0.2
+    timeoutSeconds: 900
+    contextWindowTokens: 16384
+    role: MEMBER
+    councilRole: PROPOSER
+    modelFamily: gemma
+    retryMaxAttempts: 1
+    retryBaseDelayMs: 1000
+    costPer1kInputTokens: 0.0
+    costPer1kOutputTokens: 0.0
+
+  - id: mixed-local-qwen-coder
+    provider: ollama
+    providerModelId: qwen3-coder:30b
+    defaultOutputTokens: 2400
+    temperature: 0.2
+    timeoutSeconds: 900
+    contextWindowTokens: 16384
+    role: MEMBER
+    councilRole: CRITIC
+    modelFamily: qwen
+    retryMaxAttempts: 1
+    retryBaseDelayMs: 1000
+    costPer1kInputTokens: 0.0
+    costPer1kOutputTokens: 0.0
+
+  - id: mixed-local-phi-validator
+    provider: ollama
+    providerModelId: phi4-reasoning:plus
+    defaultOutputTokens: 4000
+    temperature: 0.1
+    timeoutSeconds: 900
+    contextWindowTokens: 16384
+    role: VALIDATOR
+    councilRole: CRITIC
+    modelFamily: phi
+    retryMaxAttempts: 1
+    retryBaseDelayMs: 1000
+    costPer1kInputTokens: 0.0
+    costPer1kOutputTokens: 0.0
+
+policies:
+  oci-local-balanced:
+    protocolId: balanced
+    memberModelIds: [mixed-local-gemma, mixed-local-qwen-coder]
+    # This built-in logical model is redirected to the OCI model selected by
+    # COUNCIL_OPENAI_CHAIR_MODEL and the SPRING_AI_OPENAI_* connection above.
+    chairModelId: openai-chair
+    validatorModelId: mixed-local-phi-validator
+    minimumSuccessfulDrafts: 2
+    minimumReviewsPerDraft: 1
+    validationRequired: true
+    allowPartial: false
+
+profiles:
+  oci-local:
+    displayName: OCI and local balanced council
+    defaultDepth: BALANCED
+    depthPolicies:
+      BALANCED: oci-local-balanced
+
+# A mixed cloud/local run can use substantial memory and one billable OCI call
+# per synthesis. Start with one active council run until measurements justify a
+# higher limit.
+runtime:
+  maxConcurrentRuns: 1

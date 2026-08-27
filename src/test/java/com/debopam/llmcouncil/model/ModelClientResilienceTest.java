@@ -7,6 +7,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.retry.TransientAiException;
 
 import java.time.Duration;
@@ -144,6 +145,24 @@ class ModelClientResilienceTest {
                 () -> client.call(request(Duration.ofSeconds(1))));
 
         assertEquals(0.2, capturedTemperature.get());
+    }
+
+    @Test
+    void springAiAdapterUsesGpt5CompatibleOpenAiOutputLimit() {
+        AtomicReference<OpenAiChatOptions> capturedOptions = new AtomicReference<>();
+        ChatModel inspecting = prompt -> {
+            capturedOptions.set((OpenAiChatOptions) prompt.getOptions());
+            throw new IllegalStateException("captured");
+        };
+        SpringAiModelClient client = new SpringAiModelClient(
+                "openai-gpt5", ChatClient.create(inspecting), false, true);
+
+        assertThrows(ModelCallException.class,
+                () -> client.call(request(Duration.ofSeconds(1))));
+
+        assertEquals(100, capturedOptions.get().getMaxCompletionTokens());
+        assertNull(capturedOptions.get().getMaxTokens());
+        assertNull(capturedOptions.get().getTemperature());
     }
 
     @Test
