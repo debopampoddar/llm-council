@@ -121,7 +121,7 @@ public class RevisionStageExecutor implements StageExecutor {
             return null;
         }
 
-        ModelProfile model = registry.model(modelId);
+        ModelProfile model = ctx.executionRegistry(registry).model(modelId);
         events.publish(ctx.session().id(), stage().name(), "REVISION_STARTED", modelId, Map.of());
 
         try {
@@ -131,7 +131,7 @@ public class RevisionStageExecutor implements StageExecutor {
                     ctx.debateRounds(), budget);
             PromptBudgets.record(ctx, events, stage(), modelId, budget);
 
-            ModelCallResult result = registry.clientForModel(modelId).call(
+            ModelCallResult result = ctx.executionRegistry(registry).clientForModel(modelId).call(
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                                          model.providerModelId(), messages,
                                          model.defaultOutputTokens(), model.temperature(),

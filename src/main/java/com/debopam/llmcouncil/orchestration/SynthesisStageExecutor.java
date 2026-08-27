@@ -41,7 +41,7 @@ public class SynthesisStageExecutor implements StageExecutor {
         }
 
         String chairId = ctx.policy().chairModelId();
-        ModelProfile chair = registry.model(chairId);
+        ModelProfile chair = ctx.executionRegistry(registry).model(chairId);
         boolean preserveDissent = opts.getBoolean("preserve-dissent", true);
         events.publish(ctx.session().id(), stage().name(), "SYNTHESIS_STARTED", chairId, Map.of());
 
@@ -104,7 +104,7 @@ public class SynthesisStageExecutor implements StageExecutor {
 
     private ModelCallResult callAndRecord(
             CouncilContext ctx, ModelProfile chair, List<ChatMessage> messages) {
-        ModelCallResult result = registry.clientForModel(chair.id()).call(
+        ModelCallResult result = ctx.executionRegistry(registry).clientForModel(chair.id()).call(
                 new ModelCallRequest(ctx.session().id(), stage(), chair.id(),
                         chair.providerModelId(), messages, chair.defaultOutputTokens(),
                         chair.temperature(), false, chair.defaultTimeout()));

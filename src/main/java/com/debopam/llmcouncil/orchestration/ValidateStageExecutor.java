@@ -60,7 +60,7 @@ public class ValidateStageExecutor implements StageExecutor {
             return ctx;
         }
 
-        ModelProfile validator = registry.model(validatorId);
+        ModelProfile validator = ctx.executionRegistry(registry).model(validatorId);
         events.publish(ctx.session().id(), stage().name(), "VALIDATION_STARTED", validatorId, Map.of());
         List<ChatMessage> messages =
                 promptBuilder.validationMessages(ctx.session().question(),
@@ -186,7 +186,7 @@ public class ValidateStageExecutor implements StageExecutor {
 
     private ModelCallResult callAndRecord(
             CouncilContext ctx, ModelProfile validator, ModelCallRequest request) {
-        ModelCallResult result = registry.clientForModel(validator.id()).call(request);
+        ModelCallResult result = ctx.executionRegistry(registry).clientForModel(validator.id()).call(request);
         ctx.recordUsage(validator.id(), stage(), result.promptTokens(),
                         result.completionTokens(), result.latency());
         return result;

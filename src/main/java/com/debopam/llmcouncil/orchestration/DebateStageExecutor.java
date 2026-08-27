@@ -205,7 +205,7 @@ public class DebateStageExecutor implements StageExecutor {
     }
 
     private DebateContribution contribute(CouncilContext ctx, String modelId, int round) {
-        ModelProfile model = registry.model(modelId);
+        ModelProfile model = ctx.executionRegistry(registry).model(modelId);
         try {
             // Use role-aware debate prompt so CRITIC models
             // challenge consensus and SYNTHESIZER models seek common ground.
@@ -215,7 +215,7 @@ public class DebateStageExecutor implements StageExecutor {
                     ctx.debateRounds(), round, model.councilRole(), budget);
             PromptBudgets.record(ctx, events, stage(), modelId, budget);
 
-            ModelCallResult result = registry.clientForModel(modelId).call(
+            ModelCallResult result = ctx.executionRegistry(registry).clientForModel(modelId).call(
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                                          model.providerModelId(), messages,
                                          model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()));

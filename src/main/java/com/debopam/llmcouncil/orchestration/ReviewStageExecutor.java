@@ -37,7 +37,7 @@ public class ReviewStageExecutor implements StageExecutor {
     @Override
     public CouncilContext execute(CouncilContext ctx, ProtocolStageOptions opts) {
         for (String modelId : ctx.policy().memberModelIds()) {
-            ModelProfile model = registry.model(modelId);
+            ModelProfile model = ctx.executionRegistry(registry).model(modelId);
             events.publish(ctx.session().id(), stage().name(), "REVIEW_STARTED", modelId, Map.of());
             try {
                 PromptBudget budget = PromptBudget.forModel(model);
@@ -46,7 +46,7 @@ public class ReviewStageExecutor implements StageExecutor {
                                                      ctx.drafts(), budget);
                 PromptBudgets.record(ctx, events, stage(), modelId, budget);
 
-                ModelCallResult result = registry.clientForModel(modelId).call(
+                ModelCallResult result = ctx.executionRegistry(registry).clientForModel(modelId).call(
                         new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                                              model.providerModelId(), messages,
                                              model.defaultOutputTokens(), model.temperature(), true, model.defaultTimeout()));
@@ -106,7 +106,7 @@ public class ReviewStageExecutor implements StageExecutor {
                     ctx.session().question(), TrustBoundaryGuard.sanitize(ctx.session().context()),
                     missingDrafts, budget);
             PromptBudgets.record(ctx, events, stage(), modelId, budget);
-            ModelCallResult result = registry.clientForModel(modelId).call(
+            ModelCallResult result = ctx.executionRegistry(registry).clientForModel(modelId).call(
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                             model.providerModelId(), messages, model.defaultOutputTokens(),
                             model.temperature(), true, model.defaultTimeout()));
