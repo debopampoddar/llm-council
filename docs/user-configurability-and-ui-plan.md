@@ -1317,7 +1317,7 @@ This class must be pure and fully unit-testable with no network and no model.
 **CLI** — a new `advisor/SetupCommandRunner.java` as an `ApplicationRunner` active only under `--council.setup`:
 
 ```bash
-java -jar target/llm-council-2.0.0.jar --council.setup
+java -jar target/llm-council-2.0.1.jar --council.setup
 ```
 
 Interactive prompts, same synthesizer, prints the YAML, asks before writing, exits without starting the web server (`spring.main.web-application-type=none` when the flag is present).

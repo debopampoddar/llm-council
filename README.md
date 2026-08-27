@@ -62,7 +62,7 @@ ollama pull qwen2.5:7b
 ollama pull gemma4:12b-it-qat
 
 mvn --batch-mode --no-transfer-progress clean verify
-java -jar target/llm-council-2.0.0.jar
+java -jar target/llm-council-2.0.1.jar
 ```
 
 Open <http://127.0.0.1:8080>, choose `local` and `QUICK`, and ask a question.
@@ -497,7 +497,7 @@ be the main artifact.
 ## Run
 
 ```bash
-java -jar target/llm-council-2.0.0.jar
+java -jar target/llm-council-2.0.1.jar
 ```
 
 Then open **<http://localhost:8080/>** for the web UI.
@@ -654,7 +654,7 @@ The startup log states the numbers for every policy that does not.
 For mock smoke testing:
 
 ```bash
-java -jar target/llm-council-2.0.0.jar
+java -jar target/llm-council-2.0.1.jar
 ```
 
 Then create a session with `profileId: "mock"`.
