@@ -2,6 +2,7 @@ package com.debopam.llmcouncil.config;
 
 import com.debopam.llmcouncil.api.dto.CatalogResponse;
 import com.debopam.llmcouncil.application.CatalogService;
+import com.debopam.llmcouncil.config.CouncilCatalogHolder;
 import com.debopam.llmcouncil.model.ValidationIndependence;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -30,6 +31,9 @@ class ShippedValidationIndependenceTest {
     @Autowired
     private CatalogService catalogService;
 
+    @Autowired
+    private CouncilCatalogHolder catalogHolder;
+
     /** Policies that exist purely as single-model test fixtures. */
     private static final Set<String> TEST_FIXTURE_POLICIES =
             Set.of("mock-quick", "mock-balanced", "mock-rigorous");
@@ -40,6 +44,10 @@ class ShippedValidationIndependenceTest {
             // Llama, Mistral, and Qwen models that can produce the answer.
             "local-balanced,    INDEPENDENT",
             "local-rigorous,    INDEPENDENT",
+            "hybrid-openai-balanced, INDEPENDENT",
+            "hybrid-openai-rigorous, INDEPENDENT",
+            "hybrid-claude-balanced, INDEPENDENT",
+            "hybrid-claude-rigorous, INDEPENDENT",
             "multi-cloud-balanced, INDEPENDENT",
             "multi-cloud-rigorous, INDEPENDENT",
             // Single-provider profiles cannot reach INDEPENDENT. Flash validating
@@ -89,6 +97,24 @@ class ShippedValidationIndependenceTest {
     }
 
     @Test
+    void localPoliciesUseAChairFromOutsideEveryDraftingFamily() {
+        var catalog = catalogHolder.get();
+        List<String> correlatedPolicies = List.of("local-quick", "local-balanced", "local-rigorous")
+                .stream()
+                .filter(policyId -> {
+                    var policy = catalog.policies().get(policyId);
+                    String chairFamily = catalog.modelRegistry().model(policy.chairModelId()).modelFamily();
+                    return policy.memberModelIds().stream()
+                            .map(modelId -> catalog.modelRegistry().model(modelId).modelFamily())
+                            .anyMatch(chairFamily::equalsIgnoreCase);
+                })
+                .toList();
+
+        assertTrue(correlatedPolicies.isEmpty(),
+                   "these local policies use a chair from a drafting family: " + correlatedPolicies);
+    }
+
+    @Test
     void quickPoliciesDeclareNoValidatorRatherThanAWeakOne() {
         // QUICK deliberately skips validation. Declaring no validator is honest;
         // naming the chair would manufacture a validation claim from nothing.
@@ -98,6 +124,8 @@ class ShippedValidationIndependenceTest {
         assertEquals(ValidationIndependence.NOT_APPLICABLE, tiers.get("openai-quick"));
         assertEquals(ValidationIndependence.NOT_APPLICABLE, tiers.get("claude-quick"));
         assertEquals(ValidationIndependence.NOT_APPLICABLE, tiers.get("gemini-quick"));
+        assertEquals(ValidationIndependence.NOT_APPLICABLE, tiers.get("hybrid-openai-quick"));
+        assertEquals(ValidationIndependence.NOT_APPLICABLE, tiers.get("hybrid-claude-quick"));
         assertEquals(ValidationIndependence.NOT_APPLICABLE, tiers.get("multi-cloud-quick"));
     }
 
@@ -108,7 +136,8 @@ class ShippedValidationIndependenceTest {
                                                .map(CatalogResponse.ProfileSummary::id)
                                                .collect(Collectors.toSet());
 
-        assertEquals(Set.of("default", "local", "openai", "claude", "gemini", "multi-cloud"),
+        assertEquals(Set.of("default", "local", "openai", "claude", "hybrid-openai",
+                            "hybrid-claude", "gemini", "multi-cloud"),
                      profileIds);
     }
 

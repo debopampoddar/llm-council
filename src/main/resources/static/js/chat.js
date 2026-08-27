@@ -81,7 +81,11 @@ export function renderTopbarConfig(container, state, handlers) {
     return;
   }
 
-  const profiles = state.catalog?.profiles || [];
+  // The server keeps configuration declaration order, which is useful for the
+  // catalog API. In the selector, alphabetic order makes a growing set of
+  // profiles easier to scan without changing any profile's behaviour.
+  const profiles = [...(state.catalog?.profiles || [])]
+    .sort((left, right) => left.id.localeCompare(right.id));
   const select = el("select", {
     id: "profile-select",
     onChange: (event) => handlers.onProfileChange(event.target.value),

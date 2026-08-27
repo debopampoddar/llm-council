@@ -196,13 +196,18 @@ council:
       modelFamily: ${LLM_COUNCIL_LOCAL_VALIDATOR_MODEL_FAMILY:gemma}
     - id: local-chair
       provider: ollama
-      providerModelId: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:llama3.1:8b}
+      # The chair must not share weights or an architecture family with any
+      # drafting member. In particular, using llama3.1:8b here caused Llama to
+      # synthesize its own draft in every local policy. Granite is intentionally
+      # separate from the Llama, Mistral, Qwen, and Gemma roles below.
+      # Requires: ollama pull granite3.3:8b
+      providerModelId: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:granite3.3:8b}
       defaultOutputTokens: ${LLM_COUNCIL_LOCAL_CHAIR_OUTPUT_TOKENS:1800}
       temperature: 0.2
       timeoutSeconds: ${LLM_COUNCIL_LOCAL_TIMEOUT_SECONDS:240}
       role: CHAIR
       councilRole: SYNTHESIZER      # bridge-builder persona for the chair
-      modelFamily: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL_FAMILY:llama}
+      modelFamily: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL_FAMILY:granite}
 
     # Explicit test-only mocks.
     - id: mock-member
@@ -416,6 +421,22 @@ council:
         QUICK: claude-quick
         BALANCED: claude-balanced
         RIGOROUS: claude-rigorous
+    hybrid-openai:
+      displayName: Local + OpenAI council
+      testOnly: false
+      defaultDepth: BALANCED
+      depthPolicies:
+        QUICK: hybrid-openai-quick
+        BALANCED: hybrid-openai-balanced
+        RIGOROUS: hybrid-openai-rigorous
+    hybrid-claude:
+      displayName: Local + Claude council
+      testOnly: false
+      defaultDepth: BALANCED
+      depthPolicies:
+        QUICK: hybrid-claude-quick
+        BALANCED: hybrid-claude-balanced
+        RIGOROUS: hybrid-claude-rigorous
     mock:
       displayName: Mock test council
       testOnly: true
@@ -526,6 +547,66 @@ council:
       memberModelIds: [claude-sonnet, claude-haiku, claude-opus]
       chairModelId: claude-chair
       validatorModelId: claude-validator
+      minimumSuccessfulDrafts: 2
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+
+    # ── Local + cloud hybrid policies ─────────────────────────────────
+    # These profiles retain local drafting and Fresh Eyes validation, but use a
+    # cloud chair for synthesis. They are intentionally separate from
+    # multi-cloud: each needs exactly one named cloud credential and does not
+    # quietly depend on Gemini.
+    hybrid-openai-quick:
+      protocolId: quick
+      memberModelIds: [local-llama3]
+      chairModelId: openai-chair
+      validatorModelId:
+      minimumSuccessfulDrafts: 1
+      minimumReviewsPerDraft: 0
+      validationRequired: false
+      allowPartial: true
+    hybrid-openai-balanced:
+      protocolId: balanced
+      memberModelIds: [local-llama3, local-mistral]
+      chairModelId: openai-chair
+      validatorModelId: local-validator
+      minimumSuccessfulDrafts: 2
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+    hybrid-openai-rigorous:
+      protocolId: rigorous
+      memberModelIds: [local-llama3, local-mistral, local-qwen]
+      chairModelId: openai-chair
+      validatorModelId: local-validator
+      minimumSuccessfulDrafts: 2
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+    hybrid-claude-quick:
+      protocolId: quick
+      memberModelIds: [local-llama3]
+      chairModelId: claude-chair
+      validatorModelId:
+      minimumSuccessfulDrafts: 1
+      minimumReviewsPerDraft: 0
+      validationRequired: false
+      allowPartial: true
+    hybrid-claude-balanced:
+      protocolId: balanced
+      memberModelIds: [local-llama3, local-mistral]
+      chairModelId: claude-chair
+      validatorModelId: local-validator
+      minimumSuccessfulDrafts: 2
+      minimumReviewsPerDraft: 1
+      validationRequired: true
+      allowPartial: true
+    hybrid-claude-rigorous:
+      protocolId: rigorous
+      memberModelIds: [local-llama3, local-mistral, local-qwen]
+      chairModelId: claude-chair
+      validatorModelId: local-validator
       minimumSuccessfulDrafts: 2
       minimumReviewsPerDraft: 1
       validationRequired: true

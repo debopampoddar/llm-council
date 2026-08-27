@@ -37,6 +37,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AdvisorEndToEndTest {
 
     private static final List<String> TWO_FAMILIES = List.of("llama3.1:8b", "mistral:7b");
+    private static final List<String> LOCAL_CHAIR_INSTALLED =
+            List.of("llama3.1:8b", "mistral:7b", "granite3.3:8b");
 
     @Autowired
     private AdvisorService advisor;
@@ -176,7 +178,7 @@ class AdvisorEndToEndTest {
 
     @Test
     void theExtractionDefaultIsTheLocalProfilesChairWhenItIsInstalled() {
-        AdvisorEnvironment environment = environmentService.describe(TWO_FAMILIES);
+        AdvisorEnvironment environment = environmentService.describe(LOCAL_CHAIR_INSTALLED);
         assertEquals("local-chair", environment.defaultExtractionModelId());
     }
 

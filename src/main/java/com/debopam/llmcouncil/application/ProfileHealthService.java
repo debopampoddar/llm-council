@@ -6,11 +6,14 @@ import com.debopam.llmcouncil.config.CouncilCatalog;
 import com.debopam.llmcouncil.config.CouncilCatalogHolder;
 import com.debopam.llmcouncil.domain.DepthMode;
 import com.debopam.llmcouncil.model.CouncilPolicy;
+import com.debopam.llmcouncil.model.ClientAvailability;
 import com.debopam.llmcouncil.model.CouncilProfile;
+import com.debopam.llmcouncil.model.ModelClient;
 import com.debopam.llmcouncil.model.ModelProfile;
 import com.debopam.llmcouncil.model.ModelRegistry;
 import com.debopam.llmcouncil.model.ProviderHealth;
 import com.debopam.llmcouncil.model.ProviderHealthChecker;
+import com.debopam.llmcouncil.model.UnavailableModelClient;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -78,6 +81,21 @@ public class ProfileHealthService {
         } catch (NoSuchElementException ex) {
             return new ModelHealthResponse(modelId, null, null, false,
                                            "MODEL_CONFIG_MISSING", ex.getMessage(), List.of());
+        }
+
+        ModelClient client;
+        try {
+            client = modelRegistry.clientForModel(modelId);
+        } catch (NoSuchElementException ex) {
+            return new ModelHealthResponse(modelId, model.provider(), model.providerModelId(), false,
+                                           "MODEL_CLIENT_MISSING", ex.getMessage(), List.of());
+        }
+        if (ClientAvailability.of(client) == ClientAvailability.UNAVAILABLE) {
+            String detail = client instanceof UnavailableModelClient unavailable
+                    ? unavailable.reason()
+                    : "No callable client was built for this model";
+            return new ModelHealthResponse(model.id(), model.provider(), model.providerModelId(), false,
+                                           "CONFIGURATION_ERROR", detail, List.of());
         }
 
         ProviderHealthChecker checker = checkerFor(model.provider());

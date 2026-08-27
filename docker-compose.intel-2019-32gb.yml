@@ -33,7 +33,7 @@ services:
       LLM_COUNCIL_LOCAL_MODEL: ${LLM_COUNCIL_LOCAL_MODEL:-llama3.2:3b}
       LLM_COUNCIL_LOCAL_ALT_MODEL: ${LLM_COUNCIL_LOCAL_ALT_MODEL:-qwen2.5:3b}
       LLM_COUNCIL_LOCAL_THIRD_MODEL: ${LLM_COUNCIL_LOCAL_THIRD_MODEL:-qwen2.5:7b}
-      LLM_COUNCIL_LOCAL_CHAIR_MODEL: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}
+      LLM_COUNCIL_LOCAL_CHAIR_MODEL: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-granite3.3:2b}
       LLM_COUNCIL_LOCAL_VALIDATOR_MODEL: ${LLM_COUNCIL_LOCAL_VALIDATOR_MODEL:-gemma4:12b-it-qat}
     command: >
       sh -c '
@@ -41,9 +41,9 @@ services:
         ollama pull "${LLM_COUNCIL_LOCAL_ALT_MODEL:-qwen2.5:3b}" &&
         ollama pull "${LLM_COUNCIL_LOCAL_THIRD_MODEL:-qwen2.5:7b}" &&
         ollama pull "${LLM_COUNCIL_LOCAL_VALIDATOR_MODEL:-gemma4:12b-it-qat}" &&
-        if [ "${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}" != "${LLM_COUNCIL_LOCAL_MODEL:-llama3.2:3b}" ] &&
-           [ "${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}" != "${LLM_COUNCIL_LOCAL_ALT_MODEL:-qwen2.5:3b}" ]; then
-          ollama pull "${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}";
+        if [ "${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-granite3.3:2b}" != "${LLM_COUNCIL_LOCAL_MODEL:-llama3.2:3b}" ] &&
+           [ "${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-granite3.3:2b}" != "${LLM_COUNCIL_LOCAL_ALT_MODEL:-qwen2.5:3b}" ]; then
+          ollama pull "${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-granite3.3:2b}";
         fi
       '
     restart: "no"
@@ -71,7 +71,7 @@ services:
       LLM_COUNCIL_LOCAL_MODEL: ${LLM_COUNCIL_LOCAL_MODEL:-llama3.2:3b}
       LLM_COUNCIL_LOCAL_ALT_MODEL: ${LLM_COUNCIL_LOCAL_ALT_MODEL:-qwen2.5:3b}
       LLM_COUNCIL_LOCAL_THIRD_MODEL: ${LLM_COUNCIL_LOCAL_THIRD_MODEL:-qwen2.5:7b}
-      LLM_COUNCIL_LOCAL_CHAIR_MODEL: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-llama3.2:3b}
+      LLM_COUNCIL_LOCAL_CHAIR_MODEL: ${LLM_COUNCIL_LOCAL_CHAIR_MODEL:-granite3.3:2b}
       LLM_COUNCIL_LOCAL_VALIDATOR_MODEL: ${LLM_COUNCIL_LOCAL_VALIDATOR_MODEL:-gemma4:12b-it-qat}
       LLM_COUNCIL_LOCAL_VALIDATOR_MODEL_FAMILY: ${LLM_COUNCIL_LOCAL_VALIDATOR_MODEL_FAMILY:-gemma}
       # The Intel profile overrides the built-in Mistral alternate with Qwen;

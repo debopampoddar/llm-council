@@ -5,11 +5,10 @@
 // message before sending.
 //
 // Three states, not two. The obvious binary is runnable/not-runnable, but the
-// API returns a third case: `openai` reports runnable:true with every model at
-// NOT_CHECKED and its warnings array populated, because provider health is
-// deferred to runtime credentials. Painting that green would promise a
-// preflight that never happened — on the profile that costs real money when it
-// fails. It gets its own amber tier.
+// API returns a third case: a configured cloud client reports runnable:true
+// with NOT_CHECKED and a warning because endpoint reachability is deliberately
+// deferred. Missing cloud credentials are a hard preflight failure, so a paid
+// hybrid run cannot begin with a placeholder key.
 
 import { el, pill } from "./dom.js";
 
@@ -73,7 +72,7 @@ function remediation(health, state) {
   }
 
   if (state.tier === "warn") {
-    return "Credentials and endpoint are validated only once the run starts, so a misconfigured key fails mid-run — after billable calls.";
+    return "The required credential is present, but the provider endpoint is not probed until the run begins. Confirm its account and network access before a paid run.";
   }
   return null;
 }
