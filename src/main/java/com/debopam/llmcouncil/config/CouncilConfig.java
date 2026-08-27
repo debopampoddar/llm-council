@@ -38,6 +38,7 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -472,7 +473,9 @@ public class CouncilConfig {
                                                 boolean allowConfiguredFallback) {
         return switch (mp.getProvider().toLowerCase()) {
             case "openai" -> hasRealCredential(openAiApiKey) && openAiChatModel != null
-                             ? new SpringAiModelClient(mp.getId(), ChatClient.create(openAiChatModel))
+                             ? new SpringAiModelClient(mp.getId(), ChatClient.create(openAiChatModel),
+                                 includeOpenAiTemperature(mp.getProviderModelId()),
+                                 usesOpenAiMaxCompletionTokens(mp.getProviderModelId()))
                              : unavailableOrFallback(mp, "OpenAI not available — provide a real "
                                  + "SPRING_AI_OPENAI_API_KEY (current key is a placeholder or missing).",
                                  allowConfiguredFallback);
@@ -493,6 +496,24 @@ public class CouncilConfig {
                            + "Supported: openai, anthropic, gemini, ollama, mock",
                            allowConfiguredFallback);
         };
+    }
+
+    /**
+     * GPT-5 family models use provider-default sampling, and Chat Completions
+     * requires their output limit in {@code max_completion_tokens}. Earlier
+     * OpenAI models continue using the legacy portable option fields.
+     */
+    static boolean includeOpenAiTemperature(String providerModelId) {
+        return !isOpenAiGpt5Family(providerModelId);
+    }
+
+    static boolean usesOpenAiMaxCompletionTokens(String providerModelId) {
+        return isOpenAiGpt5Family(providerModelId);
+    }
+
+    private static boolean isOpenAiGpt5Family(String providerModelId) {
+        return providerModelId != null
+               && providerModelId.trim().toLowerCase(Locale.ROOT).startsWith("gpt-5");
     }
 
     private ModelClient unavailableOrFallback(CouncilProperties.ModelProps mp,

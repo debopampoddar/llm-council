@@ -115,7 +115,7 @@ applicable, model tags, profile, depth, date, and whether the worktree was clean
 - “Reports validator correlation instead of presenting every profile as independent.”
 - “Includes a separate, resumable evaluation harness with direct and same-model
   baselines, blinded mirrored judging, deterministic checks, and human-review support.”
-- “Has 953 deterministic application tests and 50 hermetic evaluation-harness tests
+- “Has 957 deterministic application tests and 50 hermetic evaluation-harness tests
   at the documented commit.”
 
 ## Claims You Must Not Make

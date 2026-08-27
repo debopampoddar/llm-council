@@ -9,6 +9,7 @@ read as if they have the same authority.
 | Goal | Document |
 |---|---|
 | Run the application quickly | [Project README](../README.md#quick-local-demo) |
+| Run OpenAI or Claude locally | [Cloud quick start](cloud-quickstart.md) |
 | Understand the request and stage flow | [Library flow guide](library-flow-guide.md) |
 | Test on an Apple Silicon Mac | [M1 32 GB runbook](testing-m1-32gb.md) |
 | Test on an older Intel Mac | [Intel 2019 32 GB runbook](testing-intel-2019-32gb.md) |

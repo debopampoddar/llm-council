@@ -72,8 +72,9 @@ available on the machine; the advanced workbench is at
 <http://127.0.0.1:8080/config.html>.
 
 For Docker, cloud-provider credentials, API examples, and troubleshooting, use
-the [documentation index](docs/README.md). For a concise demo, screenshot plan,
-and evidence-safe blog outline, use the
+the [documentation index](docs/README.md). To run a low-cost OpenAI or Claude
+example, use the [cloud quick start](docs/cloud-quickstart.md). For a concise
+demo, screenshot plan, and evidence-safe blog outline, use the
 [showcase and blog guide](docs/showcase-and-blog-guide.md).
 
 ## What This Implements
@@ -602,6 +603,37 @@ seconds. Change the operational bounds only when necessary:
 export LLM_COUNCIL_MODEL_PROBE_COOLDOWN_SECONDS=10
 export LLM_COUNCIL_MODEL_PROBE_TIMEOUT_SECONDS=20
 ```
+
+### OCI Generative AI with local Ollama models
+
+Use [`council-user.oci-local.example.yml`](council-user.oci-local.example.yml)
+as the starting point for a mixed council. OCI's Chat Completions endpoint uses
+the OpenAI request format, so the application deliberately reuses its existing
+`openai` adapter; `provider: oci` is not a valid user-configuration value.
+
+The example keeps credentials and the endpoint out of YAML. Set them in the
+environment before startup, substituting the region and exact model id shown in
+your OCI Generative AI console:
+
+```bash
+export SPRING_AI_OPENAI_API_KEY='<oci-generative-ai-api-key>'
+export SPRING_AI_OPENAI_BASE_URL='https://inference.generativeai.<region>.oci.oraclecloud.com/20231130/actions/v1'
+export SPRING_AI_OPENAI_CHAT_COMPLETIONS_PATH='/chat/completions'
+export COUNCIL_OPENAI_CHAIR_MODEL='<oci-chat-completions-model-id>'
+```
+
+This uses the API-key Chat Completions endpoint supported by the application's
+current Spring AI adapter. A browser login or ChatGPT subscription cannot be
+reused as an API credential. After copying or merging the overlay, restart the
+application, inspect configuration issues, and probe the cloud chair once before
+running a council:
+
+```bash
+curl 'localhost:8080/api/council/catalog?include=issues,profiles,providers'
+```
+
+The example is a candidate topology, not a quality claim. Qualify its local
+models first, then run the evaluation harness against the `oci-local` profile.
 
 ### Context window and memory
 
