@@ -12,6 +12,7 @@ import org.springframework.ai.retry.TransientAiException;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -112,6 +113,22 @@ class ModelClientResilienceTest {
 
         assertEquals(ModelFailureCategory.INVALID_MODEL_OUTPUT, failure.category());
         assertTrue(failure.getMessage().contains("empty response"));
+    }
+
+    @Test
+    void springAiAdapterSkipsAnthropicReasoningAndReturnsVisibleText() {
+        ChatModel anthropicThinking = prompt -> new ChatResponse(List.of(
+                new Generation(AssistantMessage.builder()
+                        .content("private reasoning")
+                        .properties(Map.of("signature", "opaque"))
+                        .build()),
+                new Generation(new AssistantMessage("visible answer"))));
+        SpringAiModelClient client = new SpringAiModelClient(
+                "anthropic", ChatClient.create(anthropicThinking), false);
+
+        ModelCallResult result = client.call(request(Duration.ofSeconds(1)));
+
+        assertEquals("visible answer", result.text());
     }
 
     @Test

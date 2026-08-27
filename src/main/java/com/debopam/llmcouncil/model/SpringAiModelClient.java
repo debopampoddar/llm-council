@@ -100,10 +100,7 @@ public class SpringAiModelClient implements ModelClient {
                 }
                 throw ex;
             }
-            String response = chatResponse == null || chatResponse.getResult() == null
-                    || chatResponse.getResult().getOutput() == null
-                    ? ""
-                    : chatResponse.getResult().getOutput().getText();
+            String response = extractVisibleText(chatResponse);
             if (response == null || response.isBlank()) {
                 throw new ModelCallException(
                         ModelFailureCategory.INVALID_MODEL_OUTPUT,
@@ -170,6 +167,29 @@ public class SpringAiModelClient implements ModelClient {
             options.temperature(request.temperature());
         }
         return options.build();
+    }
+
+    /**
+     * Returns only user-visible text from a provider response.
+     *
+     * <p>Anthropic maps reasoning blocks and text blocks into separate Spring AI
+     * generations. {@link ChatResponse#getResult()} returns only the first
+     * generation, which can be a reasoning block (or redacted reasoning) rather
+     * than the answer. Reasoning metadata must never become council evidence or
+     * a user-facing answer, so skip it and retain the text generations.
+     */
+    private String extractVisibleText(ChatResponse chatResponse) {
+        if (chatResponse == null || chatResponse.getResults() == null) {
+            return "";
+        }
+        return chatResponse.getResults().stream()
+                .map(generation -> generation == null ? null : generation.getOutput())
+                .filter(message -> message != null
+                        && !message.getMetadata().containsKey("signature")
+                        && !message.getMetadata().containsKey("data"))
+                .map(message -> message.getText())
+                .filter(text -> text != null && !text.isBlank())
+                .collect(Collectors.joining("\n"));
     }
 
     private String rootCauseMessage(Throwable throwable) {
