@@ -85,10 +85,27 @@ class PromptBudgetIntegrationTest {
         assertTrue(content.length() <= budget.totalChars());
     }
 
+    @Test
+    void reviewPromptCapsStructuredFieldsSoTheJsonEnvelopeCanComplete() {
+        String instructions = systemContent(promptBuilder.reviewMessages("q", List.of(draft("a"))));
+
+        assertTrue(instructions.contains("at most two strengths and two issues"));
+        assertTrue(instructions.contains("no more than 160 characters"));
+        assertTrue(instructions.contains("text outside the JSON object"));
+    }
+
     private String userContent(List<com.debopam.llmcouncil.model.ChatMessage> messages) {
         return messages.stream()
                        .map(com.debopam.llmcouncil.model.ChatMessage::content)
                        .reduce((first, second) -> second)
+                       .orElse("");
+    }
+
+    private String systemContent(List<com.debopam.llmcouncil.model.ChatMessage> messages) {
+        return messages.stream()
+                       .filter(message -> "system".equals(message.role()))
+                       .map(com.debopam.llmcouncil.model.ChatMessage::content)
+                       .findFirst()
                        .orElse("");
     }
 
