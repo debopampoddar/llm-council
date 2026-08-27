@@ -132,12 +132,11 @@ untrusted network.
 | Use cloud providers safely | [Cloud quick start](docs/cloud-quickstart.md) |
 | Configure, observe, test, or extend the utility | [Operations and development guide](docs/operations-and-development-guide.md) |
 | Call the service from another application | [HTTP API reference](docs/http-api-reference.md) |
-| Run on an M1 or Intel Mac with Docker | [Documentation index](docs/README.md) |
+| Run on an M1 or Intel Mac with Docker | [Docker and hardware testing](docs/operations-and-development-guide.md#docker-and-hardware-testing) |
 | Understand security boundaries | [Prompt-injection threat model](docs/prompt-injection-threat-model.md) |
 
-The [documentation index](docs/README.md) is the complete map. It distinguishes
-current operational references from future decision records and historical
-evidence.
+The [documentation index](docs/README.md) is the complete map for the current
+operational references.
 
 ## Evaluation: The Important Claim Boundary
 
