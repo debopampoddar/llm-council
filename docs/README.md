@@ -8,15 +8,18 @@ read as if they have the same authority.
 
 | Goal | Document |
 |---|---|
-| Run the application quickly | [Project README](../README.md#quick-local-demo) |
+| Run the application quickly | [Project README](../README.md#start-here-your-first-local-run) |
 | Run OpenAI or Claude locally | [Cloud quick start](cloud-quickstart.md) |
 | Understand the request and stage flow | [Library flow guide](library-flow-guide.md) |
+| Configure, observe, test, or extend the utility | [Operations and development guide](operations-and-development-guide.md) |
+| Call the service from another application | [HTTP API reference](http-api-reference.md) |
 | Test on an Apple Silicon Mac | [M1 32 GB runbook](testing-m1-32gb.md) |
 | Test on an older Intel Mac | [Intel 2019 32 GB runbook](testing-intel-2019-32gb.md) |
 | Understand security boundaries | [Prompt-injection threat model](prompt-injection-threat-model.md) |
 | Decide whether deployment is safe | [Production-readiness plan](production-readiness-plan.md) |
 | Record a demo or write a blog post | [Showcase and blog guide](showcase-and-blog-guide.md) |
 | Publish the prepared blog article | [Inspectable orchestration blog post](llm-council-inspectable-orchestration-blog.md) |
+| Publish a reader-friendly Medium article | [Medium blog-post draft](medium-blogpost-llm-council.md) |
 | Record the companion walkthrough | [Screen-recording script](llm-council-blog-demo-recording.md) |
 | Understand publishing and licensing decisions | [Licensing and distribution record](licensing-and-distribution.md) |
 
@@ -26,6 +29,9 @@ read as if they have the same authority.
 
 - `README.md` is the public product overview and quickest supported path.
 - `library-flow-guide.md` describes the current application and API flow.
+- `operations-and-development-guide.md` describes runtime setup, credentials,
+  metrics, configuration, verification, Docker paths, and extension boundaries.
+- `http-api-reference.md` is the concise endpoint reference for API consumers.
 - `prompt-injection-threat-model.md` defines the current security claim and its
   explicit limitations.
 - `production-readiness-plan.md` is the authoritative list of deployment gaps and

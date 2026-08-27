@@ -61,16 +61,24 @@ validation posture before the user spends a model call. This prevents a common
 demo failure: presenting a “local” workflow that silently uses a different
 provider or falls back to fabricated output.
 
-![Local QUICK profile selected with healthy model roster](assets/blog/01-local-quick-preflight.png)
+![Local QUICK profile selected with its current health gate](assets/blog/01-local-quick-preflight.jpg)
 
-*Figure 1 — The local `QUICK` policy is selected. The page reports two
-available model roles and explicitly says that this depth has no validation
-stage.*
+*Figure 1 — Fresh capture from the current configuration. The local `QUICK`
+policy shows its two roles, explicitly says that this depth has no validation
+stage, and blocks the run because the separate Granite chair tag is not yet
+installed.*
 
-The screenshot above was captured from commit
-`3b79da91c9b478028a577c571957b58127cdc549` on 2026-08-27 using the local
-Ollama profile. The active policy was `local-quick`; the roster shown was
-`llama3.1:8b` for the member and chair roles.
+The current shipped `local-quick` policy uses `llama3.1:8b` for drafting and
+`granite3.3:8b` for the chair. The point of this capture is not a green badge;
+it is that the application names the exact missing dependency and does not
+silently substitute a correlated chair.
+
+For a focused local/cloud option, `hybrid-openai` and `hybrid-claude` keep local
+drafting (and validation in applicable depths) on the machine while a named cloud
+provider chairs the synthesis. Those profiles make the data boundary explicit:
+the cloud chair receives the prompt and local drafts. Missing credentials block a
+run before a paid request; present credentials remain *unverified* until an
+explicit probe or run confirms the endpoint.
 
 ## An answer should carry its execution context
 
@@ -81,23 +89,12 @@ The requested response had to distinguish confirmed facts from assumptions,
 propose three diagnostic checks, name falsifying evidence, and give a safe
 rollout plan.
 
-The result is intentionally not presented as a benchmark. It is one local,
-`QUICK`-mode example. Its value is that the screen records the protocol that
-produced it: completed stages, stage durations, model-call count, token usage,
-validation status, number of members, and whether sycophancy or dissent could
-actually be measured.
-
-![Completed live QUICK run with stage timeline and trust strip](assets/blog/02-live-quick-result.png)
-
-*Figure 2 — A live local run completed with `GENERATE` and `SYNTHESIZE` stages.
-The trust strip says “not validated,” records one member, and says sycophancy
-was not measured. Those are limits of the selected protocol, not decorative
-metadata.*
-
-This example used three calls, 2,726 reported tokens, and approximately 35.7
-seconds across the two visible stages. Its `QUICK` result is useful for a fast
-first pass; it is not evidence that the diagnosis is correct or that one model
-has cross-checked another.
+The result is intentionally not presented as a benchmark. After the local roles
+are healthy, its value is that the screen records the protocol that produced it:
+completed stages, stage durations, model-call count, token usage, validation
+status, number of members, and whether sycophancy or dissent could actually be
+measured. Capture those values from the exact commit and model tags you publish;
+do not reuse a historical run as evidence for this configuration.
 
 That distinction is intentional. A UI that labels “no validation” is safer than
 one that allows users to infer a review that never happened. Similarly, when a
@@ -187,7 +184,7 @@ engineering tool that asks people to rely on a generated answer.
 ## Try it locally
 
 The quickest path requires Java 25, Maven 3.9 or newer, and a running Ollama
-service. Pull the local tags named in the [project README](../README.md#quick-local-demo),
+service. Pull the local tags named in the [project README](../README.md#start-here-your-first-local-run),
 then run:
 
 ```bash

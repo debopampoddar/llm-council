@@ -3,7 +3,7 @@
 This guide explains the LLM Council implementation in simple terms, then maps that explanation to the Java code.
 
 > **Document role:** current technical reference. New users should first run the
-> [quick local demo](../README.md#quick-local-demo); use this guide when you want
+> [quick local demo](../README.md#start-here-your-first-local-run); use this guide when you want
 > to understand APIs, stages, artifacts, or extension points.
 
 ## Simple Mental Model
@@ -493,7 +493,9 @@ profiles:
       RIGOROUS: openai-rigorous
 ```
 
-Profiles can be local-only, OpenAI-only, Claude-only, Gemini-only, or multi-cloud.
+Profiles can be local-only, provider-only, focused local/cloud hybrid, or
+multi-cloud. Choose the profile before choosing the depth: the profile sets the
+allowed model roles and data boundary; the depth sets how much review occurs.
 
 | Profile | Purpose |
 |---|---|
@@ -502,8 +504,18 @@ Profiles can be local-only, OpenAI-only, Claude-only, Gemini-only, or multi-clou
 | `openai` | OpenAI-only council. Auto-activates from `SPRING_AI_OPENAI_API_KEY`. |
 | `claude` | Anthropic Claude-only council. Auto-activates from `SPRING_AI_ANTHROPIC_API_KEY`. |
 | `gemini` | Google Gemini (Vertex AI) only. Auto-activates from `GOOGLE_CLOUD_PROJECT` plus ADC/service-account credentials. |
+| `hybrid-openai` | Local Ollama members and validator with an OpenAI chair. Local drafts are included in the cloud synthesis request; use only with prompts that may leave the machine. |
+| `hybrid-claude` | Local Ollama members and validator with an Anthropic chair. The same local-draft data-boundary rule applies. |
 | `multi-cloud` | Maximum diversity: Ollama + Gemini + Anthropic/OpenAI. Health preflight reports the providers required by the selected depth. |
 | `mock` | Test-only deterministic profile. Use for smoke tests, not real answers. |
+
+The hybrid profiles are the practical middle ground when a local model does the
+drafting work but a selected cloud model should chair the response. Missing
+OpenAI or Anthropic credentials block the profile before a paid run. A configured
+credential is deliberately reported as *unverified* until you explicitly use the
+bounded provider probe or start a run; it is never presented as confirmed access.
+For setup steps and the exact models required at each depth, see
+[Cloud Quick Start](cloud-quickstart.md#optional-local-drafts-with-a-cloud-chair).
 
 The configuration objects connect as follows:
 
@@ -1050,6 +1062,7 @@ ollama pull llama3.1:8b
 ollama pull mistral:7b
 ollama pull qwen2.5:7b   # third distinct member for local-rigorous
 ollama pull gemma4:12b-it-qat # independent validator for balanced/rigorous
+ollama pull granite3.3:8b # chair; separate from every local drafting family
 ```
 
 ### 3. Run Service

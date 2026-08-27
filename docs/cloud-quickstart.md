@@ -67,6 +67,24 @@ protocol. The same-provider chair and member are intentionally correlated in
 this onboarding configuration; it demonstrates the flow, not independent
 validation.
 
+### Optional: local drafts with a cloud chair
+
+If Ollama is running, select `hybrid-openai` or `hybrid-claude` instead. Those
+profiles keep drafting and validation on your machine, then send the synthesis
+prompt—including the local drafts—to the named cloud provider. The profile is
+blocked before the run if its OpenAI or Anthropic credential is absent.
+
+For the local `QUICK` hybrid path, pull both local roles first:
+
+```bash
+ollama pull llama3.1:8b
+ollama pull granite3.3:8b
+```
+
+Use this only for prompts whose context you are prepared to send to that cloud
+provider. `BALANCED` additionally needs `mistral:7b` and `gemma4:12b-it-qat`;
+`RIGOROUS` also needs `qwen2.5:7b`.
+
 ## 4. Verify access before a council run
 
 The configuration probe makes one bounded, billable provider call. Run it once
@@ -139,5 +157,5 @@ output.
 
 Use the [showcase and blog guide](showcase-and-blog-guide.md) for a five-minute
 demo and evidence-safe tutorial outline. Use the [configuration workbench]
-(../README.md#configuration-api) to inspect or safely customize model profiles
+(http-api-reference.md#advanced-configuration-api) to inspect or safely customize model profiles
 without putting credentials in configuration files.

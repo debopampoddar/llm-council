@@ -20,7 +20,9 @@ council has been proven better than a direct model.
 1. Use a clean worktree and record the application commit and date.
 2. Start the app with loopback binding. Do not expose it to a network for the
    recording.
-3. Confirm Ollama is running and required tags are installed.
+3. Confirm Ollama is running and required tags are installed. For local `QUICK`,
+   install both `llama3.1:8b` and `granite3.3:8b`; the chair intentionally uses
+   a different family from the local drafter.
 4. Close unrelated applications and disable notifications.
 5. Use synthetic, non-sensitive prompts only. Do not enter cloud credentials in
    the UI or show environment variables.
@@ -37,7 +39,8 @@ council has been proven better than a direct model.
 | 1:10–1:35 | Show the running timeline. If the run takes longer, cut only between complete states and add an on-screen “elapsed time omitted” caption. | “Stages are persisted as the protocol runs. A cancellation request stops at a stage boundary rather than pretending an in-flight model call never existed.” |
 | 1:35–2:05 | Show the completed timeline, then the trust strip: validation, member count, sycophancy, tokens, calls, and latency. | “The final answer carries its execution context. No validation and no measured sycophancy are limits of this run, not positive claims.” |
 | 2:05–2:30 | Expand generation/synthesis evidence once. Point to warnings, partial state, or preserved dissent if present. | “The useful artifact is the answer plus the audit trail: stages, warnings, dissent, and recovery state.” |
-| 2:30–3:10 | Open Guided setup, skip to choices, choose Local only, then show Environment. | “The advisor proposes only models that this machine can actually run. A language model may help express intent, but deterministic Java builds the configuration.” |
+| 2:30–2:50 | Switch briefly to `hybrid-openai` or `hybrid-claude`; point out the local drafter, named cloud chair, and unverified provider state. Do not run it in this recording. | “A hybrid profile keeps drafting local and sends the prompt plus local drafts to a named cloud chair. The cloud boundary is a conscious choice, not a silent fallback.” |
+| 2:50–3:10 | Open Guided setup, skip to choices, choose Local only, then show Environment. | “The advisor proposes only models that this machine can actually run. A language model may help express intent, but deterministic Java builds the configuration.” |
 | 3:10–3:40 | Show the local-only proposal. Highlight members, chair, validator, and quorum. Do not click confirmation/save. | “Nothing is written until the proposal has been reviewed and explicitly confirmed.” |
 | 3:40–4:20 | Return to the result or show the article’s troubleshooting table. | “A blocked model, partial run, no validation label, or missing dissent signal should be interpreted—not hidden by a polished final answer.” |
 | 4:20–4:50 | Show the repository limitation/evaluation links or a simple end card. | “This project does not claim that a council is proven to beat a strong direct model. New quality claims require independent, blinded evidence.” |
@@ -52,14 +55,16 @@ checks in order, what evidence would falsify your diagnosis, and a safe rollout
 plan. Separate confirmed facts from assumptions.
 ```
 
-## Captures already prepared for the article
+## Current captures for the article
+
+See [capture metadata](assets/blog/CAPTURE-METADATA.md) before publishing. The
+images document expected preflight states; they do not show a completed run.
 
 | Asset | Purpose | Notes |
 |---|---|---|
-| `assets/blog/01-local-quick-preflight.png` | Profile, depth, health gate, roster | Local `QUICK`; no validation is visible. |
-| `assets/blog/02-live-quick-result.png` | Completed run, stages, trust strip | Real local run; treat as an observability example, not a benchmark. |
-| `assets/blog/03-setup-environment.png` | Environment-aware setup | Shows installed local models and provider-state semantics. |
-| `assets/blog/04-configuration-proposal.png` | Local-only configuration preview | Shows roles and quorums before any confirmation/write. |
+| `assets/blog/01-local-quick-preflight.jpg` | Current local health gate | Local `QUICK`; Granite is intentionally shown as missing, so no run is implied. |
+| `assets/blog/05-multi-cloud-gemini-preflight.jpg` | Current cloud prerequisite gate | `multi-cloud` is blocked until Gemini is configured; no cloud request was made. |
+| `assets/blog/06-hybrid-openai-profile.jpg` | Current focused-hybrid overview | Shows the local drafter, cloud chair, and unverified-provider wording. |
 
 ## Final publication checks
 
