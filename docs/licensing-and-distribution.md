@@ -3,8 +3,8 @@
 Plan status: **deferred pending a final legal/licensing decision. Do not execute
 the migration steps in this document yet.**
 
-> **Current legal/build state, checked 2026-08-20:** the repository is still
-> version `2.0.0`, groupId `com.debopam`, and carries the GPL-3.0 license text.
+> **Current legal/build state, checked 2026-08-27:** the repository is version
+> `2.0.2`, groupId `com.debopam`, and carries the GPL-3.0 license text.
 > The AGPL/commercial model, `io.contextruntime` coordinates, Maven Central, CLA,
 > NOTICE, and SPDX work below are decisions for a future 2.1.0 release; they are
 > not claims about the code users receive today. The separate evaluation
@@ -62,7 +62,7 @@ coherent arrangement.
 
 ### What relicensing can and cannot do
 
-- **v2.0.0 and earlier remain GPL-3.0 permanently.** GPL grants are irrevocable
+- **v2.0.2 and earlier remain GPL-3.0 permanently.** GPL grants are irrevocable
   (§2). Anyone who already has that code keeps the right to use, modify, and
   redistribute it. Making the repository private would not have changed this.
 - **A future version can use different terms only if the necessary rights are
@@ -255,7 +255,7 @@ artifact goes to Central while anything proprietary would not.
 - `LICENSE` — replace GPL-3.0 text with **AGPL-3.0** text verbatim.
 - `LICENSING.md` — new. Plain English: AGPL by default, what §13 requires of a
   network deployment, that a commercial licence removes those obligations, and
-  the contact address. State plainly that **v2.0.0 and earlier are GPL-3.0** and
+  the contact address. State plainly that **v2.0.2 and earlier are GPL-3.0** and
   that the change applies from v2.1.0.
 - `NOTICE` — new. Copyright line for ContextRuntime LLC.
 

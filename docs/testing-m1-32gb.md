@@ -115,7 +115,7 @@ Expected result:
 
 ```text
 BUILD SUCCESS
-Tests run: 953, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 962, Failures: 0, Errors: 0, Skipped: 0
 ```
 
 If Java 25 is not installed, install it or run only the Docker build path.

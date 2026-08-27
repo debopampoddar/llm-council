@@ -424,7 +424,7 @@ export GOOGLE_CLOUD_PROJECT=my-project-id
 export GOOGLE_CLOUD_LOCATION=us-central1  # optional, defaults to us-central1
 
 # Start the application — Gemini auto-activates
-java -jar target/llm-council-2.0.1.jar
+java -jar target/llm-council-2.0.2.jar
 ```
 
 **Option 2: Service account JSON** — for CI/CD and production:
@@ -466,7 +466,7 @@ For maximum model diversity, set multiple credentials:
 export GOOGLE_CLOUD_PROJECT=my-project
 export SPRING_AI_ANTHROPIC_API_KEY=sk-ant-...
 
-java -jar target/llm-council-2.0.1.jar
+java -jar target/llm-council-2.0.2.jar
 ```
 
 ```json
@@ -1055,7 +1055,7 @@ ollama pull gemma4:12b-it-qat # independent validator for balanced/rigorous
 ### 3. Run Service
 
 ```bash
-java -jar target/llm-council-2.0.1.jar
+java -jar target/llm-council-2.0.2.jar
 ```
 
 ### 3a. Or Run With Docker Compose

@@ -32,7 +32,7 @@ several model calls behind a voting prompt.
 | Area | Status |
 |---|---|
 | Personal/local use | Ready for controlled use on loopback |
-| Deterministic build | 953 tests plus repository YAML/link/provider checks |
+| Deterministic build | 962 tests plus repository YAML/link/provider checks |
 | Local Ollama | QUICK, BALANCED, and RIGOROUS profiles are implemented |
 | Cloud providers | OpenAI, Anthropic, Gemini, and multi-cloud profiles are implemented; repeatable live contract suites remain open |
 | Security boundary | Layered prompt/data separation and bounded recovery are implemented; this is not universal prompt-injection prevention |
@@ -62,7 +62,7 @@ ollama pull qwen2.5:7b
 ollama pull gemma4:12b-it-qat
 
 mvn --batch-mode --no-transfer-progress clean verify
-java -jar target/llm-council-2.0.1.jar
+java -jar target/llm-council-2.0.2.jar
 ```
 
 Open <http://127.0.0.1:8080>, choose `local` and `QUICK`, and ask a question.
@@ -158,7 +158,7 @@ demo, screenshot plan, and evidence-safe blog outline, use the
 - Credentials are structurally outside the request and overlay contracts; credential fields and credential-shaped values are refused without being echoed.
 
 ### Testing
-- 953 deterministic JUnit tests: policy resolution, confidence parsing, validation
+- 962 deterministic JUnit tests: policy resolution, confidence parsing, validation
   evidence consistency, quorum, multi-envelope and compact local-model review output,
   exact review coverage and targeted recovery, partial-state reporting, KS convergence
   math, sycophancy detection at the shipped thresholds, council-composition warnings,
@@ -497,7 +497,7 @@ be the main artifact.
 ## Run
 
 ```bash
-java -jar target/llm-council-2.0.1.jar
+java -jar target/llm-council-2.0.2.jar
 ```
 
 Then open **<http://localhost:8080/>** for the web UI.
@@ -604,37 +604,6 @@ export LLM_COUNCIL_MODEL_PROBE_COOLDOWN_SECONDS=10
 export LLM_COUNCIL_MODEL_PROBE_TIMEOUT_SECONDS=20
 ```
 
-### OCI Generative AI with local Ollama models
-
-Use [`council-user.oci-local.example.yml`](council-user.oci-local.example.yml)
-as the starting point for a mixed council. OCI's Chat Completions endpoint uses
-the OpenAI request format, so the application deliberately reuses its existing
-`openai` adapter; `provider: oci` is not a valid user-configuration value.
-
-The example keeps credentials and the endpoint out of YAML. Set them in the
-environment before startup, substituting the region and exact model id shown in
-your OCI Generative AI console:
-
-```bash
-export SPRING_AI_OPENAI_API_KEY='<oci-generative-ai-api-key>'
-export SPRING_AI_OPENAI_BASE_URL='https://inference.generativeai.<region>.oci.oraclecloud.com/20231130/actions/v1'
-export SPRING_AI_OPENAI_CHAT_COMPLETIONS_PATH='/chat/completions'
-export COUNCIL_OPENAI_CHAIR_MODEL='<oci-chat-completions-model-id>'
-```
-
-This uses the API-key Chat Completions endpoint supported by the application's
-current Spring AI adapter. A browser login or ChatGPT subscription cannot be
-reused as an API credential. After copying or merging the overlay, restart the
-application, inspect configuration issues, and probe the cloud chair once before
-running a council:
-
-```bash
-curl 'localhost:8080/api/council/catalog?include=issues,profiles,providers'
-```
-
-The example is a candidate topology, not a quality claim. Qualify its local
-models first, then run the evaluation harness against the `oci-local` profile.
-
 ### Context window and memory
 
 The council's chair must hold every draft, review, and debate turn its members
@@ -654,7 +623,7 @@ The startup log states the numbers for every policy that does not.
 For mock smoke testing:
 
 ```bash
-java -jar target/llm-council-2.0.1.jar
+java -jar target/llm-council-2.0.2.jar
 ```
 
 Then create a session with `profileId: "mock"`.

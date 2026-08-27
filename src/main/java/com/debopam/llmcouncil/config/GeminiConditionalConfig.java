@@ -71,7 +71,7 @@ public class GeminiConditionalConfig {
                 .temperature(temperature)
                 .build();
 
-        // Use builder to match Spring AI 1.0.0's constructor requirements
+        // Use the builder so provider-constructor details remain encapsulated.
         var builder = VertexAiGeminiChatModel.builder()
                 .vertexAI(vertexAi)
                 .defaultOptions(options)

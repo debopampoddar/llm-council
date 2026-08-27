@@ -111,7 +111,7 @@ public class SpringAiModelClient implements ModelClient {
 
             // Extract token usage from Spring AI metadata if available.
             // Token tracking is best-effort; not all providers report usage.
-            // Spring AI 1.0.0 Usage interface returns Integer; we widen to Long
+            // Spring AI's Usage interface returns Integer; we widen to Long
             // for consistency with ModelCallResult's nullable Long fields.
             Long promptTokens = null;
             Long completionTokens = null;
