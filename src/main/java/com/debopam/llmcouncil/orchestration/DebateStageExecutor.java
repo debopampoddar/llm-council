@@ -215,10 +215,10 @@ public class DebateStageExecutor implements StageExecutor {
                     ctx.debateRounds(), round, model.councilRole(), budget);
             PromptBudgets.record(ctx, events, stage(), modelId, budget);
 
-            ModelCallResult result = ctx.executionRegistry(registry).clientForModel(modelId).call(
+            ModelCallResult result = ModelCallDeadline.call(ctx.executionRegistry(registry).clientForModel(modelId),
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                                          model.providerModelId(), messages,
-                                         model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()));
+                                         model.defaultOutputTokens(), model.temperature(), false, model.defaultTimeout()), model);
             ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
 
             TrustBoundaryGuard.Assessment trust = TrustBoundaryGuard.assess(

@@ -186,7 +186,8 @@ public class ValidateStageExecutor implements StageExecutor {
 
     private ModelCallResult callAndRecord(
             CouncilContext ctx, ModelProfile validator, ModelCallRequest request) {
-        ModelCallResult result = ctx.executionRegistry(registry).clientForModel(validator.id()).call(request);
+        ModelCallResult result = ModelCallDeadline.call(
+                ctx.executionRegistry(registry).clientForModel(validator.id()), request, validator);
         ctx.recordUsage(validator.id(), stage(), result.promptTokens(),
                         result.completionTokens(), result.latency());
         return result;

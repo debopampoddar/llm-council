@@ -112,10 +112,10 @@ public class GenerationStageExecutor implements StageExecutor {
 
     private ModelCallResult callAndRecord(
             CouncilContext ctx, ModelProfile model, List<ChatMessage> messages) {
-        ModelCallResult result = ctx.executionRegistry(registry).clientForModel(model.id()).call(
+        ModelCallResult result = ModelCallDeadline.call(ctx.executionRegistry(registry).clientForModel(model.id()),
                 new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                         model.providerModelId(), messages, model.defaultOutputTokens(),
-                        model.temperature(), false, model.defaultTimeout()));
+                        model.temperature(), false, model.defaultTimeout()), model);
         ctx.recordUsage(model.id(), stage(), result.promptTokens(),
                 result.completionTokens(), result.latency());
         return result;
