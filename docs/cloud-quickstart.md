@@ -155,7 +155,6 @@ output.
 
 ## Next steps
 
-Use the [showcase and blog guide](showcase-and-blog-guide.md) for a five-minute
-demo and evidence-safe tutorial outline. Use the [configuration workbench]
-(http-api-reference.md#advanced-configuration-api) to inspect or safely customize model profiles
-without putting credentials in configuration files.
+Use the [configuration workbench](http-api-reference.md#advanced-configuration-api)
+to inspect or safely customize model profiles without putting credentials in
+configuration files.

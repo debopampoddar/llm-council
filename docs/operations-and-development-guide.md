@@ -21,6 +21,32 @@ PATH=/Library/Java/JavaVirtualMachines/jdk-25.jdk/Contents/Home/bin:$PATH \
 mvn test
 ```
 
+## Durable SQLite Persistence
+
+The default `memory` mode creates no database. Chats, council sessions, and
+event history are kept only for the life of the process. To keep them across
+restarts, enable the built-in JDBC store with SQLite. SQLite needs no separate
+server or port; the application creates and migrates the database schema.
+
+Choose a private directory, then set these values before starting the service:
+
+```bash
+mkdir -p /absolute/path/to/llm-council
+export LLM_COUNCIL_PERSISTENCE=jdbc
+export LLM_COUNCIL_JDBC_URL='jdbc:sqlite:/absolute/path/to/llm-council/council.db'
+
+java -jar target/llm-council-2.0.2.jar
+```
+
+This persists council sessions and events, chat sessions and turns, and chat
+event sequence history. Run artifacts remain filesystem-based under
+`LLM_COUNCIL_ARTIFACT_PATH` (default: `~/.llm-council/runs`), whether persistence
+is `memory` or `jdbc`.
+
+The SQLite file can contain prompts and generated results. Keep its directory
+private; the application does not provide encryption at rest. To use H2 instead,
+set `LLM_COUNCIL_JDBC_URL` to a `jdbc:h2:file:...` URL.
+
 ## Provider Credentials
 
 Credentials belong in the environment, never in the repository, a command
@@ -101,9 +127,7 @@ reported as a warning.
 
 Larger context windows consume more KV cache. On a constrained machine, reduce
 the context window or output-token limits and use fewer members so the chair can
-still see the evidence that matters. The detailed local-machine trade-offs are
-in the [M1 32 GB runbook](testing-m1-32gb.md) and
-[Intel 32 GB runbook](testing-intel-2019-32gb.md).
+still see the evidence that matters.
 
 ## Observability
 
@@ -148,18 +172,18 @@ live provider calls or qualify model quality.
 
 ## Docker And Hardware Testing
 
-The repository has dedicated Compose files and runbooks for local Mac testing.
-Use the runbook that matches the machine instead of copying a random Compose
-command:
+The repository has dedicated Compose files for local Mac testing. Choose the
+file that matches the machine:
 
-| Environment | Guide |
+| Environment | Compose file |
 |---|---|
-| Apple Silicon, 32 GB | [M1 32 GB runbook](testing-m1-32gb.md) |
-| 2019 Intel MacBook Pro, 32 GB | [Intel 32 GB runbook](testing-intel-2019-32gb.md) |
+| Apple Silicon, 32 GB | `docker-compose.m1-32gb.yml` |
+| 2019 Intel MacBook Pro, 32 GB | `docker-compose.intel-2019-32gb.yml` |
 
 The full-stack Compose files run both Ollama and the Java service. The app-only
-variant expects a native or separately managed Ollama runtime. The runbooks
-document the matching base URLs, model tags, validation steps, and teardown.
+variant expects a native or separately managed Ollama runtime. Review the
+selected Compose file before starting it: model tags, resource requirements,
+and network binding are part of its configuration.
 
 ## Package Layout And Extension Points
 
@@ -190,6 +214,4 @@ publish requires a `write:packages` token in the developer's external Maven
 settings, never in this repository.
 
 The current license is GNU GPL version 3. The repository's
-[LICENSE](../LICENSE) is authoritative. The
-[licensing and distribution record](licensing-and-distribution.md) discusses
-future options; it does not change the current license.
+[LICENSE](../LICENSE) is authoritative.

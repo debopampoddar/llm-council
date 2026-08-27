@@ -40,6 +40,10 @@ mvn --batch-mode --no-transfer-progress clean verify
 java -jar target/llm-council-2.0.2.jar
 ```
 
+Want chats, sessions, and event history to survive a restart? Enable optional
+[SQLite persistence](docs/operations-and-development-guide.md#durable-sqlite-persistence)
+before starting the application.
+
 Open <http://127.0.0.1:8080>, choose **local** and **QUICK**, and ask one
 bounded question. A useful first prompt is:
 
@@ -130,8 +134,6 @@ untrusted network.
 | Call the service from another application | [HTTP API reference](docs/http-api-reference.md) |
 | Run on an M1 or Intel Mac with Docker | [Documentation index](docs/README.md) |
 | Understand security boundaries | [Prompt-injection threat model](docs/prompt-injection-threat-model.md) |
-| Decide whether a shared deployment is appropriate | [Production-readiness plan](docs/production-readiness-plan.md) |
-| See a real run and a walkthrough script | [Showcase and blog guide](docs/showcase-and-blog-guide.md) |
 
 The [documentation index](docs/README.md) is the complete map. It distinguishes
 current operational references from future decision records and historical

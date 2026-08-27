@@ -1,8 +1,6 @@
 # Documentation Guide
 
-Use this page to choose the right document. The repository contains both current
-operational references and historical implementation records; they should not be
-read as if they have the same authority.
+Use this page to choose the right operational document.
 
 ## Start Here
 
@@ -10,18 +8,11 @@ read as if they have the same authority.
 |---|---|
 | Run the application quickly | [Project README](../README.md#start-here-your-first-local-run) |
 | Run OpenAI or Claude locally | [Cloud quick start](cloud-quickstart.md) |
+| Persist chats and sessions locally | [SQLite persistence](operations-and-development-guide.md#durable-sqlite-persistence) |
 | Understand the request and stage flow | [Library flow guide](library-flow-guide.md) |
 | Configure, observe, test, or extend the utility | [Operations and development guide](operations-and-development-guide.md) |
 | Call the service from another application | [HTTP API reference](http-api-reference.md) |
-| Test on an Apple Silicon Mac | [M1 32 GB runbook](testing-m1-32gb.md) |
-| Test on an older Intel Mac | [Intel 2019 32 GB runbook](testing-intel-2019-32gb.md) |
 | Understand security boundaries | [Prompt-injection threat model](prompt-injection-threat-model.md) |
-| Decide whether deployment is safe | [Production-readiness plan](production-readiness-plan.md) |
-| Record a demo or write a blog post | [Showcase and blog guide](showcase-and-blog-guide.md) |
-| Publish the prepared blog article | [Inspectable orchestration blog post](llm-council-inspectable-orchestration-blog.md) |
-| Publish a reader-friendly Medium article | [Medium blog-post draft](medium-blogpost-llm-council.md) |
-| Record the companion walkthrough | [Screen-recording script](llm-council-blog-demo-recording.md) |
-| Understand publishing and licensing decisions | [Licensing and distribution record](licensing-and-distribution.md) |
 
 ## Document Authority
 
@@ -34,17 +25,6 @@ read as if they have the same authority.
 - `http-api-reference.md` is the concise endpoint reference for API consumers.
 - `prompt-injection-threat-model.md` defines the current security claim and its
   explicit limitations.
-- `production-readiness-plan.md` is the authoritative list of deployment gaps and
-  release gates.
-- The two hardware runbooks are current operational guides for their named
-  machines.
-
-### Deferred decision record
-
-- `licensing-and-distribution.md` is a decision record for a possible future
-  licensing/distribution model. The repository's current `LICENSE` file remains
-  authoritative.
-
 ## Related Project
 
 Quality and efficiency claims belong in the independent

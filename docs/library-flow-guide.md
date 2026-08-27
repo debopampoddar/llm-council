@@ -1085,10 +1085,8 @@ For a 2019 Intel MacBook Pro with 32 GB memory:
 docker compose -f docker-compose.intel-2019-32gb.yml up --build
 ```
 
-Detailed runbooks:
-
-- [Testing on M1 Mac with 32 GB memory](testing-m1-32gb.md)
-- [Testing on 2019 Intel MacBook Pro with 32 GB memory](testing-intel-2019-32gb.md)
+Choose the Compose file that matches the machine. Each file carries its own
+model defaults and runtime settings.
 
 ### 4. Create Session
 
@@ -1318,7 +1316,6 @@ Add a stage:
   correctly reports `CANCELLED`.
 - Repair calls for wholly unparseable validation/advisor output, complete
   operational dashboards/alerts, browser E2E, and repeatable cloud-provider
-  contract tests remain open; see
-  [production-readiness-plan.md](production-readiness-plan.md).
+  contract tests remain open.
 
 These are deliberate next steps, not reasons to reintroduce user-selected protocol IDs or silent mock fallback.
