@@ -59,7 +59,7 @@ public class GenerationStageExecutor implements StageExecutor {
     }
 
     private Draft callModel(CouncilContext ctx, String modelId) {
-        ModelProfile model = registry.model(modelId);
+        ModelProfile model = ctx.executionRegistry(registry).model(modelId);
         // Log the council role so operators can verify adversarial assignment.
         log.debug("Generating draft for model {} with council role {}", modelId, model.councilRole());
         events.publish(ctx.session().id(), stage().name(), "MODEL_CALL_STARTED", modelId,
@@ -112,7 +112,7 @@ public class GenerationStageExecutor implements StageExecutor {
 
     private ModelCallResult callAndRecord(
             CouncilContext ctx, ModelProfile model, List<ChatMessage> messages) {
-        ModelCallResult result = registry.clientForModel(model.id()).call(
+        ModelCallResult result = ctx.executionRegistry(registry).clientForModel(model.id()).call(
                 new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                         model.providerModelId(), messages, model.defaultOutputTokens(),
                         model.temperature(), false, model.defaultTimeout()));

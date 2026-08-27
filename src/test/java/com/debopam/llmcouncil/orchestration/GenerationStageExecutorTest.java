@@ -1,6 +1,7 @@
 package com.debopam.llmcouncil.orchestration;
 
 import com.debopam.llmcouncil.config.TestModels;
+import com.debopam.llmcouncil.config.TestCatalogs;
 import com.debopam.llmcouncil.api.dto.CouncilRunResponse;
 import com.debopam.llmcouncil.application.DefaultEventPublisher;
 import com.debopam.llmcouncil.domain.CouncilSession;
@@ -88,6 +89,37 @@ class GenerationStageExecutorTest {
         assertFalse(promptData.get(1).contains("BREACHED"),
                 "the rejected payload must not be resent during recovery");
         assertEquals(2, context.usage().size(), "both attempts must be accounted for");
+    }
+
+    @Test
+    void usesTheRunPinnedRegistryForAUserDefinedModel() {
+        ModelProfile userModel = TestModels.model("user-cloud-member").provider("openai")
+                .providerModelId("user-cloud-model").outputTokens(100)
+                .temperature(1.0).timeout(Duration.ofSeconds(1))
+                .role(ModelRole.MEMBER).family("user-cloud").build();
+        ModelRegistry startupRegistry = TestModels.registry();
+        ModelRegistry runRegistry = TestModels.registry(List.of(userModel),
+                Map.of("user-cloud-member", request ->
+                        new com.debopam.llmcouncil.model.ModelCallResult("A bounded user-model draft.")));
+        GenerationStageExecutor executor = new GenerationStageExecutor(
+                startupRegistry, new PromptBuilder(), new DefaultEventPublisher(), new NoopArtifactStore());
+        CouncilPolicy policy = TestModels.policy("user-policy").protocol("quick")
+                .members("user-cloud-member").chair("user-cloud-member").build();
+        CouncilSession session = CouncilSession.create("user-session", "question", null,
+                DepthMode.QUICK, "user-profile");
+        CouncilProfile profile = TestModels.profile("user-profile").displayName("User profile")
+                .defaultDepth(DepthMode.QUICK).depth(DepthMode.QUICK, policy.id()).build();
+        ProtocolDefinition protocol = new ProtocolDefinition("quick", "quick",
+                List.of(StageType.GENERATE), Map.of());
+        CouncilContext context = new CouncilContext(session, profile, policy, protocol,
+                TestCatalogs.catalog(runRegistry, Map.of(profile.id(), profile),
+                        Map.of(policy.id(), policy), Map.of(protocol.id(), protocol)));
+
+        executor.execute(context, ProtocolStageOptions.empty());
+
+        assertFalse(context.isTerminal());
+        assertEquals(1, context.drafts().size());
+        assertEquals("user-cloud-member", context.drafts().getFirst().modelId());
     }
 
     private CouncilContext contextWithPolicy(CouncilPolicy policy) {

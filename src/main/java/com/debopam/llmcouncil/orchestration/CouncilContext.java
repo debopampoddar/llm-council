@@ -136,6 +136,28 @@ public class CouncilContext {
         return catalog.modelRegistry();
     }
 
+    /**
+     * Resolve the registry pinned to this run, with a legacy fallback for unit
+     * tests that construct a context directly without a catalog snapshot.
+     *
+     * <p>Production stage executors must use this method rather than their
+     * injected startup registry. A user overlay can add or override models, and
+     * those model bindings exist only in the catalog snapshot resolved for the
+     * run.</p>
+     *
+     * @param fallback startup registry used only by direct unit-test contexts
+     * @return the run-pinned registry when available, otherwise {@code fallback}
+     */
+    public ModelRegistry executionRegistry(ModelRegistry fallback) {
+        if (catalog != null) {
+            return catalog.modelRegistry();
+        }
+        if (fallback == null) {
+            throw new IllegalArgumentException("A fallback registry is required for an unbound context.");
+        }
+        return fallback;
+    }
+
     /** @return The council profile (members + chair). */
     public CouncilProfile profile() { return profile; }
 
