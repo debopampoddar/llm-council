@@ -46,10 +46,10 @@ public class ReviewStageExecutor implements StageExecutor {
                                                      ctx.drafts(), budget);
                 PromptBudgets.record(ctx, events, stage(), modelId, budget);
 
-                ModelCallResult result = ctx.executionRegistry(registry).clientForModel(modelId).call(
+                ModelCallResult result = ModelCallDeadline.call(ctx.executionRegistry(registry).clientForModel(modelId),
                         new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                                              model.providerModelId(), messages,
-                                             model.defaultOutputTokens(), model.temperature(), true, model.defaultTimeout()));
+                                             model.defaultOutputTokens(), model.temperature(), true, model.defaultTimeout()), model);
                 ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
                 artifactStore.writeText(ctx.session().id(), "raw/review-" + modelId + ".json", result.text());
                 StructuredOutputParser.ReviewEnvelope envelope = parser.parseReviews(result.text());
@@ -106,10 +106,10 @@ public class ReviewStageExecutor implements StageExecutor {
                     ctx.session().question(), TrustBoundaryGuard.sanitize(ctx.session().context()),
                     missingDrafts, budget);
             PromptBudgets.record(ctx, events, stage(), modelId, budget);
-            ModelCallResult result = ctx.executionRegistry(registry).clientForModel(modelId).call(
+            ModelCallResult result = ModelCallDeadline.call(ctx.executionRegistry(registry).clientForModel(modelId),
                     new ModelCallRequest(ctx.session().id(), stage(), model.id(),
                             model.providerModelId(), messages, model.defaultOutputTokens(),
-                            model.temperature(), true, model.defaultTimeout()));
+                            model.temperature(), true, model.defaultTimeout()), model);
             ctx.recordUsage(model.id(), stage(), result.promptTokens(), result.completionTokens(), result.latency());
             artifactStore.writeText(ctx.session().id(),
                     "raw/review-recovery-" + modelId + "-attempt-1.json", result.text());

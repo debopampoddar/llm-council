@@ -116,6 +116,13 @@ The response contains the final answer, stage outcomes, warnings, usage, and
 latency. Artifacts are stored locally under `~/.llm-council/runs/` unless you
 override `LLM_COUNCIL_ARTIFACT_PATH`.
 
+Every stage honours the model profile's timeout. If a provider does not return
+before that deadline, the run records a typed timeout rather than remaining
+stuck. Likewise, a blank provider response is rejected as invalid output rather
+than being counted as a completed draft. For a custom reasoning-model profile,
+increase its output-token budget and rerun if it consistently returns blank
+output.
+
 ## 6. Cost and safety guardrails
 
 - Start with `QUICK`; BALANCED and RIGOROUS make multiple provider calls.

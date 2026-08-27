@@ -104,10 +104,10 @@ public class SynthesisStageExecutor implements StageExecutor {
 
     private ModelCallResult callAndRecord(
             CouncilContext ctx, ModelProfile chair, List<ChatMessage> messages) {
-        ModelCallResult result = ctx.executionRegistry(registry).clientForModel(chair.id()).call(
+        ModelCallResult result = ModelCallDeadline.call(ctx.executionRegistry(registry).clientForModel(chair.id()),
                 new ModelCallRequest(ctx.session().id(), stage(), chair.id(),
                         chair.providerModelId(), messages, chair.defaultOutputTokens(),
-                        chair.temperature(), false, chair.defaultTimeout()));
+                        chair.temperature(), false, chair.defaultTimeout()), chair);
         ctx.recordUsage(chair.id(), stage(), result.promptTokens(),
                 result.completionTokens(), result.latency());
         return result;

@@ -104,6 +104,13 @@ public class SpringAiModelClient implements ModelClient {
                     || chatResponse.getResult().getOutput() == null
                     ? ""
                     : chatResponse.getResult().getOutput().getText();
+            if (response == null || response.isBlank()) {
+                throw new ModelCallException(
+                        ModelFailureCategory.INVALID_MODEL_OUTPUT,
+                        null,
+                        request.providerModelId(),
+                        "Model '" + modelId + "' returned an empty response");
+            }
 
             // Extract token usage from Spring AI metadata if available.
             // Token tracking is best-effort; not all providers report usage.
@@ -128,6 +135,9 @@ public class SpringAiModelClient implements ModelClient {
                                        promptTokens, completionTokens,
                                        Duration.between(start, Instant.now()));
         } catch (Exception ex) {
+            if (ex instanceof ModelCallException failure) {
+                throw failure;
+            }
             if (ex instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }

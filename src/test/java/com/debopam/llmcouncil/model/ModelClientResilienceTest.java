@@ -102,6 +102,19 @@ class ModelClientResilienceTest {
     }
 
     @Test
+    void springAiAdapterRejectsAnEmptyProviderResponse() {
+        ChatModel empty = prompt -> new ChatResponse(
+                List.of(new Generation(new AssistantMessage("   "))));
+        SpringAiModelClient client = new SpringAiModelClient("empty", ChatClient.create(empty));
+
+        ModelCallException failure = assertThrows(ModelCallException.class,
+                () -> client.call(request(Duration.ofSeconds(1))));
+
+        assertEquals(ModelFailureCategory.INVALID_MODEL_OUTPUT, failure.category());
+        assertTrue(failure.getMessage().contains("empty response"));
+    }
+
+    @Test
     void springAiTransientFailuresRemainRetryable() {
         ChatModel unavailable = prompt -> {
             throw new TransientAiException("provider overloaded");
