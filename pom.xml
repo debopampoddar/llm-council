@@ -136,6 +136,36 @@
           <parameters>true</parameters>
         </configuration>
       </plugin>
+      <!--
+        Coverage is reported, never enforced. There is deliberately no `check`
+        goal and no minimum ratio: a threshold invites writing tests that execute
+        code without asserting anything about it, which is the opposite of the
+        positive-control discipline the suite is built on. The report exists to
+        answer "is this class tested at all", which is how the two prompt-injection
+        guards were found untested.
+
+        Report lands at target/site/jacoco/index.html after `mvn verify`.
+      -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>0.8.14</version>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
 </project>

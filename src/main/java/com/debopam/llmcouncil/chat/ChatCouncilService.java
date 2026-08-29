@@ -5,6 +5,7 @@ import com.debopam.llmcouncil.application.CouncilRunCompletion;
 import com.debopam.llmcouncil.application.CouncilRunExecutor;
 import com.debopam.llmcouncil.application.CouncilRunSubmission;
 import com.debopam.llmcouncil.application.CouncilService;
+import com.debopam.llmcouncil.application.CouncilRunStateException;
 import com.debopam.llmcouncil.application.CouncilSessionCleanup;
 import com.debopam.llmcouncil.application.RunResultStore;
 import com.debopam.llmcouncil.config.CouncilCatalogHolder;
@@ -20,6 +21,25 @@ import java.util.NoSuchElementException;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * Chat V1 façade: turns a user message into a council run and folds the result
+ * back into the conversation.
+ *
+ * <p><b>Locking, and the trap in it.</b> {@link #ask}, {@link #deleteChat} and
+ * {@code handleCompletion} are {@code synchronized} on this service, not per
+ * chat. Each needs check-then-act atomicity over one {@code ChatSession} —
+ * "no turn is running, so start one" is not safe as two calls — and a single
+ * monitor is the simplest thing that provides it.
+ *
+ * <p>The cost is that <em>every</em> chat serialises behind <em>any</em> chat's
+ * completion handler, which performs a store write while holding the monitor.
+ * That is invisible at the shipped {@code council.runtime.max-concurrent-runs}
+ * of 1, because only one run can be completing anyway. Raising that setting
+ * makes this the throughput ceiling, and the fix is a per-chat lock rather than
+ * a finer-grained version of this one — note that it would also let two
+ * completion handlers run at once for the first time, so the stores and the
+ * event broker need to be confirmed thread-safe before it is worth doing.
+ */
 @Service
 public class ChatCouncilService {
     private static final int MAX_SUMMARY_CHARS = 2_000;
@@ -69,7 +89,7 @@ public class ChatCouncilService {
     public synchronized ChatSession ask(String chatId, String userMessage) {
         ChatSession chat = getChat(chatId);
         if (chat.hasRunningTurn()) {
-            throw new IllegalStateException(
+            throw new CouncilRunStateException(
                     "Chat " + chatId + " already has a running turn. Wait for it to finish or cancel it first.");
         }
         String sessionId = UUID.randomUUID().toString();
@@ -139,7 +159,7 @@ public class ChatCouncilService {
     public synchronized void deleteChat(String chatId) {
         ChatSession chat = getChat(chatId);
         if (chat.hasRunningTurn()) {
-            throw new IllegalStateException(
+            throw new CouncilRunStateException(
                     "Chat " + chatId + " has a running turn and cannot be deleted until it finishes.");
         }
         chat.turns().stream()

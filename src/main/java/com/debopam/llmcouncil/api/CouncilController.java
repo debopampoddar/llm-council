@@ -10,7 +10,6 @@ import com.debopam.llmcouncil.application.CatalogService;
 import com.debopam.llmcouncil.application.CouncilService;
 import com.debopam.llmcouncil.application.EventPublisher;
 import com.debopam.llmcouncil.application.CouncilRunExecutor;
-import com.debopam.llmcouncil.application.CouncilRunStateException;
 import com.debopam.llmcouncil.application.ProfileHealthService;
 import com.debopam.llmcouncil.application.RunResultStore;
 import com.debopam.llmcouncil.domain.CouncilEvent;
@@ -25,7 +24,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,7 +33,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -108,15 +105,29 @@ public class CouncilController {
     /**
      * Run the council protocol for an existing session.
      *
+     * <p>This runs inline on the request thread, but still draws a permit from
+     * the same pool the chat path uses. {@code council.runtime.max-concurrent-runs}
+     * previously bounded only the asynchronous path, so a caller looping over
+     * this endpoint could start unbounded concurrent councils — and unbounded
+     * token spend — while the setting read 1.
+     *
      * @param sessionId The session ID returned by createSession.
-     * @return 200 OK with the synthesised answer and artifact counts.
+     * @return 200 OK with the synthesised answer and artifact counts, or 429
+     *         when the configured concurrency limit is already reached.
      */
     @PostMapping("/sessions/{sessionId}/run")
     public ResponseEntity<CouncilRunResponse> runCouncil(@PathVariable("sessionId") String sessionId) {
-        CouncilContext ctx = councilService.runCouncil(sessionId);
-        CouncilRunResponse result = CouncilRunResponse.from(sessionId, ctx);
-        runResultStore.save(sessionId, result);
-        return ResponseEntity.ok(result);
+        if (!runExecutor.tryAcquireRunPermit()) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
+        }
+        try {
+            CouncilContext ctx = councilService.runCouncil(sessionId);
+            CouncilRunResponse result = CouncilRunResponse.from(sessionId, ctx);
+            runResultStore.save(sessionId, result);
+            return ResponseEntity.ok(result);
+        } finally {
+            runExecutor.releaseRunPermit();
+        }
     }
 
     /**
@@ -248,23 +259,5 @@ public class CouncilController {
         return relativePath.endsWith(".json")
                ? MediaType.APPLICATION_JSON
                : MediaType.TEXT_PLAIN;
-    }
-
-    /** Handle unknown session IDs. */
-    @ExceptionHandler(NoSuchElementException.class)
-    public ResponseEntity<String> handleNotFound(NoSuchElementException ex) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ex.getMessage());
-    }
-
-    /** Handle invalid profile/depth/policy combinations. */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<String> handleBadRequest(IllegalArgumentException ex) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ex.getMessage());
-    }
-
-    /** A session is single-use; duplicate or out-of-order run requests conflict. */
-    @ExceptionHandler(CouncilRunStateException.class)
-    public ResponseEntity<String> handleConflict(CouncilRunStateException ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getMessage());
     }
 }

@@ -117,6 +117,36 @@ public class CouncilRunExecutor {
     }
 
     /**
+     * Reserve a concurrency permit for a run executed on the caller's own thread.
+     *
+     * <p>The synchronous run endpoint does not submit to this executor — it runs
+     * the protocol inline on the request thread — but it consumes exactly the
+     * same scarce resources: provider quota, tokens, and local model capacity.
+     * Bounding only the asynchronous path made {@code max-concurrent-runs} a
+     * chat-only setting whose name promised otherwise, so both paths now draw
+     * from one pool.
+     *
+     * <p>Callers <b>must</b> pair a {@code true} result with {@link #releaseRunPermit()}
+     * in a {@code finally} block.
+     *
+     * @return {@code true} when a permit was acquired and the caller may run
+     */
+    public boolean tryAcquireRunPermit() {
+        if (!runPermits.tryAcquire()) {
+            metrics.runRejected("capacity");
+            return false;
+        }
+        metrics.runAccepted();
+        return true;
+    }
+
+    /** Return a permit taken by {@link #tryAcquireRunPermit()}. */
+    public void releaseRunPermit() {
+        runPermits.release();
+        metrics.runFinished();
+    }
+
+    /**
      * Stop a queued run from starting.
      *
      * <p>Only ever called with {@code mayInterruptIfRunning = false}. Interrupting
@@ -138,6 +168,23 @@ public class CouncilRunExecutor {
         return inFlight.containsKey(sessionId);
     }
 
+    /**
+     * Stop accepting work and interrupt whatever is still running.
+     *
+     * <p>This is the one place the "never interrupt a run" rule in
+     * {@link #cancel(String)} is deliberately broken. At JVM shutdown there is no
+     * later stage boundary to wait for, so an in-flight provider call is
+     * interrupted and its connection left in an undefined state. That is
+     * acceptable only because the process is going away: nothing in it will read
+     * the connection again.
+     *
+     * <p>The consequence outlives the process, though. A run interrupted here may
+     * never persist its terminal status, leaving a session stored as
+     * {@code RUNNING} for ever. {@code InterruptedRunSweeper} is what closes that
+     * gap on the next start, marking such a session {@code INTERRUPTED} rather
+     * than resuming it — so this method depends on that sweeper existing, and
+     * removing it would strand sessions rather than merely lose telemetry.
+     */
     @PreDestroy
     public void shutdown() {
         executor.shutdownNow();

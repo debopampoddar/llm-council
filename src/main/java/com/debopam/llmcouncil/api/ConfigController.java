@@ -10,11 +10,9 @@ import com.debopam.llmcouncil.application.ConfigSchemaService;
 import com.debopam.llmcouncil.application.ConfigWriteService;
 import com.debopam.llmcouncil.config.user.UserConfigCodec;
 import com.debopam.llmcouncil.config.user.UserConfigDocument;
-import com.debopam.llmcouncil.config.user.UserConfigDocumentException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -167,22 +165,6 @@ public class ConfigController {
     public ResponseEntity<ConfigImportResponse> importConfig(@RequestBody(required = false) String body) {
         UserConfigDocument document = codec.readYaml(body);
         return ResponseEntity.ok(new ConfigImportResponse(document, draftService.validate(document)));
-    }
-
-    /**
-     * Refuse a document that could not be read at all.
-     *
-     * <p>Answers in the same shape as validation so a caller has one thing to
-     * render. The issues name the offending field and, for a credential, the
-     * path it was found at — never the value.
-     *
-     * @param ex the refusal, carrying its reasons
-     * @return 400 Bad Request with the reasons
-     */
-    @ExceptionHandler(UserConfigDocumentException.class)
-    public ResponseEntity<ValidationReportResponse> handleUnreadable(UserConfigDocumentException ex) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                             .body(ValidationReportResponse.of(ex.issues(), false));
     }
 
     /**

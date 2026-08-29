@@ -16,10 +16,34 @@ final class UserFacingAnswerGuard {
             "USER_TASK", "UNTRUSTED_DATA", "UNTRUSTED_MODEL_OUTPUT",
             "CANDIDATE_EVIDENCE", "QUALITY_OBSERVATION", "ADDITIONAL_EVIDENCE",
             "instructionAuthority", "supportingContext", "peerReviews", "debateHistory");
-    private static final List<String> RESERVED_PROCESS_PHRASES = List.of(
-            "candidate evidence", "eligible draft", "eligible drafts",
-            "scores and reviews", "reviews and scores", "trust-boundary rules",
+    /**
+     * Distinctive internal boilerplate. A model has no plausible reason to emit
+     * these except by echoing council scaffolding, so they stay invariants and
+     * a run that still contains one after recovery is rejected.
+     */
+    private static final List<String> RESERVED_BOILERPLATE = List.of(
+            "trust-boundary rules",
             "synthesis of the strongest evidence-backed reasoning");
+
+    /**
+     * Process vocabulary that is also ordinary English. "scores and reviews" is
+     * as likely to be the correct answer to a question about hiring loops or
+     * product pages as it is to be leaked council narration, and "candidate
+     * evidence" appears in legal and scientific prose. Treating these as
+     * invariants terminated the run, so the caller paid for every model call in
+     * the protocol and received nothing. They are cleanup signals instead: they
+     * warn, they trigger the bounded recovery attempt, and they are still
+     * scrubbed from recovery evidence by {@link #RESERVED_OUTPUT}.
+     */
+    private static final List<String> AMBIGUOUS_PROCESS_PHRASES = List.of(
+            "candidate evidence", "eligible draft", "eligible drafts",
+            "scores and reviews", "reviews and scores");
+
+    /** Both tiers, for the sanitiser — which scrubs regardless of severity. */
+    private static final List<String> RESERVED_PROCESS_PHRASES =
+            java.util.stream.Stream.concat(
+                            RESERVED_BOILERPLATE.stream(), AMBIGUOUS_PROCESS_PHRASES.stream())
+                    .toList();
     private static final Pattern RESERVED_OUTPUT = Pattern.compile(
             "(?<![\\p{L}\\p{N}_-])(?:"
                     + java.util.stream.Stream.concat(
@@ -67,7 +91,7 @@ final class UserFacingAnswerGuard {
         }
         boolean draftTask = USER_DRAFT_TASK.matcher(userQuestion).find();
         if (!internalTask && !draftTask) {
-            for (String phrase : RESERVED_PROCESS_PHRASES) {
+            for (String phrase : RESERVED_BOILERPLATE) {
                 if (invariantFindings.size() >= 5) break;
                 if (TrustBoundaryGuard.containsBoundedLiteral(answer, phrase)) {
                     invariantFindings.add(phrase);
@@ -75,6 +99,14 @@ final class UserFacingAnswerGuard {
             }
         }
         List<String> qualityFindings = new ArrayList<>();
+        if (!internalTask && !draftTask) {
+            for (String phrase : AMBIGUOUS_PROCESS_PHRASES) {
+                if (qualityFindings.size() >= 5) break;
+                if (TrustBoundaryGuard.containsBoundedLiteral(answer, phrase)) {
+                    qualityFindings.add(phrase);
+                }
+            }
+        }
         if (!internalTask) {
             Matcher narration = INTERNAL_NARRATION.matcher(answer);
             while (narration.find() && qualityFindings.size() < 5) {
