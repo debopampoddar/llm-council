@@ -132,8 +132,13 @@ council:
     cooldown-seconds: ${LLM_COUNCIL_MODEL_PROBE_COOLDOWN_SECONDS:10}
     timeout-seconds: ${LLM_COUNCIL_MODEL_PROBE_TIMEOUT_SECONDS:20}
   runtime:
-    # Demo-safe default: one active background council run at a time. Increase
-    # only when the host and model runtime can handle parallel generations.
+    # Demo-safe default: one active council run at a time. Increase only when
+    # the host and model runtime can handle parallel generations.
+    #
+    # Bounds both run paths from a single pool: the asynchronous chat path and
+    # the synchronous POST /sessions/{id}/run endpoint, which executes inline on
+    # the request thread. A caller that exceeds the limit gets a rejected turn
+    # (chat) or 429 (synchronous) rather than queueing.
     max-concurrent-runs: ${LLM_COUNCIL_MAX_CONCURRENT_RUNS:1}
     chat-recent-turn-count: ${LLM_COUNCIL_CHAT_RECENT_TURN_COUNT:4}
 

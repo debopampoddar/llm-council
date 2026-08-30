@@ -12,8 +12,6 @@ import com.debopam.llmcouncil.api.dto.AdvisorRequests.ExtractRequest;
 import com.debopam.llmcouncil.api.dto.AdvisorRequests.SaveProposalRequest;
 import com.debopam.llmcouncil.api.dto.AdvisorRequests.SynthesizeRequest;
 import com.debopam.llmcouncil.api.dto.AdvisorRequests.SynthesizeResponse;
-import com.debopam.llmcouncil.api.dto.ValidationReportResponse;
-import com.debopam.llmcouncil.config.user.UserConfigDocumentException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -169,21 +167,5 @@ public class AdvisorController {
     public ResponseEntity<AdvisorError> handleRefusal(AdvisorRequestException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                              .body(new AdvisorError(ex.getMessage(), ex.remediation()));
-    }
-
-    /**
-     * Refuse a document that carries credential material.
-     *
-     * <p>Answers in the same shape configuration validation does, so a caller has
-     * one thing to render. The issues name the offending field and never the
-     * value.
-     *
-     * @param ex the refusal, carrying its reasons
-     * @return 400 Bad Request with the reasons
-     */
-    @ExceptionHandler(UserConfigDocumentException.class)
-    public ResponseEntity<ValidationReportResponse> handleUnwritable(UserConfigDocumentException ex) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                             .body(ValidationReportResponse.of(ex.issues(), false));
     }
 }
