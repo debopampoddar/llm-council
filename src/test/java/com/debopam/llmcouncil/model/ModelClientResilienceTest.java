@@ -124,11 +124,28 @@ class ModelClientResilienceTest {
                         .build()),
                 new Generation(new AssistantMessage("visible answer"))));
         SpringAiModelClient client = new SpringAiModelClient(
-                "anthropic", ChatClient.create(anthropicThinking), false);
+                "anthropic", ChatClient.create(anthropicThinking), false, false,
+                "anthropic", null);
 
         ModelCallResult result = client.call(request(Duration.ofSeconds(1)));
 
         assertEquals("visible answer", result.text());
+    }
+
+    @Test
+    void springAiAdapterPreservesOpenAiTextThatCarriesMetadata() {
+        ChatModel signedOpenAiAnswer = prompt -> new ChatResponse(List.of(
+                new Generation(AssistantMessage.builder()
+                        .content("visible OpenAI answer")
+                        .properties(Map.of("signature", "provider-metadata"))
+                        .build())));
+        SpringAiModelClient client = new SpringAiModelClient(
+                "openai", ChatClient.create(signedOpenAiAnswer), false, true,
+                "openai", "low");
+
+        ModelCallResult result = client.call(request(Duration.ofSeconds(1)));
+
+        assertEquals("visible OpenAI answer", result.text());
     }
 
     @Test
@@ -193,6 +210,23 @@ class ModelClientResilienceTest {
         assertEquals(100, capturedOptions.get().getMaxCompletionTokens());
         assertNull(capturedOptions.get().getMaxTokens());
         assertNull(capturedOptions.get().getTemperature());
+    }
+
+    @Test
+    void springAiAdapterPassesConfiguredGpt5ReasoningEffort() {
+        AtomicReference<OpenAiChatOptions> capturedOptions = new AtomicReference<>();
+        ChatModel inspecting = prompt -> {
+            capturedOptions.set((OpenAiChatOptions) prompt.getOptions());
+            throw new IllegalStateException("captured");
+        };
+        SpringAiModelClient client = new SpringAiModelClient(
+                "openai-gpt5", ChatClient.create(inspecting), false, true,
+                "openai", "low");
+
+        assertThrows(ModelCallException.class,
+                () -> client.call(request(Duration.ofSeconds(1))));
+
+        assertEquals("low", capturedOptions.get().getReasoningEffort());
     }
 
     @Test

@@ -29,6 +29,8 @@ import java.time.Duration;
  *                              <b>unpriced</b>, not free — see {@link #priced()}.
  * @param costPer1kOutputTokens Price in USD per 1,000 completion tokens. Zero
  *                              means unpriced, not free.
+ * @param reasoningEffort       Optional OpenAI GPT-5 reasoning effort. A blank
+ *                              value lets the provider choose its default.
  */
 public record ModelProfile(
         String id,
@@ -42,7 +44,8 @@ public record ModelProfile(
         String modelFamily,
         int contextWindowTokens,
         double costPer1kInputTokens,
-        double costPer1kOutputTokens
+        double costPer1kOutputTokens,
+        String reasoningEffort
 ) {
     /**
      * Canonicalises {@code modelFamily} so two spellings of one family cannot
@@ -61,6 +64,9 @@ public record ModelProfile(
      */
     public ModelProfile {
         modelFamily = normaliseFamily(modelFamily);
+        reasoningEffort = reasoningEffort == null || reasoningEffort.isBlank()
+                ? null
+                : reasoningEffort.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
     /**
@@ -93,6 +99,21 @@ public record ModelProfile(
     }
 
     /**
+     * Backwards-compatible constructor for callers that do not configure an
+     * OpenAI reasoning effort.
+     */
+    public ModelProfile(String id, String provider, String providerModelId,
+                        int defaultOutputTokens, double temperature,
+                        Duration defaultTimeout, ModelRole role,
+                        CouncilRole councilRole, String modelFamily,
+                        int contextWindowTokens, double costPer1kInputTokens,
+                        double costPer1kOutputTokens) {
+        this(id, provider, providerModelId, defaultOutputTokens, temperature,
+             defaultTimeout, role, councilRole, modelFamily, contextWindowTokens,
+             costPer1kInputTokens, costPer1kOutputTokens, null);
+    }
+
+    /**
      * Constructor for callers that do not specify token prices.
      *
      * @param id                  Logical model identifier.
@@ -112,7 +133,7 @@ public record ModelProfile(
                         CouncilRole councilRole, String modelFamily,
                         int contextWindowTokens) {
         this(id, provider, providerModelId, defaultOutputTokens, temperature,
-             defaultTimeout, role, councilRole, modelFamily, contextWindowTokens, 0.0, 0.0);
+             defaultTimeout, role, councilRole, modelFamily, contextWindowTokens, 0.0, 0.0, null);
     }
 
     /**
@@ -144,6 +165,6 @@ public record ModelProfile(
                         int defaultOutputTokens, double temperature,
                         Duration defaultTimeout, ModelRole role) {
         this(id, provider, providerModelId, defaultOutputTokens, temperature,
-             defaultTimeout, role, CouncilRole.PROPOSER, null, 0, 0.0, 0.0);
+             defaultTimeout, role, CouncilRole.PROPOSER, null, 0, 0.0, 0.0, null);
     }
 }

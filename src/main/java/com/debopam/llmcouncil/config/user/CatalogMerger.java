@@ -159,7 +159,8 @@ public class CatalogMerger {
                 or(user.costPer1kInputTokens(),
                    existing == null ? 0.0 : existing.costPer1kInputTokens()),
                 or(user.costPer1kOutputTokens(),
-                   existing == null ? 0.0 : existing.costPer1kOutputTokens()));
+                   existing == null ? 0.0 : existing.costPer1kOutputTokens()),
+                or(user.reasoningEffort(), existing == null ? null : existing.reasoningEffort()));
     }
 
     private CouncilPolicy mergePolicy(String id, CouncilPolicy existing,

@@ -179,6 +179,16 @@ class UserConfigValidatorTest {
     }
 
     @Test
+    void rejectsAnUnknownReasoningEffort() {
+        UserConfigDocument.UserModel invalid = new UserConfigDocument.UserModel(
+                "thinking", "openai", "gpt-5.6-terra", 1000, 0.2, "extreme",
+                60, null, "CHAIR", "SYNTHESIZER", "gpt", null, null, null, null);
+
+        assertTrue(hasError(validator.validate(doc(List.of(invalid), Map.of(), Map.of(), Map.of()), builtIn()),
+                            "reasoningEffort"));
+    }
+
+    @Test
     void warnsButAcceptsAModelWithNoFamilyTag() {
         UserConfigDocument.UserModel untagged = new UserConfigDocument.UserModel(
                 "untagged", "ollama", "m", 1000, 0.3, 60, null, "MEMBER", "PROPOSER", null, null, null,

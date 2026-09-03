@@ -84,6 +84,18 @@ class CatalogMergerTest {
     }
 
     @Test
+    void aConfiguredReasoningEffortReachesTheCatalog() {
+        UserConfigDocument.UserModel patch = new UserConfigDocument.UserModel(
+                "built-in-chair", "openai", "gpt-5.6-terra", null, null, "low",
+                null, null, null, null, null, null, null, null, null);
+
+        CouncilCatalog merged = merger.merge(builtIn(),
+                overlay(List.of(patch), Map.of(), Map.of(), Map.of()), List.of(), 2);
+
+        assertEquals("low", merged.modelRegistry().model("built-in-chair").reasoningEffort());
+    }
+
+    @Test
     void aUserSuppliedPriceReachesTheCatalog() {
         // The failure this guards against is a field that binds and validates
         // cleanly and is then dropped on the floor by the merger: the user sets

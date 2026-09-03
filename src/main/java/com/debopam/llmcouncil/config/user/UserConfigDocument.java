@@ -82,6 +82,7 @@ public record UserConfigDocument(
      * @param providerModelId     provider-specific model name
      * @param defaultOutputTokens maximum output tokens per call
      * @param temperature         sampling temperature
+     * @param reasoningEffort     optional OpenAI GPT-5 reasoning effort
      * @param timeoutSeconds      per-call timeout
      * @param contextWindowTokens total context window, or null to derive
      * @param role                MEMBER, CHAIR, or VALIDATOR
@@ -101,6 +102,7 @@ public record UserConfigDocument(
             String providerModelId,
             Integer defaultOutputTokens,
             Double temperature,
+            String reasoningEffort,
             Integer timeoutSeconds,
             Integer contextWindowTokens,
             String role,
@@ -110,7 +112,20 @@ public record UserConfigDocument(
             Long retryBaseDelayMs,
             Double costPer1kInputTokens,
             Double costPer1kOutputTokens
-    ) {}
+    ) {
+        /** Backwards-compatible constructor for overlays without reasoningEffort. */
+        public UserModel(String id, String provider, String providerModelId,
+                         Integer defaultOutputTokens, Double temperature,
+                         Integer timeoutSeconds, Integer contextWindowTokens,
+                         String role, String councilRole, String modelFamily,
+                         Integer retryMaxAttempts, Long retryBaseDelayMs,
+                         Double costPer1kInputTokens, Double costPer1kOutputTokens) {
+            this(id, provider, providerModelId, defaultOutputTokens, temperature, null,
+                 timeoutSeconds, contextWindowTokens, role, councilRole, modelFamily,
+                 retryMaxAttempts, retryBaseDelayMs, costPer1kInputTokens,
+                 costPer1kOutputTokens);
+        }
+    }
 
     /**
      * A policy: who sits on the council and what quorum it needs.

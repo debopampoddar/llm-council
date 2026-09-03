@@ -43,6 +43,8 @@ public class CouncilProperties {
         private String id, provider, providerModelId;
         private int defaultOutputTokens = 2000;
         private double temperature = 0.3;
+        /** Optional OpenAI GPT-5 reasoning effort; blank keeps the provider default. */
+        private String reasoningEffort;
         private int timeoutSeconds = 120;
         private ModelRole role = ModelRole.MEMBER;
         private boolean testOnly = false;
@@ -88,6 +90,8 @@ public class CouncilProperties {
         public String getProviderModelId() { return providerModelId; } public void setProviderModelId(String v) { providerModelId = v; }
         public int getDefaultOutputTokens() { return defaultOutputTokens; } public void setDefaultOutputTokens(int v) { defaultOutputTokens = v; }
         public double getTemperature() { return temperature; } public void setTemperature(double v) { temperature = v; }
+        public String getReasoningEffort() { return reasoningEffort; }
+        public void setReasoningEffort(String v) { reasoningEffort = v; }
         public int getTimeoutSeconds() { return timeoutSeconds; } public void setTimeoutSeconds(int v) { timeoutSeconds = v; }
         public ModelRole getRole() { return role; } public void setRole(ModelRole v) { role = v; }
         public boolean isTestOnly() { return testOnly; } public void setTestOnly(boolean v) { testOnly = v; }

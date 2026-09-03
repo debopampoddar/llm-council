@@ -190,7 +190,8 @@ public class CouncilConfig {
                     Duration.ofSeconds(mp.getTimeoutSeconds()), mp.getRole(),
                     mp.getCouncilRole(), mp.getModelFamily(),
                     contextWindowTokensFor(mp),
-                    mp.getCostPer1kInputTokens(), mp.getCostPer1kOutputTokens());
+                    mp.getCostPer1kInputTokens(), mp.getCostPer1kOutputTokens(),
+                    mp.getReasoningEffort());
             profiles.put(mp.getId(), profile);
 
             // Build the client and optionally wrap with retry logic.
@@ -362,6 +363,7 @@ public class CouncilConfig {
         props.setProviderModelId(profile.providerModelId());
         props.setDefaultOutputTokens(profile.defaultOutputTokens());
         props.setTemperature(profile.temperature());
+        props.setReasoningEffort(profile.reasoningEffort());
         props.setTimeoutSeconds((int) profile.defaultTimeout().toSeconds());
         props.setRole(profile.role());
         props.setCouncilRole(profile.councilRole());
@@ -465,6 +467,11 @@ public class CouncilConfig {
         probe.setId("configuration-probe");
         probe.setProvider(provider);
         probe.setProviderModelId(providerModelId);
+        if ("openai".equalsIgnoreCase(provider) && isOpenAiGpt5Family(providerModelId)) {
+            // The bounded probe has only eight output tokens. Prevent default
+            // reasoning from consuming that budget before it can return "OK".
+            probe.setReasoningEffort("none");
+        }
         return buildRawProviderClient(probe, false);
     }
 
@@ -475,12 +482,14 @@ public class CouncilConfig {
             case "openai" -> hasRealCredential(openAiApiKey) && openAiChatModel != null
                              ? new SpringAiModelClient(mp.getId(), ChatClient.create(openAiChatModel),
                                  includeOpenAiTemperature(mp.getProviderModelId()),
-                                 usesOpenAiMaxCompletionTokens(mp.getProviderModelId()))
+                                 usesOpenAiMaxCompletionTokens(mp.getProviderModelId()),
+                                 mp.getProvider(), mp.getReasoningEffort())
                              : unavailableOrFallback(mp, "OpenAI not available — provide a real "
                                  + "SPRING_AI_OPENAI_API_KEY (current key is a placeholder or missing).",
                                  allowConfiguredFallback);
             case "anthropic" -> hasRealCredential(anthropicApiKey) && anthropicChatModel != null
-                                ? new SpringAiModelClient(mp.getId(), ChatClient.create(anthropicChatModel), false)
+                                ? new SpringAiModelClient(mp.getId(), ChatClient.create(anthropicChatModel),
+                                    false, false, mp.getProvider(), null)
                                 : unavailableOrFallback(mp, "Anthropic not available — provide a real "
                                     + "SPRING_AI_ANTHROPIC_API_KEY (current key is a placeholder or missing).",
                                     allowConfiguredFallback);

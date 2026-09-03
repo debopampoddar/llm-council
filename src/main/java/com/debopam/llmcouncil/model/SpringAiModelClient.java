@@ -27,6 +27,8 @@ public class SpringAiModelClient implements ModelClient {
     private final ChatClient chatClient;
     private final boolean includeTemperature;
     private final boolean useOpenAiMaxCompletionTokens;
+    private final String provider;
+    private final String reasoningEffort;
 
     public SpringAiModelClient(String modelId, ChatClient chatClient) {
         this(modelId, chatClient, true, false);
@@ -43,10 +45,23 @@ public class SpringAiModelClient implements ModelClient {
      */
     public SpringAiModelClient(String modelId, ChatClient chatClient, boolean includeTemperature,
                                boolean useOpenAiMaxCompletionTokens) {
+        this(modelId, chatClient, includeTemperature, useOpenAiMaxCompletionTokens, null, null);
+    }
+
+    /**
+     * @param provider provider binding used to distinguish provider-specific
+     *                 reasoning blocks from visible answer text
+     * @param reasoningEffort optional OpenAI GPT-5 reasoning setting
+     */
+    public SpringAiModelClient(String modelId, ChatClient chatClient, boolean includeTemperature,
+                               boolean useOpenAiMaxCompletionTokens, String provider,
+                               String reasoningEffort) {
         this.modelId = modelId;
         this.chatClient = chatClient;
         this.includeTemperature = includeTemperature;
         this.useOpenAiMaxCompletionTokens = useOpenAiMaxCompletionTokens;
+        this.provider = provider;
+        this.reasoningEffort = reasoningEffort;
     }
 
     @Override
@@ -100,13 +115,15 @@ public class SpringAiModelClient implements ModelClient {
                 }
                 throw ex;
             }
-            String response = extractVisibleText(chatResponse);
+            VisibleTextExtraction extraction = extractVisibleText(chatResponse);
+            String response = extraction.text();
             if (response == null || response.isBlank()) {
                 throw new ModelCallException(
                         ModelFailureCategory.INVALID_MODEL_OUTPUT,
                         null,
                         request.providerModelId(),
-                        "Model '" + modelId + "' returned an empty response");
+                        "Model '" + modelId + "' returned an empty response "
+                        + extraction.diagnostic());
             }
 
             // Extract token usage from Spring AI metadata if available.
@@ -154,6 +171,9 @@ public class SpringAiModelClient implements ModelClient {
             OpenAiChatOptions.Builder options = OpenAiChatOptions.builder()
                     .model(request.providerModelId())
                     .maxCompletionTokens(request.maxOutputTokens());
+            if (reasoningEffort != null && !reasoningEffort.isBlank()) {
+                options.reasoningEffort(reasoningEffort);
+            }
             if (includeTemperature) {
                 options.temperature(request.temperature());
             }
@@ -178,18 +198,45 @@ public class SpringAiModelClient implements ModelClient {
      * than the answer. Reasoning metadata must never become council evidence or
      * a user-facing answer, so skip it and retain the text generations.
      */
-    private String extractVisibleText(ChatResponse chatResponse) {
+    private VisibleTextExtraction extractVisibleText(ChatResponse chatResponse) {
         if (chatResponse == null || chatResponse.getResults() == null) {
-            return "";
+            return new VisibleTextExtraction("", 0, 0);
         }
-        return chatResponse.getResults().stream()
-                .map(generation -> generation == null ? null : generation.getOutput())
-                .filter(message -> message != null
-                        && !message.getMetadata().containsKey("signature")
-                        && !message.getMetadata().containsKey("data"))
-                .map(message -> message.getText())
-                .filter(text -> text != null && !text.isBlank())
-                .collect(Collectors.joining("\n"));
+        int generationCount = 0;
+        int suppressedReasoning = 0;
+        StringBuilder visible = new StringBuilder();
+        for (var generation : chatResponse.getResults()) {
+            if (generation == null || generation.getOutput() == null) {
+                continue;
+            }
+            generationCount++;
+            var message = generation.getOutput();
+            // Anthropic returns private reasoning as a separate signed/data
+            // block. Those fields are not a portable definition of private
+            // reasoning, so do not apply this filter to OpenAI final text.
+            if ("anthropic".equalsIgnoreCase(provider)
+                    && (message.getMetadata().containsKey("signature")
+                        || message.getMetadata().containsKey("data"))) {
+                suppressedReasoning++;
+                continue;
+            }
+            String text = message.getText();
+            if (text != null && !text.isBlank()) {
+                if (!visible.isEmpty()) {
+                    visible.append("\n");
+                }
+                visible.append(text);
+            }
+        }
+        return new VisibleTextExtraction(visible.toString(), generationCount, suppressedReasoning);
+    }
+
+    /** Compact diagnostics for responses that reached the provider but contained no answer text. */
+    private record VisibleTextExtraction(String text, int generationCount, int suppressedReasoning) {
+        String diagnostic() {
+            return "(generations=" + generationCount
+                    + ", suppressedReasoning=" + suppressedReasoning + ")";
+        }
     }
 
     private String rootCauseMessage(Throwable throwable) {

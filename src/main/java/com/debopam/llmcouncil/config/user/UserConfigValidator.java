@@ -68,6 +68,8 @@ public class UserConfigValidator {
     private static final long MIN_RETRY_DELAY_MS = ConfigLimits.MIN_RETRY_DELAY_MS;
     private static final long MAX_RETRY_DELAY_MS = ConfigLimits.MAX_RETRY_DELAY_MS;
     private static final double MAX_COST_PER_1K_TOKENS = ConfigLimits.MAX_COST_PER_1K_TOKENS;
+    private static final Set<String> OPENAI_REASONING_EFFORTS =
+            Set.of("none", "low", "medium", "high", "xhigh", "max");
 
     /**
      * Validate an overlay against the built-in catalog.
@@ -166,6 +168,19 @@ public class UserConfigValidator {
 
             checkEnum(modelIssues, key, "role", model.role(), ModelRole.class);
             checkEnum(modelIssues, key, "councilRole", model.councilRole(), CouncilRole.class);
+            if (!isBlank(model.reasoningEffort())
+                && !OPENAI_REASONING_EFFORTS.contains(model.reasoningEffort().toLowerCase(Locale.ROOT))) {
+                modelIssues.add(error(key, "reasoningEffort",
+                        "reasoningEffort must be one of " + sorted(OPENAI_REASONING_EFFORTS) + ".",
+                        "Use low for a balanced GPT-5 chair, or leave it blank for the provider default."));
+            } else if (!isBlank(model.reasoningEffort())
+                    && (!"openai".equals(provider)
+                        || isBlank(model.providerModelId())
+                        || !model.providerModelId().toLowerCase(Locale.ROOT).startsWith("gpt-5"))) {
+                modelIssues.add(error(key, "reasoningEffort",
+                        "reasoningEffort is supported only for OpenAI GPT-5 models.",
+                        "Remove it for this model, or use an OpenAI GPT-5 providerModelId."));
+            }
 
             if (modelIssues.isEmpty()) {
                 // Only warn about models that survive. Advice about an entity
